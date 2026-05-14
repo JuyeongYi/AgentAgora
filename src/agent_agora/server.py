@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
@@ -15,15 +15,10 @@ from agent_agora.registry import InstanceRegistry, NotRegisteredError
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
-# Name kept as a module-level constant so the list_tools wrapper below
-# stays in sync if the @mcp.tool name is ever changed.
 _WAIT_TOOL_NAME = "agora.wait"
 
 
 def _header_int(ctx: Context, header_name: str) -> int | None:
-    """Parse an int from an inbound HTTP header on the current MCP request.
-    Returns None if the header is absent, the context isn't HTTP-backed, or the
-    value isn't a valid int."""
     try:
         v = ctx.request_context.request.headers.get(header_name)
     except (AttributeError, ValueError, LookupError):
@@ -37,12 +32,6 @@ def _header_int(ctx: Context, header_name: str) -> int | None:
 
 
 def _session_id_from_ctx(ctx: Context) -> str:
-    """Extract MCP session id from FastMCP Context.
-
-    Currently relies on the Streamable HTTP transport injecting the Starlette
-    Request into request_context; the session id rides on the `Mcp-Session-Id` header.
-    If the SDK structure changes, this helper needs to be re-verified.
-    """
     try:
         request = ctx.request_context.request
         session_id = request.headers.get("mcp-session-id")
@@ -59,7 +48,7 @@ def create_agora_app(
     dispatcher: Dispatcher,
     port: int,
 ) -> FastMCP:
-    """FastMCP 앱을 생성한다 (v3: messaging-only, no KV)."""
+    """FastMCP 앱을 생성한다 (v3: messaging-only)."""
 
     mcp = FastMCP(
         name="AgentAgora",
@@ -71,7 +60,6 @@ def create_agora_app(
 
     @mcp.tool(name="agora.info")
     async def agora_info() -> str:
-        """Return AgentAgora server metadata: data directory path, port, uptime."""
         return json.dumps({
             "path": str(agora_dir),
             "port": port,
@@ -84,12 +72,13 @@ def create_agora_app(
         instance_id: str,
         role: str = "worker",
         description: str = "",
+        wait_mode: Literal["auto", "manual"] | None = None,
     ) -> str:
         """Register this session as an addressable instance.
 
-        `role` is a short category ("orchestrator", "worker", "reviewer", etc.).
-        `description` is a free-form sentence or two about what this instance does —
-        used by `agora.find` for capability-based discovery."""
+        wait_mode: 'auto' means this worker uses an auto-loop on agora.wait,
+        'manual' means a human triggers waits. Defaults to 'unknown' if omitted.
+        """
         try:
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
@@ -99,6 +88,7 @@ def create_agora_app(
             instance_id=instance_id,
             role=role,
             description=description,
+            wait_mode=wait_mode,
         )
         return json.dumps({
             "status": "ok",
@@ -106,11 +96,11 @@ def create_agora_app(
             "role": info.role,
             "description": info.description,
             "registered_at": info.registered_at,
+            "wait_mode": info.wait_mode,
         })
 
     @mcp.tool(name="agora.unregister")
     async def agora_unregister(ctx: Context) -> str:
-        """Unregister this session. Idempotent."""
         try:
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
@@ -120,23 +110,26 @@ def create_agora_app(
 
     @mcp.tool(name="agora.instances")
     async def agora_instances() -> str:
-        """List all registered instances visible to the server. Includes role and description."""
-        items = [
-            {
+        """List all registered instances with v3 load metadata."""
+        meta = dispatcher.peek([i.instance_id for i in instance_registry.list_instances()])
+        items = []
+        for i in instance_registry.list_instances():
+            m = meta.get(i.instance_id, {})
+            items.append({
                 "instance_id": i.instance_id,
                 "role": i.role,
                 "description": i.description,
                 "registered_at": i.registered_at,
-            }
-            for i in instance_registry.list_instances()
-        ]
+                "inbox_depth": m.get("queue_depth", 0),
+                "in_flight": m.get("in_flight", 0),
+                "last_seen_at": i.last_seen_at,
+                "wait_mode": i.wait_mode,
+                "accepting": i.accepting,
+            })
         return json.dumps({"instances": items}, ensure_ascii=False)
 
     @mcp.tool(name="agora.find")
     async def agora_find(query: str) -> str:
-        """Find instances whose instance_id, role, or description contains `query`
-        (case-insensitive substring match). Returns the same shape as `agora.instances`
-        but filtered. Empty query returns an empty list."""
         if not query:
             return json.dumps({"instances": []})
         q = query.lower()
@@ -157,33 +150,26 @@ def create_agora_app(
     @mcp.tool(name="agora.dispatch")
     async def agora_dispatch(
         ctx: Context,
-        target: list[str],
+        target: str,
         payload: Any,
         expect_result: bool = False,
         reply_to: str | None = None,
+        cc: list[str] | None = None,
         in_reply_to: str | None = None,
+        conversation_id: str | None = None,
+        closing: bool = False,
+        priority: Literal["low", "normal", "high"] = "normal",
+        deadline_ts: str | None = None,
     ) -> str:
-        """Dispatch a command to one or more registered instances.
+        """Dispatch a command to one registered instance, with optional cc observers.
 
-        target: ALWAYS a list of instance_ids (length >= 1). Single recipient:
-            ["Inst2"]. Fan-out to all other registered instances: ["_broadcast"]
-            (length 1, exclusive with explicit ids).
-
-        payload: free-form JSON. Application-level content.
-
-        reply_to: instance_id that should receive the recipient's reply. Leave
-            null and the recipient will reply to YOU (the source). Set this when
-            you are brokering a request on behalf of another instance and want
-            the downstream worker to reply directly to that original requester.
-            Validated against the registry — must be a currently registered id.
-
-        in_reply_to: command_id of the message you're answering. Set this when
-            you are SENDING A REPLY to a command you received. Lets the original
-            requester correlate the reply with their original request.
-
-        expect_result: informational hint that the sender expects a reply.
-
-        Caller MUST be registered (via agora.register or X-Agora-Instance-Id header)."""
+        target: single instance_id (use agora.broadcast for fan-out).
+        cc: list of observer instance_ids — they receive a copy with delivered_as='cc'
+            and have no reply obligation. cc does not auto-inherit.
+        closing=True signals end-of-conversation (single-direction advisory).
+        priority: 'high' must be reserved for actual blocking reasons.
+        Caller MUST be registered.
+        """
         try:
             source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
         except RuntimeError as e:
@@ -192,44 +178,109 @@ def create_agora_app(
             return json.dumps({"error": str(e)})
         try:
             result = await dispatcher.dispatch(
-                source=source,
-                target=target,
-                payload=payload,
-                expect_result=expect_result,
-                reply_to=reply_to,
-                in_reply_to=in_reply_to,
+                source=source, target=target, payload=payload,
+                expect_result=expect_result, reply_to=reply_to, cc=cc,
+                in_reply_to=in_reply_to, conversation_id=conversation_id,
+                closing=closing, priority=priority, deadline_ts=deadline_ts,
             )
-            return json.dumps({
-                "status": "ok",
-                "command_id": result["command_id"],
-                "created_at": result["created_at"],
-                "target": target,
-            })
+            return json.dumps({"status": "ok", **result})
         except (NotRegisteredError, ValueError) as e:
             return json.dumps({"error": str(e)})
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
+
+    @mcp.tool(name="agora.broadcast")
+    async def agora_broadcast(
+        ctx: Context,
+        payload: Any,
+        expect_result: bool = False,
+        reply_to: str | None = None,
+        in_reply_to: str | None = None,
+        conversation_id: str | None = None,
+        closing: bool = False,
+        priority: Literal["low", "normal", "high"] = "normal",
+        deadline_ts: str | None = None,
+    ) -> str:
+        """Fan-out to ALL other registered instances. closing=True → announcement (immediate close)."""
+        try:
+            source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
+        try:
+            result = await dispatcher.broadcast(
+                source=source, payload=payload,
+                expect_result=expect_result, reply_to=reply_to,
+                in_reply_to=in_reply_to, conversation_id=conversation_id,
+                closing=closing, priority=priority, deadline_ts=deadline_ts,
+            )
+            return json.dumps({"status": "ok", **result})
+        except (NotRegisteredError, ValueError) as e:
+            return json.dumps({"error": str(e)})
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
+
+    @mcp.tool(name="agora.peek")
+    async def agora_peek(targets: list[str] | None = None) -> str:
+        """Snapshot of queue depth, in_flight count, and consumer activity per instance.
+
+        ADVISORY ONLY — atomicity not guaranteed (TOCTOU race vs subsequent dispatch).
+        targets=None returns all registered instances. Unregistered ids return registered=False.
+        """
+        return json.dumps(dispatcher.peek(targets), ensure_ascii=False)
+
+    @mcp.tool(name="agora.conversation_status")
+    async def agora_conversation_status(conversation_id: str) -> str:
+        """Query the status, kind, participants, and message_count of a conversation."""
+        return json.dumps(dispatcher.conversation_status(conversation_id), ensure_ascii=False)
+
+    @mcp.tool(name="agora.conversations_list")
+    async def agora_conversations_list(
+        participant: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> str:
+        """List conversations (open/half_closed/closed) ordered by last_message_at desc."""
+        return json.dumps(dispatcher.conversations_list(participant=participant, status=status, limit=limit), ensure_ascii=False)
+
+    @mcp.tool(name="agora.close_thread")
+    async def agora_close_thread(ctx: Context, conversation_id: str, reason: str = "") -> str:
+        """Explicit close of a conversation. Equivalent to dispatching closing=True
+        to every other primary participant. caller MUST be a participant."""
+        try:
+            caller = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
+        try:
+            return json.dumps(await dispatcher.close_thread(caller, conversation_id, reason=reason))
+        except ValueError as e:
+            return json.dumps({"error": str(e)})
 
     @mcp.tool(name=_WAIT_TOOL_NAME)
     async def agora_wait(
         ctx: Context,
         timeout_ms: int | None = None,
         from_sources: list[str] | None = None,
+        sort: Literal["fifo", "priority"] = "fifo",
+        by_conversation: str | None = None,
     ) -> str:
         """Wait for commands targeted at this instance.
 
         timeout_ms resolution order (first non-None wins):
-            1. Explicit `timeout_ms` argument
-            2. `X-Agora-Wait-Timeout-Ms` header (if set in client's `.mcp.json`)
-            3. Server CLI default (`--default-wait-timeout-ms` / `--no-timeout`)
+            1. Explicit argument
+            2. X-Agora-Wait-Timeout-Ms header
+            3. Server CLI default
 
         Values: positive = wait at most N ms then return empty; 0 = unbounded.
 
-        from_sources: if provided, only drain commands whose `source` matches one
-                      of the names in the list. Unmatched commands stay queued.
-        Returns {commands: [...]}. Empty list means timeout (or filter mismatch)
-        with no commands.
-        The caller MUST be registered before waiting."""
+        sort='fifo' returns by (created_at asc, command_id asc). 'priority' uses
+        (priority_rank asc, created_at asc, command_id asc) — high before normal before low.
+        from_sources / by_conversation: AND-combined filters; unmatched envelopes stay queued.
+        The caller MUST be registered before waiting.
+        """
         try:
             info = instance_registry.resolve_session(_session_id_from_ctx(ctx))
         except RuntimeError as e:
@@ -245,6 +296,8 @@ def create_agora_app(
                 instance_id=info.instance_id,
                 timeout_ms=timeout_ms,
                 from_sources=from_sources,
+                sort=sort,
+                by_conversation=by_conversation,
             )
             return json.dumps({"commands": commands}, ensure_ascii=False)
         except NotRegisteredError as e:
@@ -252,16 +305,7 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
-    # --- MCP 2025-11-25: declare execution.taskSupport="optional" on agora.wait ---
-    # The FastMCP internal Tool class and its @mcp.tool decorator do not yet expose an
-    # `execution` field (Case B: mcp.types.Tool has it; fastmcp.tools.base.Tool does not).
-    # We wrap mcp.list_tools() on this instance to inject the field into the wire
-    # representation for agora.wait. All other tools are passed through unchanged.
-    #
-    # REMOVAL: When fastmcp.tools.base.Tool gains an `execution` field
-    # (check with `'execution' in fastmcp.tools.base.Tool.model_fields`),
-    # replace this block with `@mcp.tool(name=_WAIT_TOOL_NAME, execution=...)`
-    # and delete _original_list_tools / _list_tools_with_wait_execution.
+    # --- MCP execution.taskSupport hint on agora.wait ---
     _original_list_tools = mcp.list_tools
 
     async def _list_tools_with_wait_execution():
@@ -273,16 +317,9 @@ def create_agora_app(
             for tool in tools
         ]
 
-    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]  # swap bound method to inject execution metadata
-    # CRITICAL: re-register the wire handler so the new wrapper is captured in
-    # request_handlers[ListToolsRequest].  FastMCP's _setup_handlers() already
-    # registered the original mcp.list_tools as a closure; calling the decorator
-    # factory again overwrites that entry with a new closure around our wrapper.
-    # mcp._mcp_server: private FastMCP attribute (verified against mcp SDK 1.26.0).
+    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]
     mcp._mcp_server.list_tools()(_list_tools_with_wait_execution)
-    # -------------------------------------------------------------------------
 
-    # Sanity: the wrapper hardcodes _WAIT_TOOL_NAME; ensure the corresponding tool exists.
     assert any(t.name == _WAIT_TOOL_NAME for t in mcp._tool_manager.list_tools()), (
         f"Internal error: list_tools wrapper expects '{_WAIT_TOOL_NAME}' but no such tool registered"
     )

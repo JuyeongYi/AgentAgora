@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import datetime
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Literal
 
 
 class NotRegisteredError(Exception):
@@ -17,6 +18,9 @@ class InstanceInfo:
     role: str
     registered_at: str
     description: str = ""
+    wait_mode: Literal["auto", "manual", "unknown"] = "unknown"
+    last_seen_at: str | None = None
+    accepting: bool = True
 
 
 class InstanceRegistry:
@@ -33,8 +37,9 @@ class InstanceRegistry:
         self,
         session_id: str,
         instance_id: str,
-        role: str,
+        role: str = "worker",
         description: str = "",
+        wait_mode: Literal["auto", "manual"] | None = None,
     ) -> InstanceInfo:
         info = InstanceInfo(
             instance_id=instance_id,
@@ -42,6 +47,7 @@ class InstanceRegistry:
             role=role,
             registered_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             description=description,
+            wait_mode=wait_mode if wait_mode is not None else "unknown",
         )
         with self._lock:
             existing_by_inst = self._by_instance.get(instance_id)
@@ -77,3 +83,22 @@ class InstanceRegistry:
     def list_instances(self) -> list[InstanceInfo]:
         with self._lock:
             return list(self._by_instance.values())
+
+    def touch_last_seen(self, instance_id: str) -> None:
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self._lock:
+            info = self._by_instance.get(instance_id)
+            if info is None:
+                return
+            updated = replace(info, last_seen_at=now)
+            self._by_instance[instance_id] = updated
+            self._by_session[updated.session_id] = updated
+
+    def set_accepting(self, instance_id: str, accepting: bool) -> None:
+        with self._lock:
+            info = self._by_instance.get(instance_id)
+            if info is None:
+                raise NotRegisteredError(f"Instance '{instance_id}' is not registered")
+            updated = replace(info, accepting=accepting)
+            self._by_instance[instance_id] = updated
+            self._by_session[updated.session_id] = updated
