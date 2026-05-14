@@ -8,6 +8,7 @@ from typing import Any
 
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
+from mcp.types import ToolExecution
 
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
@@ -181,5 +182,24 @@ def create_agora_app(
             return json.dumps({"error": str(e)})
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
+
+    # --- MCP 2025-11-25: declare execution.taskSupport="optional" on agora.wait ---
+    # The FastMCP internal Tool class and its @mcp.tool decorator do not yet expose an
+    # `execution` field (Case B: mcp.types.Tool has it; fastmcp.tools.base.Tool does not).
+    # We wrap mcp.list_tools() on this instance to inject the field into the wire
+    # representation for agora.wait. All other tools are passed through unchanged.
+    _original_list_tools = mcp.list_tools
+
+    async def _list_tools_with_wait_execution():
+        tools = await _original_list_tools()
+        return [
+            tool.model_copy(update={"execution": ToolExecution(taskSupport="optional")})
+            if tool.name == "agora.wait"
+            else tool
+            for tool in tools
+        ]
+
+    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]
+    # -------------------------------------------------------------------------
 
     return mcp, queue

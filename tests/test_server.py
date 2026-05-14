@@ -80,6 +80,25 @@ class TestCreateApp:
             "agora.wait",
         }
 
+    async def test_agora_wait_declares_optional_task_support(self, app_parts) -> None:
+        """agora.wait must advertise execution.taskSupport='optional' in tools/list.
+
+        MCP 2025-11-25 spec: Tool.execution.taskSupport values are
+        'forbidden' (default) | 'optional' | 'required'. 'optional' allows
+        task-capable clients to invoke the tool as a long-running task.
+
+        Implementation note (Case B): mcp.types.Tool carries the execution field
+        but fastmcp.tools.base.Tool and the @mcp.tool decorator do not. We inject
+        the field by wrapping mcp.list_tools() in create_agora_app; the test
+        therefore calls mcp.list_tools() (the wire-level method) rather than
+        mcp._tool_manager.list_tools() (the internal registry).
+        """
+        mcp, _ = app_parts
+        wire_tools = await mcp.list_tools()
+        wait_tool = next(t for t in wire_tools if t.name == "agora.wait")
+        assert wait_tool.execution is not None, "agora.wait must have an execution field set"
+        assert wait_tool.execution.taskSupport == "optional"
+
 
 # ---------- agora.info ----------
 
