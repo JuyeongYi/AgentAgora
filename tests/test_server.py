@@ -80,7 +80,7 @@ class TestAgoraInfo:
         assert result["path"] == str(agora_dir_with_schemas)
         assert result["port"] == 0
         assert isinstance(result["uptime"], int)
-        assert sorted(result["schemas"]) == ["finding", "status"]
+        assert {"finding", "status"}.issubset(result["schemas"])
 
 
 # ---------- agora.set + agora.get ----------
@@ -208,7 +208,7 @@ class TestAgoraList:
     async def test_list_schemas(self, app_parts) -> None:
         mcp, _ = app_parts
         r = await _call(mcp, "agora.list")
-        assert sorted(r["schemas"]) == ["finding", "status"]
+        assert {"finding", "status"}.issubset(r["schemas"])
 
     async def test_list_keys_empty(self, app_parts) -> None:
         mcp, _ = app_parts

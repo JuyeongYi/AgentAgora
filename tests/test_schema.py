@@ -12,7 +12,7 @@ from agent_agora.schema import SchemaRegistry
 class TestSchemaRegistryLoad:
     def test_load_from_valid_dir(self, agora_dir_with_schemas: Path) -> None:
         reg = SchemaRegistry.load(agora_dir_with_schemas)
-        assert reg.names() == {"finding", "status"}
+        assert {"finding", "status"}.issubset(reg.names())
 
     def test_missing_schemas_json(self, agora_dir: Path) -> None:
         with pytest.raises(FileNotFoundError):
@@ -69,3 +69,35 @@ class TestSchemaRegistryValidation:
         reg = SchemaRegistry.load(agora_dir_with_schemas)
         with pytest.raises(TypeError, match="not an array"):
             reg.validate_item("status", "value")
+
+
+def test_builtin_schemas_auto_registered(agora_dir_with_schemas):
+    from agent_agora.schema import SchemaRegistry
+    registry = SchemaRegistry.load(agora_dir_with_schemas)
+    assert "instances" in registry.names()
+    assert "commands" in registry.names()
+    assert "results" in registry.names()
+
+
+def test_user_cannot_override_builtin_schema(agora_dir, sample_schemas):
+    import json
+    from agent_agora.schema import SchemaRegistry
+    bad = dict(sample_schemas)
+    bad["commands"] = {"type": "string"}
+    (agora_dir / "schemas.json").write_text(json.dumps(bad))
+    import pytest
+    with pytest.raises(ValueError, match="reserved"):
+        SchemaRegistry.load(agora_dir)
+
+
+def test_builtin_commands_validates_correct_payload():
+    from agent_agora.schema import SchemaRegistry
+    reg = SchemaRegistry({})
+    reg._inject_builtins()
+    reg.validate_item("commands", {
+        "id": "cmd-1",
+        "source": "A",
+        "target": "B",
+        "payload": {"action": "noop"},
+        "created_at": "2026-05-14T10:00:00Z",
+    })

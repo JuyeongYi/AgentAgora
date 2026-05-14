@@ -6,29 +6,76 @@ from pathlib import Path
 
 import jsonschema
 
+_BUILTIN_SCHEMAS: dict[str, dict] = {
+    "instances": {
+        "type": "object",
+        "properties": {
+            "instance_id": {"type": "string"},
+            "role": {"type": "string"},
+            "session_id": {"type": "string"},
+            "registered_at": {"type": "string"},
+        },
+        "required": ["instance_id", "registered_at"],
+    },
+    "commands": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "source": {"type": "string"},
+                "target": {"type": "string"},
+                "payload": {},
+                "created_at": {"type": "string"},
+                "expect_result": {"type": "boolean"},
+            },
+            "required": ["id", "source", "target", "payload", "created_at"],
+        },
+    },
+    "results": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "command_id": {"type": "string"},
+                "source": {"type": "string"},
+                "payload": {},
+                "completed_at": {"type": "string"},
+                "is_error": {"type": "boolean"},
+            },
+            "required": ["command_id", "source", "payload", "completed_at"],
+        },
+    },
+}
+
 
 class SchemaRegistry:
-    _RESERVED_NAMES = frozenset({"schemas"})
+    _RESERVED_NAMES = frozenset({"schemas", *_BUILTIN_SCHEMAS.keys()})
 
     def __init__(self, schemas: dict[str, dict]) -> None:
-        self._schemas = schemas
+        self._schemas = dict(schemas)
+        self._inject_builtins()
+
+    def _inject_builtins(self) -> None:
+        for name, schema in _BUILTIN_SCHEMAS.items():
+            self._schemas[name] = schema
 
     @classmethod
-    def load(cls, agora_dir: Path) -> SchemaRegistry:
+    def load(cls, agora_dir: Path) -> "SchemaRegistry":
         schemas_path = agora_dir / "schemas.json"
         if not schemas_path.exists():
             raise FileNotFoundError(f"schemas.json not found in {agora_dir}")
 
-        schemas = json.loads(schemas_path.read_text(encoding="utf-8"))
+        user_schemas = json.loads(schemas_path.read_text(encoding="utf-8"))
 
-        if not schemas:
+        if not user_schemas:
             raise ValueError("schemas.json is empty")
 
-        for name in schemas:
+        for name in user_schemas:
             if name in cls._RESERVED_NAMES:
                 raise ValueError(f"Schema name '{name}' is reserved")
 
-        return cls(schemas)
+        return cls(user_schemas)
 
     def names(self) -> set[str]:
         return set(self._schemas.keys())

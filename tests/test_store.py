@@ -108,7 +108,7 @@ class TestStoreDelete:
 class TestStoreList:
     def test_list_schemas(self, store: AgoraStore) -> None:
         result = store.list_schemas()
-        assert result == {"finding", "status"}
+        assert {"finding", "status"}.issubset(result)
 
     def test_list_keys_empty(self, store: AgoraStore) -> None:
         assert store.list_keys("finding") == []
