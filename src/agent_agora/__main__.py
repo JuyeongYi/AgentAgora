@@ -12,13 +12,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         prog="agent-agora",
         description="AgentAgora -- shared state MCP server for independent agents",
     )
-    parser.add_argument("--port", type=int, default=8420, help="HTTPS port (default: 8420)")
+    parser.add_argument("--port", type=int, default=8420, help="Listen port (default: 8420)")
     parser.add_argument("--dir", type=Path, default=Path("."), help="Project directory containing .agentagora/")
     parser.add_argument(
         "--cert-dir",
         type=Path,
         default=Path.home() / ".agent-agora" / "certs",
-        help="Certificate storage directory",
+        help="Certificate storage directory (unused when --no-tls is set)",
+    )
+    parser.add_argument(
+        "--no-tls",
+        action="store_true",
+        help="Serve over plain HTTP instead of HTTPS. Localhost-only testing convenience; skips cert generation.",
     )
     timeout_group = parser.add_mutually_exclusive_group()
     timeout_group.add_argument(
@@ -52,29 +57,35 @@ async def run_server(args: argparse.Namespace) -> None:
 
     registry = SchemaRegistry.load(agora_dir)
     store = AgoraStore(agora_dir, registry)
-    cert_path, key_path = ensure_certs(args.cert_dir)
+    if args.no_tls:
+        cert_path, key_path = None, None
+    else:
+        cert_path, key_path = ensure_certs(args.cert_dir)
     instance_registry = InstanceRegistry()
     default_timeout = 0 if args.no_timeout else args.default_wait_timeout_ms
     dispatcher = Dispatcher(instance_registry, default_timeout_ms=default_timeout)
-    from agent_agora.session_hook import SessionCloseMiddleware
 
     mcp, queue = create_agora_app(agora_dir, store, registry, instance_registry, dispatcher, args.port)
 
-    print(f"AgentAgora starting on https://127.0.0.1:{args.port}/mcp")
+    scheme = "http" if args.no_tls else "https"
+    print(f"AgentAgora starting on {scheme}://127.0.0.1:{args.port}/mcp")
     print(f"  Data dir : {agora_dir.resolve()}")
     print(f"  Schemas  : {', '.join(sorted(registry.names()))}")
-    print(f"  Cert     : {cert_path}")
+    print(f"  Cert     : {cert_path if cert_path else '(none — HTTP mode, localhost only)'}")
+
+    from agent_agora.auto_register import AutoRegisterMiddleware
 
     starlette_app = mcp.streamable_http_app()
-    starlette_app.add_middleware(SessionCloseMiddleware, registry=instance_registry)
-    config = uvicorn.Config(
-        starlette_app,
-        host="127.0.0.1",
-        port=args.port,
-        ssl_certfile=str(cert_path),
-        ssl_keyfile=str(key_path),
-        log_level="info",
-    )
+    starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
+    config_kwargs = {
+        "host": "127.0.0.1",
+        "port": args.port,
+        "log_level": "info",
+    }
+    if not args.no_tls:
+        config_kwargs["ssl_certfile"] = str(cert_path)
+        config_kwargs["ssl_keyfile"] = str(key_path)
+    config = uvicorn.Config(starlette_app, **config_kwargs)
     server = uvicorn.Server(config)
 
     async with queue:

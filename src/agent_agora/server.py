@@ -28,6 +28,22 @@ _WAIT_TOOL_NAME = "agora.wait"
 _RESERVED_SCHEMA_NAMES = frozenset({"instances", "commands", "results"})
 
 
+def _header_int(ctx: Context, header_name: str) -> int | None:
+    """Parse an int from an inbound HTTP header on the current MCP request.
+    Returns None if the header is absent, the context isn't HTTP-backed, or the
+    value isn't a valid int."""
+    try:
+        v = ctx.request_context.request.headers.get(header_name)
+    except (AttributeError, ValueError, LookupError):
+        return None
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _session_id_from_ctx(ctx: Context) -> str:
     """Extract MCP session id from FastMCP Context.
 
@@ -128,17 +144,32 @@ def create_agora_app(
             return json.dumps({"error": str(e)})
 
     @mcp.tool(name="agora.register")
-    async def agora_register(ctx: Context, instance_id: str, role: str = "worker") -> str:
-        """Register this session as an addressable instance. Required before dispatch/wait."""
+    async def agora_register(
+        ctx: Context,
+        instance_id: str,
+        role: str = "worker",
+        description: str = "",
+    ) -> str:
+        """Register this session as an addressable instance.
+
+        `role` is a short category ("orchestrator", "worker", "reviewer", etc.).
+        `description` is a free-form sentence or two about what this instance does —
+        used by `agora.find` for capability-based discovery."""
         try:
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
-        info = instance_registry.register(session_id=session_id, instance_id=instance_id, role=role)
+        info = instance_registry.register(
+            session_id=session_id,
+            instance_id=instance_id,
+            role=role,
+            description=description,
+        )
         return json.dumps({
             "status": "ok",
             "instance_id": info.instance_id,
             "role": info.role,
+            "description": info.description,
             "registered_at": info.registered_at,
         })
 
@@ -154,22 +185,70 @@ def create_agora_app(
 
     @mcp.tool(name="agora.instances")
     async def agora_instances() -> str:
-        """List all registered instances visible to the server."""
+        """List all registered instances visible to the server. Includes role and description."""
         items = [
-            {"instance_id": i.instance_id, "role": i.role, "registered_at": i.registered_at}
+            {
+                "instance_id": i.instance_id,
+                "role": i.role,
+                "description": i.description,
+                "registered_at": i.registered_at,
+            }
             for i in instance_registry.list_instances()
         ]
-        return json.dumps({"instances": items})
+        return json.dumps({"instances": items}, ensure_ascii=False)
+
+    @mcp.tool(name="agora.find")
+    async def agora_find(query: str) -> str:
+        """Find instances whose instance_id, role, or description contains `query`
+        (case-insensitive substring match). Returns the same shape as `agora.instances`
+        but filtered. Empty query returns an empty list."""
+        if not query:
+            return json.dumps({"instances": []})
+        q = query.lower()
+        items = [
+            {
+                "instance_id": i.instance_id,
+                "role": i.role,
+                "description": i.description,
+                "registered_at": i.registered_at,
+            }
+            for i in instance_registry.list_instances()
+            if q in i.instance_id.lower()
+            or q in i.role.lower()
+            or q in i.description.lower()
+        ]
+        return json.dumps({"instances": items}, ensure_ascii=False)
 
     @mcp.tool(name="agora.dispatch")
     async def agora_dispatch(
         ctx: Context,
-        target: str,
+        target: list[str],
         payload: Any,
         expect_result: bool = False,
+        reply_to: str | None = None,
+        in_reply_to: str | None = None,
     ) -> str:
-        """Dispatch a command to another registered instance. Use target='_broadcast' to fan out to all others.
-        The caller MUST be registered (via agora.register) before dispatching."""
+        """Dispatch a command to one or more registered instances.
+
+        target: ALWAYS a list of instance_ids (length >= 1). Single recipient:
+            ["Inst2"]. Fan-out to all other registered instances: ["_broadcast"]
+            (length 1, exclusive with explicit ids).
+
+        payload: free-form JSON. Application-level content.
+
+        reply_to: instance_id that should receive the recipient's reply. Leave
+            null and the recipient will reply to YOU (the source). Set this when
+            you are brokering a request on behalf of another instance and want
+            the downstream worker to reply directly to that original requester.
+            Validated against the registry — must be a currently registered id.
+
+        in_reply_to: command_id of the message you're answering. Set this when
+            you are SENDING A REPLY to a command you received. Lets the original
+            requester correlate the reply with their original request.
+
+        expect_result: informational hint that the sender expects a reply.
+
+        Caller MUST be registered (via agora.register or X-Agora-Instance-Id header)."""
         try:
             source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
         except RuntimeError as e:
@@ -177,32 +256,61 @@ def create_agora_app(
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
         try:
-            cmd_id = await dispatcher.dispatch(
-                source=source, target=target, payload=payload, expect_result=expect_result,
+            result = await dispatcher.dispatch(
+                source=source,
+                target=target,
+                payload=payload,
+                expect_result=expect_result,
+                reply_to=reply_to,
+                in_reply_to=in_reply_to,
             )
-            return json.dumps({"status": "ok", "command_id": cmd_id, "target": target})
-        except NotRegisteredError as e:
+            return json.dumps({
+                "status": "ok",
+                "command_id": result["command_id"],
+                "created_at": result["created_at"],
+                "target": target,
+            })
+        except (NotRegisteredError, ValueError) as e:
             return json.dumps({"error": str(e)})
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
     @mcp.tool(name=_WAIT_TOOL_NAME)
-    async def agora_wait(ctx: Context, timeout_ms: int | None = None) -> str:
+    async def agora_wait(
+        ctx: Context,
+        timeout_ms: int | None = None,
+        from_sources: list[str] | None = None,
+    ) -> str:
         """Wait for commands targeted at this instance.
 
-        timeout_ms: positive = wait at most N ms then return empty;
-                    0 = unbounded blocking (no timeout);
-                    None = use server default (--default-wait-timeout-ms).
-        Returns {commands: [...]}. Empty list means timeout with no commands.
-        The caller MUST be registered (via agora.register) before waiting."""
+        timeout_ms resolution order (first non-None wins):
+            1. Explicit `timeout_ms` argument
+            2. `X-Agora-Wait-Timeout-Ms` header (if set in client's `.mcp.json`)
+            3. Server CLI default (`--default-wait-timeout-ms` / `--no-timeout`)
+
+        Values: positive = wait at most N ms then return empty; 0 = unbounded.
+
+        from_sources: if provided, only drain commands whose `source` matches one
+                      of the names in the list. Unmatched commands stay queued.
+        Returns {commands: [...]}. Empty list means timeout (or filter mismatch)
+        with no commands.
+        The caller MUST be registered before waiting."""
         try:
             info = instance_registry.resolve_session(_session_id_from_ctx(ctx))
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
+
+        if timeout_ms is None:
+            timeout_ms = _header_int(ctx, "x-agora-wait-timeout-ms")
+
         try:
-            commands = await dispatcher.wait(instance_id=info.instance_id, timeout_ms=timeout_ms)
+            commands = await dispatcher.wait(
+                instance_id=info.instance_id,
+                timeout_ms=timeout_ms,
+                from_sources=from_sources,
+            )
             return json.dumps({"commands": commands}, ensure_ascii=False)
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})

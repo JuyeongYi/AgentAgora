@@ -16,6 +16,7 @@ class InstanceInfo:
     session_id: str
     role: str
     registered_at: str
+    description: str = ""
 
 
 class InstanceRegistry:
@@ -28,12 +29,19 @@ class InstanceRegistry:
         self._by_instance: dict[str, InstanceInfo] = {}
         self._lock = threading.Lock()
 
-    def register(self, session_id: str, instance_id: str, role: str) -> InstanceInfo:
+    def register(
+        self,
+        session_id: str,
+        instance_id: str,
+        role: str,
+        description: str = "",
+    ) -> InstanceInfo:
         info = InstanceInfo(
             instance_id=instance_id,
             session_id=session_id,
             role=role,
             registered_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            description=description,
         )
         with self._lock:
             existing_by_inst = self._by_instance.get(instance_id)

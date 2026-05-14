@@ -35,7 +35,7 @@ async def test_a_dispatches_b_receives(runtime):
 
         wait_task = asyncio.create_task(disp.wait(instance_id="B", timeout_ms=1000))
         await asyncio.sleep(0.05)
-        await disp.dispatch(source="A", target="B", payload={"task": "run-tests"})
+        await disp.dispatch(source="A", target=["B"], payload={"task": "run-tests"})
 
         commands = await wait_task
         assert len(commands) == 1
@@ -52,7 +52,7 @@ async def test_broadcast_fans_out(runtime):
         inst_reg.register(session_id="sB", instance_id="B", role="worker")
         inst_reg.register(session_id="sC", instance_id="C", role="worker")
 
-        await disp.dispatch(source="A", target="_broadcast", payload={"ping": 1})
+        await disp.dispatch(source="A", target=["_broadcast"], payload={"ping": 1})
         b = await disp.wait(instance_id="B", timeout_ms=200)
         c = await disp.wait(instance_id="C", timeout_ms=200)
         assert len(b) == 1 and b[0]["payload"] == {"ping": 1}
@@ -69,16 +69,20 @@ async def test_result_writeback_via_second_dispatch(runtime):
         inst_reg.register(session_id="sA", instance_id="A", role="orch")
         inst_reg.register(session_id="sB", instance_id="B", role="worker")
 
-        cmd_id = await disp.dispatch(
-            source="A", target="B", payload={"task": "echo", "value": 42}, expect_result=True,
+        result = await disp.dispatch(
+            source="A", target=["B"], payload={"task": "echo", "value": 42}, expect_result=True,
         )
+        cmd_id = result["command_id"]
+        assert "created_at" in result
         cmds = await disp.wait(instance_id="B", timeout_ms=500)
         assert len(cmds) == 1
         assert cmds[0]["expect_result"] is True
         original_id = cmds[0]["id"]
         assert original_id == cmd_id
+        # created_at in dispatch result matches the envelope value
+        assert cmds[0]["created_at"] == result["created_at"]
 
-        await disp.dispatch(source="B", target="A", payload={
+        await disp.dispatch(source="B", target=["A"], payload={
             "result_for": original_id,
             "value": 42,
         })
@@ -94,7 +98,7 @@ async def test_unknown_target_dispatch_raises(runtime):
     async with queue:
         inst_reg.register(session_id="sA", instance_id="A", role="orch")
         with pytest.raises(NotRegisteredError):
-            await disp.dispatch(source="A", target="ghost", payload={})
+            await disp.dispatch(source="A", target=["ghost"], payload={})
 
 
 async def test_unregister_session_removes_instance(runtime):
@@ -108,7 +112,7 @@ async def test_unregister_session_removes_instance(runtime):
         with pytest.raises(NotRegisteredError):
             inst_reg.resolve_instance_id("B")
         with pytest.raises(NotRegisteredError):
-            await disp.dispatch(source="A", target="B", payload={})
+            await disp.dispatch(source="A", target=["B"], payload={})
 
 
 async def test_dispatch_queues_when_no_waiter_then_drains_on_first_wait(runtime):
@@ -118,8 +122,8 @@ async def test_dispatch_queues_when_no_waiter_then_drains_on_first_wait(runtime)
     async with queue:
         inst_reg.register(session_id="sA", instance_id="A", role="orch")
         inst_reg.register(session_id="sB", instance_id="B", role="worker")
-        await disp.dispatch(source="A", target="B", payload={"x": 1})
-        await disp.dispatch(source="A", target="B", payload={"x": 2})
+        await disp.dispatch(source="A", target=["B"], payload={"x": 1})
+        await disp.dispatch(source="A", target=["B"], payload={"x": 2})
         cmds = await disp.wait(instance_id="B", timeout_ms=100)
         assert len(cmds) == 2
         assert [c["payload"]["x"] for c in cmds] == [1, 2]

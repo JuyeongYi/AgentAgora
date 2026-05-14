@@ -59,10 +59,10 @@ class TestCreateApp:
         assert isinstance(mcp, FastMCP)
         assert isinstance(queue, AsyncWriteQueue)
 
-    def test_has_eleven_tools(self, app_parts) -> None:
+    def test_has_twelve_tools(self, app_parts) -> None:
         mcp, _ = app_parts
         tools = mcp._tool_manager.list_tools()
-        assert len(tools) == 11
+        assert len(tools) == 12
 
     def test_tool_names(self, app_parts) -> None:
         mcp, _ = app_parts
@@ -77,6 +77,7 @@ class TestCreateApp:
             "agora.register",
             "agora.unregister",
             "agora.instances",
+            "agora.find",
             "agora.dispatch",
             "agora.wait",
         }
