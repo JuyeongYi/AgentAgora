@@ -24,6 +24,7 @@ def test_re_register_same_instance_id_overwrites():
     reg.register(session_id="s1", instance_id="A", role="r1")
     reg.register(session_id="s2", instance_id="A", role="r2")
     assert reg.resolve_session("s2").role == "r2"
+    assert reg.resolve_instance_id("A").session_id == "s2"
     with pytest.raises(NotRegisteredError):
         reg.resolve_session("s1")
 
@@ -34,6 +35,8 @@ def test_unregister_by_session():
     reg.unregister_session("s1")
     with pytest.raises(NotRegisteredError):
         reg.resolve_session("s1")
+    with pytest.raises(NotRegisteredError):
+        reg.resolve_instance_id("A")
 
 
 def test_list_returns_all_registered():

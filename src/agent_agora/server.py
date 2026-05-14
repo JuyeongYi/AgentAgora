@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server import FastMCP
-from mcp.server.fastmcp.server import Context
+from mcp.server.fastmcp import Context
 
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schema import SchemaRegistry
@@ -17,44 +17,20 @@ MCP_SESSION_ID_HEADER = "mcp-session-id"
 
 
 def _session_id_from_ctx(ctx: Context) -> str:
-    """Extract MCP session id from a FastMCP Context.
+    """Extract MCP session id from FastMCP Context.
 
-    In this SDK version the session ID is the HTTP Mcp-Session-Id header,
-    which the StreamableHTTP transport stores as a Starlette Request object
-    at ctx.request_context.request.  We try that path first, then fall back
-    through alternative shapes for forward-compatibility.
+    Currently relies on the Streamable HTTP transport injecting the Starlette
+    Request into request_context; the session id rides on the `Mcp-Session-Id` header.
+    If the SDK structure changes, this helper needs to be re-verified.
     """
-    # Primary path: streamable-HTTP transport sets request_context.request to
-    # the Starlette Request object, which carries the mcp-session-id header.
     try:
         request = ctx.request_context.request
-        if request is not None:
-            session_id = request.headers.get(MCP_SESSION_ID_HEADER)
-            if session_id:
-                return session_id
-    except (AttributeError, LookupError):
+        session_id = request.headers.get("mcp-session-id")
+        if session_id:
+            return session_id
+    except (AttributeError, ValueError, LookupError):
         pass
-
-    # Fallback: future SDK versions may expose session_id directly on the session
-    for attr_chain in (
-        ("request_context", "session", "session_id"),
-        ("request_context", "session_id"),
-        ("session_id",),
-    ):
-        obj = ctx
-        try:
-            for attr in attr_chain:
-                obj = getattr(obj, attr)
-            if isinstance(obj, str):
-                return obj
-        except AttributeError:
-            continue
-
-    raise RuntimeError(
-        "Cannot determine session id from MCP Context. "
-        "The Mcp-Session-Id header was absent or the Context structure is unrecognised. "
-        "agora.register requires a stateful streamable-HTTP session."
-    )
+    raise RuntimeError("Cannot determine MCP session id from Context (no active streamable-HTTP request?)")
 
 
 def create_agora_app(
@@ -140,6 +116,7 @@ def create_agora_app(
         return json.dumps({
             "status": "ok",
             "instance_id": info.instance_id,
+            "role": info.role,
             "registered_at": info.registered_at,
         })
 

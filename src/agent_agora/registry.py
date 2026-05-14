@@ -10,7 +10,7 @@ class NotRegisteredError(Exception):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class InstanceInfo:
     instance_id: str
     session_id: str
@@ -56,7 +56,7 @@ class InstanceRegistry:
         with self._lock:
             info = self._by_session.get(session_id)
         if info is None:
-            raise NotRegisteredError(f"Session {session_id} is not registered")
+            raise NotRegisteredError(f"Session '{session_id}' is not registered")
         return info
 
     def resolve_instance_id(self, instance_id: str) -> InstanceInfo:
