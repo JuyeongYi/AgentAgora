@@ -9,7 +9,7 @@ from typing import Any
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
 
-from agent_agora.dispatcher import Dispatcher
+from agent_agora.dispatcher import Dispatcher, DispatcherClosed
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schema import SchemaRegistry
 from agent_agora.store import AgoraStore, AsyncWriteQueue
@@ -158,6 +158,8 @@ def create_agora_app(
             return json.dumps({"status": "ok", "command_id": cmd_id, "target": target})
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
 
     @mcp.tool(name="agora.wait")
     async def agora_wait(ctx: Context, timeout_ms: int | None = None) -> str:
@@ -177,5 +179,7 @@ def create_agora_app(
             return json.dumps({"commands": commands}, ensure_ascii=False)
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
 
     return mcp, queue

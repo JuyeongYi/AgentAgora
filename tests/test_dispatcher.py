@@ -96,3 +96,17 @@ async def test_wait_for_unregistered_instance_raises(setup):
     reg, disp = setup
     with pytest.raises(NotRegisteredError):
         await disp.wait(instance_id="ghost", timeout_ms=10)
+
+
+async def test_dispatch_after_close_raises(setup):
+    reg, disp = setup
+    await disp.close()
+    with pytest.raises(DispatcherClosed):
+        await disp.dispatch(source="A", target="B", payload={"x": 1})
+
+
+async def test_wait_after_close_raises(setup):
+    reg, disp = setup
+    await disp.close()
+    with pytest.raises(DispatcherClosed):
+        await disp.wait(instance_id="B", timeout_ms=10)

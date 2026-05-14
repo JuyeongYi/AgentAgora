@@ -44,6 +44,8 @@ class Dispatcher:
         cmd_id = str(uuid.uuid4())
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         async with self._lock:
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
             if target == self.BROADCAST_TARGET:
                 targets = [
                     info.instance_id
@@ -81,7 +83,7 @@ class Dispatcher:
         effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
         loop = asyncio.get_running_loop()
         async with self._lock:
-            if self._queues[instance_id]:
+            if self._queues.get(instance_id):
                 drained = self._queues.pop(instance_id, [])
                 return drained
             fut: asyncio.Future = loop.create_future()
@@ -98,9 +100,7 @@ class Dispatcher:
                     self._waiters[instance_id].remove(fut)
             return []
 
-        # Future was set — commands arrived OR dispatcher closed
-        if self._closed:
-            raise DispatcherClosed("Dispatcher closed")
+        # Future was set with a result (commands arrived). DispatcherClosed propagated already.
         async with self._lock:
             drained = self._queues.pop(instance_id, [])
         return drained
