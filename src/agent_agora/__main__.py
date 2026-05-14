@@ -53,6 +53,9 @@ def _build_app(
     default_wait_timeout_ms: int = 60000,
     max_inbox_depth: int = 100,
     db_path: Path | None = None,
+    close_timeout_ms: int = 300_000,
+    dead_session_timeout_ms: int = 1_800_000,
+    gc_retention_days: int = 90,
 ):
     """Construct FastMCP app + supporting state. Used by CLI and tests.
 
@@ -78,6 +81,9 @@ def _build_app(
         write_queue=write_queue,
         default_timeout_ms=default_wait_timeout_ms,
         max_inbox_depth=max_inbox_depth if max_inbox_depth > 0 else 10**9,
+        close_timeout_ms=close_timeout_ms,
+        dead_session_timeout_ms=dead_session_timeout_ms,
+        gc_retention_days=gc_retention_days,
     )
     mcp = create_agora_app(
         agora_dir=agora_dir,
@@ -117,6 +123,9 @@ async def run_server(args: argparse.Namespace) -> None:
         default_wait_timeout_ms=default_timeout,
         max_inbox_depth=args.max_inbox_depth,
         db_path=db_path,
+        close_timeout_ms=args.close_timeout_ms,
+        dead_session_timeout_ms=args.dead_session_timeout_ms,
+        gc_retention_days=args.gc_retention_days,
     )
     instance_registry = mcp._agora_instance_registry  # type: ignore[attr-defined]
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
@@ -131,6 +140,10 @@ async def run_server(args: argparse.Namespace) -> None:
 
     async with write_queue:
         dispatcher.restore_from_persistence()
+
+        # M2 background tasks
+        sweep_task = asyncio.create_task(_sweep_loop_60s(dispatcher))
+        gc_task = asyncio.create_task(_message_gc_loop(dispatcher, args.gc_hour))
 
         starlette_app = mcp.streamable_http_app()
         starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
@@ -148,8 +161,41 @@ async def run_server(args: argparse.Namespace) -> None:
         try:
             await server.serve()
         finally:
+            sweep_task.cancel()
+            gc_task.cancel()
+            for t in (sweep_task, gc_task):
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
             await dispatcher.close()
             persistence.close()
+
+
+async def _sweep_loop_60s(dispatcher) -> None:
+    """60-second close TTL + dead-session sweeps."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            dispatcher.close_ttl_sweep()
+            dispatcher.dead_session_sweep()
+        except Exception as e:
+            print(f"[agora] sweep error: {e}", file=sys.stderr)
+
+
+async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
+    """Run message_gc_sweep once daily at gc_hour UTC."""
+    import datetime as _dt
+    while True:
+        now = _dt.datetime.now(_dt.timezone.utc)
+        next_run = now.replace(hour=gc_hour, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += _dt.timedelta(days=1)
+        await asyncio.sleep((next_run - now).total_seconds())
+        try:
+            dispatcher.message_gc_sweep()
+        except Exception as e:
+            print(f"[agora] message_gc error: {e}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> None:
