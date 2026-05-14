@@ -200,6 +200,11 @@ def create_agora_app(
         ]
 
     mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]
+    # CRITICAL: re-register the wire handler so the new wrapper is captured in
+    # request_handlers[ListToolsRequest].  FastMCP's _setup_handlers() already
+    # registered the original mcp.list_tools as a closure; calling the decorator
+    # factory again overwrites that entry with a new closure around our wrapper.
+    mcp._mcp_server.list_tools()(_list_tools_with_wait_execution)
     # -------------------------------------------------------------------------
 
     return mcp, queue

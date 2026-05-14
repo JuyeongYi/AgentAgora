@@ -89,13 +89,24 @@ class TestCreateApp:
 
         Implementation note (Case B): mcp.types.Tool carries the execution field
         but fastmcp.tools.base.Tool and the @mcp.tool decorator do not. We inject
-        the field by wrapping mcp.list_tools() in create_agora_app; the test
-        therefore calls mcp.list_tools() (the wire-level method) rather than
-        mcp._tool_manager.list_tools() (the internal registry).
+        the field by wrapping mcp.list_tools() in create_agora_app and
+        re-registering via mcp._mcp_server.list_tools()(...) so that the wire-level
+        handler in request_handlers[ListToolsRequest] captures the wrapper.
+
+        This test invokes the *actual wire-level handler* stored in
+        mcp._mcp_server.request_handlers[ListToolsRequest], which is what a real
+        MCP client over tools/list would hit.  The handler returns
+        ServerResult(ListToolsResult(tools=[...])); we unwrap accordingly.
         """
-        mcp, _ = app_parts
-        wire_tools = await mcp.list_tools()
-        wait_tool = next(t for t in wire_tools if t.name == "agora.wait")
+        import mcp.types as types
+
+        mcp_app, _ = app_parts
+        handler = mcp_app._mcp_server.request_handlers[types.ListToolsRequest]
+        request = types.ListToolsRequest(method="tools/list", params=None)
+        server_result = await handler(request)
+        # server_result is ServerResult; its .root is a ListToolsResult
+        tools = server_result.root.tools
+        wait_tool = next(t for t in tools if t.name == "agora.wait")
         assert wait_tool.execution is not None, "agora.wait must have an execution field set"
         assert wait_tool.execution.taskSupport == "optional"
 
