@@ -12,20 +12,12 @@ from mcp.types import ToolExecution
 
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
-from agent_agora.schema import SchemaRegistry
-from agent_agora.store import AgoraStore, AsyncWriteQueue
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
 # Name kept as a module-level constant so the list_tools wrapper below
 # stays in sync if the @mcp.tool name is ever changed.
 _WAIT_TOOL_NAME = "agora.wait"
-
-# Schemas whose data is owned exclusively by the dispatcher/registry subsystem.
-# Writing through CRUD tools (set/append/delete) would corrupt the user-visible
-# view without touching the in-memory registry, so we block writes at the boundary.
-# NOTE: "schemas" is intentionally excluded — it is a meta-schema, not a data schema.
-_RESERVED_SCHEMA_NAMES = frozenset({"instances", "commands", "results"})
 
 
 def _header_int(ctx: Context, header_name: str) -> int | None:
@@ -63,13 +55,11 @@ def _session_id_from_ctx(ctx: Context) -> str:
 
 def create_agora_app(
     agora_dir: Path,
-    store: AgoraStore,
-    registry: SchemaRegistry,
     instance_registry: InstanceRegistry,
     dispatcher: Dispatcher,
     port: int,
-) -> tuple[FastMCP, AsyncWriteQueue]:
-    """FastMCP 앱과 AsyncWriteQueue를 생성한다."""
+) -> FastMCP:
+    """FastMCP 앱을 생성한다 (v3: messaging-only, no KV)."""
 
     mcp = FastMCP(
         name="AgentAgora",
@@ -77,71 +67,16 @@ def create_agora_app(
         port=port,
     )
 
-    queue = AsyncWriteQueue(store)
     start_time = time.time()
 
     @mcp.tool(name="agora.info")
     async def agora_info() -> str:
-        """Return AgentAgora server metadata: data directory path, port, registered schemas, uptime."""
+        """Return AgentAgora server metadata: data directory path, port, uptime."""
         return json.dumps({
             "path": str(agora_dir),
             "port": port,
-            "schemas": sorted(registry.names()),
             "uptime": int(time.time() - start_time),
         }, ensure_ascii=False)
-
-    @mcp.tool(name="agora.set")
-    async def agora_set(schema: str, key: str, value: Any, wait: bool = True) -> str:
-        """Store a value under a schema key. Value is validated against the registered JSON Schema. Overwrites if key exists."""
-        if schema in _RESERVED_SCHEMA_NAMES:
-            return json.dumps({"error": f"Schema '{schema}' is reserved for internal use. Use the agora.register / agora.dispatch tools instead."})
-        try:
-            await queue.submit_set(schema, key, value, wait=wait)
-            return json.dumps({"status": "ok", "schema": schema, "key": key})
-        except (KeyError, ValueError, TypeError) as e:
-            return json.dumps({"error": str(e)})
-
-    @mcp.tool(name="agora.get")
-    async def agora_get(schema: str, key: str) -> str:
-        """Retrieve a value by schema and key."""
-        try:
-            result = store.get(schema, key)
-            return json.dumps({"schema": schema, "key": key, "value": result}, ensure_ascii=False)
-        except KeyError as e:
-            return json.dumps({"error": str(e)})
-
-    @mcp.tool(name="agora.append")
-    async def agora_append(schema: str, key: str, value: Any, wait: bool = False) -> str:
-        """Append an item to a list value. The existing value must be an array."""
-        if schema in _RESERVED_SCHEMA_NAMES:
-            return json.dumps({"error": f"Schema '{schema}' is reserved for internal use. Use the agora.register / agora.dispatch tools instead."})
-        try:
-            await queue.submit_append(schema, key, value, wait=wait)
-            return json.dumps({"status": "ok", "schema": schema, "key": key})
-        except (KeyError, ValueError, TypeError) as e:
-            return json.dumps({"error": str(e)})
-
-    @mcp.tool(name="agora.delete")
-    async def agora_delete(schema: str, key: str, wait: bool = True) -> str:
-        """Remove a key from a schema. The schema definition is preserved."""
-        if schema in _RESERVED_SCHEMA_NAMES:
-            return json.dumps({"error": f"Schema '{schema}' is reserved for internal use. It is auto-managed; use agora.unregister to remove an instance."})
-        try:
-            await queue.submit_delete(schema, key, wait=wait)
-            return json.dumps({"status": "ok", "schema": schema, "key": key})
-        except KeyError as e:
-            return json.dumps({"error": str(e)})
-
-    @mcp.tool(name="agora.list")
-    async def agora_list(schema: str | None = None) -> str:
-        """List registered schemas, or list keys within a specific schema."""
-        if schema is None:
-            return json.dumps({"schemas": sorted(registry.names())})
-        try:
-            keys = store.list_keys(schema)
-            return json.dumps({"schema": schema, "keys": keys})
-        except KeyError as e:
-            return json.dumps({"error": str(e)})
 
     @mcp.tool(name="agora.register")
     async def agora_register(
@@ -352,4 +287,4 @@ def create_agora_app(
         f"Internal error: list_tools wrapper expects '{_WAIT_TOOL_NAME}' but no such tool registered"
     )
 
-    return mcp, queue
+    return mcp
