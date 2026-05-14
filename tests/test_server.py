@@ -273,3 +273,72 @@ class TestAgoraList:
         mcp, _ = app_parts
         r = await _call(mcp, "agora.list", {"schema": "nope"})
         assert "error" in r
+
+
+# ---------- reserved-schema guards (Fix 1) ----------
+
+
+class TestReservedSchemaGuards:
+    async def test_agora_set_rejects_instances(self, app_parts) -> None:
+        mcp_app, _ = app_parts
+        result = await _call(mcp_app, "agora.set", {
+            "schema": "instances",
+            "key": "fake",
+            "value": {"instance_id": "X", "registered_at": "2026-01-01T00:00:00Z"},
+        })
+        assert "error" in result
+        assert "reserved" in result["error"].lower()
+
+    async def test_agora_append_rejects_commands(self, app_parts) -> None:
+        mcp_app, _ = app_parts
+        result = await _call(mcp_app, "agora.append", {
+            "schema": "commands",
+            "key": "fake",
+            "value": {"id": "x"},
+        })
+        assert "error" in result
+        assert "reserved" in result["error"].lower()
+
+    async def test_agora_delete_rejects_results(self, app_parts) -> None:
+        mcp_app, _ = app_parts
+        result = await _call(mcp_app, "agora.delete", {
+            "schema": "results",
+            "key": "fake",
+        })
+        assert "error" in result
+        assert "reserved" in result["error"].lower()
+
+    async def test_agora_set_rejects_commands(self, app_parts) -> None:
+        mcp_app, _ = app_parts
+        result = await _call(mcp_app, "agora.set", {
+            "schema": "commands",
+            "key": "fake",
+            "value": {},
+        })
+        assert "error" in result
+        assert "reserved" in result["error"].lower()
+
+    async def test_agora_set_rejects_results(self, app_parts) -> None:
+        mcp_app, _ = app_parts
+        result = await _call(mcp_app, "agora.set", {
+            "schema": "results",
+            "key": "fake",
+            "value": {},
+        })
+        assert "error" in result
+        assert "reserved" in result["error"].lower()
+
+    async def test_agora_get_allows_reserved_schema(self, app_parts) -> None:
+        """agora.get must remain read-accessible for reserved schemas (non-destructive)."""
+        mcp_app, _ = app_parts
+        # These schemas are empty in the store; expect None value, not an error.
+        result = await _call(mcp_app, "agora.get", {"schema": "instances", "key": "any"})
+        assert "error" not in result or "reserved" not in result.get("error", "").lower()
+
+    async def test_agora_list_allows_reserved_schema(self, app_parts) -> None:
+        """agora.list must remain read-accessible for reserved schemas (non-destructive)."""
+        mcp_app, _ = app_parts
+        result = await _call(mcp_app, "agora.list", {"schema": "instances"})
+        # May return error for unknown schema (not registered in store) or an empty list —
+        # either is acceptable, but must NOT be a "reserved" error.
+        assert "reserved" not in result.get("error", "").lower()

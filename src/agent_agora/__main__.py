@@ -20,16 +20,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path.home() / ".agent-agora" / "certs",
         help="Certificate storage directory",
     )
-    parser.add_argument(
+    timeout_group = parser.add_mutually_exclusive_group()
+    timeout_group.add_argument(
         "--default-wait-timeout-ms",
         type=int,
         default=60000,
         help="Default timeout for agora.wait when caller does not specify (ms). Default: 60000",
     )
-    parser.add_argument(
+    timeout_group.add_argument(
         "--no-timeout",
         action="store_true",
-        help="Shortcut for --default-wait-timeout-ms 0 (unbounded blocking).",
+        help="Unbounded blocking. Mutually exclusive with --default-wait-timeout-ms.",
     )
     return parser.parse_args(argv)
 

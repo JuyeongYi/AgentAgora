@@ -21,6 +21,12 @@ MCP_SESSION_ID_HEADER = "mcp-session-id"
 # stays in sync if the @mcp.tool name is ever changed.
 _WAIT_TOOL_NAME = "agora.wait"
 
+# Schemas whose data is owned exclusively by the dispatcher/registry subsystem.
+# Writing through CRUD tools (set/append/delete) would corrupt the user-visible
+# view without touching the in-memory registry, so we block writes at the boundary.
+# NOTE: "schemas" is intentionally excluded — it is a meta-schema, not a data schema.
+_RESERVED_SCHEMA_NAMES = frozenset({"instances", "commands", "results"})
+
 
 def _session_id_from_ctx(ctx: Context) -> str:
     """Extract MCP session id from FastMCP Context.
@@ -71,6 +77,8 @@ def create_agora_app(
     @mcp.tool(name="agora.set")
     async def agora_set(schema: str, key: str, value: Any, wait: bool = True) -> str:
         """Store a value under a schema key. Value is validated against the registered JSON Schema. Overwrites if key exists."""
+        if schema in _RESERVED_SCHEMA_NAMES:
+            return json.dumps({"error": f"Schema '{schema}' is reserved for internal use. Use the agora.register / agora.dispatch tools instead."})
         try:
             await queue.submit_set(schema, key, value, wait=wait)
             return json.dumps({"status": "ok", "schema": schema, "key": key})
@@ -89,6 +97,8 @@ def create_agora_app(
     @mcp.tool(name="agora.append")
     async def agora_append(schema: str, key: str, value: Any, wait: bool = False) -> str:
         """Append an item to a list value. The existing value must be an array."""
+        if schema in _RESERVED_SCHEMA_NAMES:
+            return json.dumps({"error": f"Schema '{schema}' is reserved for internal use. Use the agora.register / agora.dispatch tools instead."})
         try:
             await queue.submit_append(schema, key, value, wait=wait)
             return json.dumps({"status": "ok", "schema": schema, "key": key})
@@ -98,6 +108,8 @@ def create_agora_app(
     @mcp.tool(name="agora.delete")
     async def agora_delete(schema: str, key: str, wait: bool = True) -> str:
         """Remove a key from a schema. The schema definition is preserved."""
+        if schema in _RESERVED_SCHEMA_NAMES:
+            return json.dumps({"error": f"Schema '{schema}' is reserved for internal use. It is auto-managed; use agora.unregister to remove an instance."})
         try:
             await queue.submit_delete(schema, key, wait=wait)
             return json.dumps({"status": "ok", "schema": schema, "key": key})
@@ -118,7 +130,10 @@ def create_agora_app(
     @mcp.tool(name="agora.register")
     async def agora_register(ctx: Context, instance_id: str, role: str = "worker") -> str:
         """Register this session as an addressable instance. Required before dispatch/wait."""
-        session_id = _session_id_from_ctx(ctx)
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
         info = instance_registry.register(session_id=session_id, instance_id=instance_id, role=role)
         return json.dumps({
             "status": "ok",
@@ -130,7 +145,10 @@ def create_agora_app(
     @mcp.tool(name="agora.unregister")
     async def agora_unregister(ctx: Context) -> str:
         """Unregister this session. Idempotent."""
-        session_id = _session_id_from_ctx(ctx)
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
         instance_registry.unregister_session(session_id)
         return json.dumps({"status": "ok"})
 
@@ -154,6 +172,8 @@ def create_agora_app(
         The caller MUST be registered (via agora.register) before dispatching."""
         try:
             source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
         try:
@@ -177,6 +197,8 @@ def create_agora_app(
         The caller MUST be registered (via agora.register) before waiting."""
         try:
             info = instance_registry.resolve_session(_session_id_from_ctx(ctx))
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
         try:

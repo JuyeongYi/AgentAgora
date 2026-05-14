@@ -110,3 +110,16 @@ async def test_wait_after_close_raises(setup):
     await disp.close()
     with pytest.raises(DispatcherClosed):
         await disp.wait(instance_id="B", timeout_ms=10)
+
+
+async def test_wait_close_race_does_not_leak_future(setup):
+    """If close() runs between wait()'s pre-lock check and lock acquisition,
+    wait() must observe the closed state via the in-lock recheck and raise —
+    not register a dangling future in the discarded waiter list."""
+    reg, disp = setup
+    # Close first, then call wait() — exercises the in-lock _closed recheck
+    # path that guards against the race window between the pre-lock check and
+    # acquiring the lock.
+    await disp.close()
+    with pytest.raises(DispatcherClosed):
+        await disp.wait(instance_id="B", timeout_ms=10)

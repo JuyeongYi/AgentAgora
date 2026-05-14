@@ -83,6 +83,10 @@ class Dispatcher:
         effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
         loop = asyncio.get_running_loop()
         async with self._lock:
+            # Re-check under lock: close() may have run fully between the pre-lock
+            # check above and acquiring the lock, leaving a dangling future otherwise.
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
             if self._queues.get(instance_id):
                 drained = self._queues.pop(instance_id, [])
                 return drained
