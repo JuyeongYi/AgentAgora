@@ -17,6 +17,10 @@ from agent_agora.store import AgoraStore, AsyncWriteQueue
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
+# Name kept as a module-level constant so the list_tools wrapper below
+# stays in sync if the @mcp.tool name is ever changed.
+_WAIT_TOOL_NAME = "agora.wait"
+
 
 def _session_id_from_ctx(ctx: Context) -> str:
     """Extract MCP session id from FastMCP Context.
@@ -162,7 +166,7 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
-    @mcp.tool(name="agora.wait")
+    @mcp.tool(name=_WAIT_TOOL_NAME)
     async def agora_wait(ctx: Context, timeout_ms: int | None = None) -> str:
         """Wait for commands targeted at this instance.
 
@@ -188,23 +192,34 @@ def create_agora_app(
     # `execution` field (Case B: mcp.types.Tool has it; fastmcp.tools.base.Tool does not).
     # We wrap mcp.list_tools() on this instance to inject the field into the wire
     # representation for agora.wait. All other tools are passed through unchanged.
+    #
+    # REMOVAL: When fastmcp.tools.base.Tool gains an `execution` field
+    # (check with `'execution' in fastmcp.tools.base.Tool.model_fields`),
+    # replace this block with `@mcp.tool(name=_WAIT_TOOL_NAME, execution=...)`
+    # and delete _original_list_tools / _list_tools_with_wait_execution.
     _original_list_tools = mcp.list_tools
 
     async def _list_tools_with_wait_execution():
         tools = await _original_list_tools()
         return [
             tool.model_copy(update={"execution": ToolExecution(taskSupport="optional")})
-            if tool.name == "agora.wait"
+            if tool.name == _WAIT_TOOL_NAME
             else tool
             for tool in tools
         ]
 
-    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]
+    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]  # swap bound method to inject execution metadata
     # CRITICAL: re-register the wire handler so the new wrapper is captured in
     # request_handlers[ListToolsRequest].  FastMCP's _setup_handlers() already
     # registered the original mcp.list_tools as a closure; calling the decorator
     # factory again overwrites that entry with a new closure around our wrapper.
+    # mcp._mcp_server: private FastMCP attribute (verified against mcp SDK 1.26.0).
     mcp._mcp_server.list_tools()(_list_tools_with_wait_execution)
     # -------------------------------------------------------------------------
+
+    # Sanity: the wrapper hardcodes _WAIT_TOOL_NAME; ensure the corresponding tool exists.
+    assert any(t.name == _WAIT_TOOL_NAME for t in mcp._tool_manager.list_tools()), (
+        f"Internal error: list_tools wrapper expects '{_WAIT_TOOL_NAME}' but no such tool registered"
+    )
 
     return mcp, queue

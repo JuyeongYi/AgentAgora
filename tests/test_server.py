@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import mcp.types as types
 import pytest
 
 from agent_agora.dispatcher import Dispatcher
@@ -98,8 +99,6 @@ class TestCreateApp:
         MCP client over tools/list would hit.  The handler returns
         ServerResult(ListToolsResult(tools=[...])); we unwrap accordingly.
         """
-        import mcp.types as types
-
         mcp_app, _ = app_parts
         handler = mcp_app._mcp_server.request_handlers[types.ListToolsRequest]
         request = types.ListToolsRequest(method="tools/list", params=None)
