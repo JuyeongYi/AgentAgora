@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from agent_agora.registry import InstanceRegistry
 from agent_agora.schema import SchemaRegistry
 from agent_agora.server import create_agora_app
 from agent_agora.store import AgoraStore, AsyncWriteQueue
@@ -31,6 +32,7 @@ def app_parts(
         agora_dir=agora_dir_with_schemas,
         store=store,
         registry=registry,
+        instance_registry=InstanceRegistry(),
         port=0,
     )
 
@@ -52,10 +54,10 @@ class TestCreateApp:
         assert isinstance(mcp, FastMCP)
         assert isinstance(queue, AsyncWriteQueue)
 
-    def test_has_six_tools(self, app_parts) -> None:
+    def test_has_nine_tools(self, app_parts) -> None:
         mcp, _ = app_parts
         tools = mcp._tool_manager.list_tools()
-        assert len(tools) == 6
+        assert len(tools) == 9
 
     def test_tool_names(self, app_parts) -> None:
         mcp, _ = app_parts
@@ -67,6 +69,9 @@ class TestCreateApp:
             "agora.append",
             "agora.delete",
             "agora.list",
+            "agora.register",
+            "agora.unregister",
+            "agora.instances",
         }
 
 
@@ -153,7 +158,7 @@ class TestAgoraAppend:
         (agora_dir / "schemas.json").write_text(json.dumps(schemas))
         reg = SchemaRegistry.load(agora_dir)
         s = AgoraStore(agora_dir, reg)
-        mcp, queue = create_agora_app(agora_dir, s, reg, port=0)
+        mcp, queue = create_agora_app(agora_dir, s, reg, instance_registry=InstanceRegistry(), port=0)
         async with queue:
             await _call(mcp, "agora.append", {"schema": "items", "key": "nums", "value": 1, "wait": True})
             await _call(mcp, "agora.append", {"schema": "items", "key": "nums", "value": 2, "wait": True})
@@ -165,7 +170,7 @@ class TestAgoraAppend:
         (agora_dir / "schemas.json").write_text(json.dumps(schemas))
         reg = SchemaRegistry.load(agora_dir)
         s = AgoraStore(agora_dir, reg)
-        mcp, queue = create_agora_app(agora_dir, s, reg, port=0)
+        mcp, queue = create_agora_app(agora_dir, s, reg, instance_registry=InstanceRegistry(), port=0)
         async with queue:
             r = await _call(mcp, "agora.append", {
                 "schema": "items", "key": "nums", "value": "not_int", "wait": True,

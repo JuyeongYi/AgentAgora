@@ -27,6 +27,7 @@ async def run_server(args: argparse.Namespace) -> None:
     import uvicorn
 
     from agent_agora.certs import ensure_certs
+    from agent_agora.registry import InstanceRegistry
     from agent_agora.schema import SchemaRegistry
     from agent_agora.server import create_agora_app
     from agent_agora.store import AgoraStore
@@ -39,7 +40,8 @@ async def run_server(args: argparse.Namespace) -> None:
     registry = SchemaRegistry.load(agora_dir)
     store = AgoraStore(agora_dir, registry)
     cert_path, key_path = ensure_certs(args.cert_dir)
-    mcp, queue = create_agora_app(agora_dir, store, registry, args.port)
+    instance_registry = InstanceRegistry()
+    mcp, queue = create_agora_app(agora_dir, store, registry, instance_registry, args.port)
 
     print(f"AgentAgora starting on https://127.0.0.1:{args.port}/mcp")
     print(f"  Data dir : {agora_dir.resolve()}")
