@@ -16,6 +16,7 @@ _BUILTIN_SCHEMAS: dict[str, dict] = {
             "registered_at": {"type": "string"},
         },
         "required": ["instance_id", "registered_at"],
+        "additionalProperties": False,
     },
     "commands": {
         "type": "array",
@@ -54,9 +55,6 @@ class SchemaRegistry:
 
     def __init__(self, schemas: dict[str, dict]) -> None:
         self._schemas = dict(schemas)
-        self._inject_builtins()
-
-    def _inject_builtins(self) -> None:
         for name, schema in _BUILTIN_SCHEMAS.items():
             self._schemas[name] = schema
 
