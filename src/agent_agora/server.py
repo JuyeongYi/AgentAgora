@@ -29,7 +29,7 @@ def create_agora_app(
     queue = AsyncWriteQueue(store)
     start_time = time.time()
 
-    @mcp.tool(name="agora/info")
+    @mcp.tool(name="agora.info")
     async def agora_info() -> str:
         """Return AgentAgora server metadata: data directory path, port, registered schemas, uptime."""
         return json.dumps({
@@ -39,7 +39,7 @@ def create_agora_app(
             "uptime": int(time.time() - start_time),
         }, ensure_ascii=False)
 
-    @mcp.tool(name="agora/set")
+    @mcp.tool(name="agora.set")
     async def agora_set(schema: str, key: str, value: Any, wait: bool = True) -> str:
         """Store a value under a schema key. Value is validated against the registered JSON Schema. Overwrites if key exists."""
         try:
@@ -48,7 +48,7 @@ def create_agora_app(
         except (KeyError, ValueError, TypeError) as e:
             return json.dumps({"error": str(e)})
 
-    @mcp.tool(name="agora/get")
+    @mcp.tool(name="agora.get")
     async def agora_get(schema: str, key: str) -> str:
         """Retrieve a value by schema and key."""
         try:
@@ -57,7 +57,7 @@ def create_agora_app(
         except KeyError as e:
             return json.dumps({"error": str(e)})
 
-    @mcp.tool(name="agora/append")
+    @mcp.tool(name="agora.append")
     async def agora_append(schema: str, key: str, value: Any, wait: bool = False) -> str:
         """Append an item to a list value. The existing value must be an array."""
         try:
@@ -66,7 +66,7 @@ def create_agora_app(
         except (KeyError, ValueError, TypeError) as e:
             return json.dumps({"error": str(e)})
 
-    @mcp.tool(name="agora/delete")
+    @mcp.tool(name="agora.delete")
     async def agora_delete(schema: str, key: str, wait: bool = True) -> str:
         """Remove a key from a schema. The schema definition is preserved."""
         try:
@@ -75,7 +75,7 @@ def create_agora_app(
         except KeyError as e:
             return json.dumps({"error": str(e)})
 
-    @mcp.tool(name="agora/list")
+    @mcp.tool(name="agora.list")
     async def agora_list(schema: str | None = None) -> str:
         """List registered schemas, or list keys within a specific schema."""
         if schema is None:
