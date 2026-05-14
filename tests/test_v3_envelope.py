@@ -50,6 +50,21 @@ def test_make_envelope_primary_default():
     assert env.closing is False
 
 
+def test_validate_deadline_ts_accepts_valid_iso_and_none():
+    from agent_agora.envelope import validate_deadline_ts
+    validate_deadline_ts(None)
+    validate_deadline_ts("2026-05-14T00:00:00+00:00")
+    validate_deadline_ts("2026-05-14T12:34:56")
+
+
+def test_envelope_validation_rejects_invalid_iso_deadline_ts():
+    from agent_agora.envelope import validate_deadline_ts
+    with pytest.raises(ValueError, match="invalid_deadline_ts"):
+        validate_deadline_ts("not-a-date")
+    with pytest.raises(ValueError, match="invalid_deadline_ts"):
+        validate_deadline_ts("2026/05/14")
+
+
 def test_make_envelope_cc_marker():
     env = make_envelope(
         cmd_id="c1", source="Inst1", target="Inst3", payload={"m": 1},

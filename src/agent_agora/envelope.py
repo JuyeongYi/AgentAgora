@@ -43,6 +43,17 @@ def validate_priority(priority: str) -> int:
     return _PRIORITY_RANK[priority]
 
 
+def validate_deadline_ts(deadline_ts: str | None) -> None:
+    """advisory ISO 8601 string. None passes. Bad format raises ValueError."""
+    if deadline_ts is None:
+        return
+    try:
+        import datetime as _dt
+        _dt.datetime.fromisoformat(deadline_ts)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"invalid_deadline_ts: {deadline_ts!r} ({e})") from e
+
+
 def make_envelope(
     cmd_id: str,
     source: str,
@@ -61,6 +72,7 @@ def make_envelope(
     deadline_ts: str | None = None,
 ) -> Envelope:
     validate_priority(priority)
+    validate_deadline_ts(deadline_ts)
     return Envelope(
         id=cmd_id, source=source, target=target, payload=payload, created_at=created_at,
         expect_result=expect_result, reply_to=reply_to, cc=cc,
