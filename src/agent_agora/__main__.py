@@ -55,6 +55,8 @@ async def run_server(args: argparse.Namespace) -> None:
     instance_registry = InstanceRegistry()
     default_timeout = 0 if args.no_timeout else args.default_wait_timeout_ms
     dispatcher = Dispatcher(instance_registry, default_timeout_ms=default_timeout)
+    from agent_agora.session_hook import SessionCloseMiddleware
+
     mcp, queue = create_agora_app(agora_dir, store, registry, instance_registry, dispatcher, args.port)
 
     print(f"AgentAgora starting on https://127.0.0.1:{args.port}/mcp")
@@ -63,6 +65,7 @@ async def run_server(args: argparse.Namespace) -> None:
     print(f"  Cert     : {cert_path}")
 
     starlette_app = mcp.streamable_http_app()
+    starlette_app.add_middleware(SessionCloseMiddleware, registry=instance_registry)
     config = uvicorn.Config(
         starlette_app,
         host="127.0.0.1",
