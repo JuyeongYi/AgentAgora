@@ -91,9 +91,9 @@ async def run_server(args: argparse.Namespace) -> None:
     from agent_agora.certs import ensure_certs
 
     agora_dir = args.dir / ".agentagora"
-    if not agora_dir.is_dir():
-        print(f"Error: .agentagora/ not found in {args.dir.resolve()}", file=sys.stderr)
-        sys.exit(1)
+    # v3: auto-create the state directory (KV's schemas.json prerequisite is gone;
+    # the dir will hold the M1 agora.db).
+    agora_dir.mkdir(parents=True, exist_ok=True)
 
     if args.no_tls:
         cert_path, key_path = None, None
@@ -113,7 +113,7 @@ async def run_server(args: argparse.Namespace) -> None:
     scheme = "http" if args.no_tls else "https"
     print(f"AgentAgora starting on {scheme}://127.0.0.1:{args.port}/mcp")
     print(f"  Data dir : {agora_dir.resolve()}")
-    print(f"  Cert     : {cert_path if cert_path else '(none — HTTP mode, localhost only)'}")
+    print(f"  Cert     : {cert_path if cert_path else '(none -- HTTP mode, localhost only)'}")
 
     starlette_app = mcp.streamable_http_app()
     starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
