@@ -20,6 +20,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path.home() / ".agent-agora" / "certs",
         help="Certificate storage directory",
     )
+    parser.add_argument(
+        "--default-wait-timeout-ms",
+        type=int,
+        default=60000,
+        help="Default timeout for agora.wait when caller does not specify (ms). Default: 60000",
+    )
+    parser.add_argument(
+        "--no-timeout",
+        action="store_true",
+        help="Shortcut for --default-wait-timeout-ms 0 (unbounded blocking).",
+    )
     return parser.parse_args(argv)
 
 
@@ -27,6 +38,7 @@ async def run_server(args: argparse.Namespace) -> None:
     import uvicorn
 
     from agent_agora.certs import ensure_certs
+    from agent_agora.dispatcher import Dispatcher
     from agent_agora.registry import InstanceRegistry
     from agent_agora.schema import SchemaRegistry
     from agent_agora.server import create_agora_app
@@ -41,7 +53,9 @@ async def run_server(args: argparse.Namespace) -> None:
     store = AgoraStore(agora_dir, registry)
     cert_path, key_path = ensure_certs(args.cert_dir)
     instance_registry = InstanceRegistry()
-    mcp, queue = create_agora_app(agora_dir, store, registry, instance_registry, args.port)
+    default_timeout = 0 if args.no_timeout else args.default_wait_timeout_ms
+    dispatcher = Dispatcher(instance_registry, default_timeout_ms=default_timeout)
+    mcp, queue = create_agora_app(agora_dir, store, registry, instance_registry, dispatcher, args.port)
 
     print(f"AgentAgora starting on https://127.0.0.1:{args.port}/mcp")
     print(f"  Data dir : {agora_dir.resolve()}")
@@ -60,7 +74,10 @@ async def run_server(args: argparse.Namespace) -> None:
     server = uvicorn.Server(config)
 
     async with queue:
-        await server.serve()
+        try:
+            await server.serve()
+        finally:
+            await dispatcher.close()
 
 
 def main(argv: list[str] | None = None) -> None:

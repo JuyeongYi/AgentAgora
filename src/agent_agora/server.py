@@ -9,6 +9,7 @@ from typing import Any
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
 
+from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schema import SchemaRegistry
 from agent_agora.store import AgoraStore, AsyncWriteQueue
@@ -38,6 +39,7 @@ def create_agora_app(
     store: AgoraStore,
     registry: SchemaRegistry,
     instance_registry: InstanceRegistry,
+    dispatcher: Dispatcher,
     port: int,
 ) -> tuple[FastMCP, AsyncWriteQueue]:
     """FastMCP 앱과 AsyncWriteQueue를 생성한다."""
@@ -135,5 +137,45 @@ def create_agora_app(
             for i in instance_registry.list_instances()
         ]
         return json.dumps({"instances": items})
+
+    @mcp.tool(name="agora.dispatch")
+    async def agora_dispatch(
+        ctx: Context,
+        target: str,
+        payload: Any,
+        expect_result: bool = False,
+    ) -> str:
+        """Dispatch a command to another registered instance. Use target='_broadcast' to fan out to all others.
+        The caller MUST be registered (via agora.register) before dispatching."""
+        try:
+            source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
+        try:
+            cmd_id = await dispatcher.dispatch(
+                source=source, target=target, payload=payload, expect_result=expect_result,
+            )
+            return json.dumps({"status": "ok", "command_id": cmd_id, "target": target})
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
+
+    @mcp.tool(name="agora.wait")
+    async def agora_wait(ctx: Context, timeout_ms: int | None = None) -> str:
+        """Wait for commands targeted at this instance.
+
+        timeout_ms: positive = wait at most N ms then return empty;
+                    0 = unbounded blocking (no timeout);
+                    None = use server default (--default-wait-timeout-ms).
+        Returns {commands: [...]}. Empty list means timeout with no commands.
+        The caller MUST be registered (via agora.register) before waiting."""
+        try:
+            info = instance_registry.resolve_session(_session_id_from_ctx(ctx))
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
+        try:
+            commands = await dispatcher.wait(instance_id=info.instance_id, timeout_ms=timeout_ms)
+            return json.dumps({"commands": commands}, ensure_ascii=False)
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
 
     return mcp, queue
