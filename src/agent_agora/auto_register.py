@@ -15,6 +15,10 @@ DEFAULT_ROLE = "worker"
 class AutoRegisterMiddleware:
     """ASGI middleware. If a request carries both `Mcp-Session-Id` and
     `X-Agora-Instance-Id` headers, auto-register (or update) the session.
+
+    Bots (registered via agora.register_bot) must NOT send X-Agora-Instance-Id
+    headers — this middleware registers workers only. A bot session that sent
+    those headers would be wrongly mirrored into InstanceRegistry as a worker.
     """
 
     def __init__(self, app, registry: InstanceRegistry) -> None:

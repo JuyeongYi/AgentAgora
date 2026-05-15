@@ -292,3 +292,33 @@ async def test_bot_error_emit_reaches_caller(app):
         in_reply_to=cmd_id)
     reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
     assert reply["commands"][0]["payload"]["error_code"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_unregister_removes_bot_from_registry(app):
+    """봇이 agora.unregister를 호출하면 BotRegistry에서 제거되고 fan-out 대상에서 빠진다."""
+    mcp, _, bot_registry, schema_reg = app
+    schema_reg.register("u_task",
+        {"type": "object", "required": ["msgtype"],
+         "properties": {"msgtype": {"const": "u_task"}}, "additionalProperties": True},
+        kind="bot-task", purpose="p")
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("bs1"), instance_id="bot_u", description="d",
+        bot_mode="handler", subscribe_schemas=["u_task"])
+    assert bot_registry.is_bot("bot_u") is True
+    assert bot_registry.subscribers_of("u_task") == {"bot_u"}
+    res = json.loads(await _tool(mcp, "agora.unregister")(FakeCtx("bs1")))
+    assert res["status"] == "ok"
+    assert bot_registry.is_bot("bot_u") is False
+    assert bot_registry.subscribers_of("u_task") == set()
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_rejects_unknown_msgtype(app):
+    """bot_emit payload의 msgtype이 registry에 없으면 unknown_msgtype 에러."""
+    mcp, _, bot_registry, _ = app
+    bot_registry.register(session_id="bs1", instance_id="bot_e", description="d",
+                          bot_mode="observer")
+    res = json.loads(await _tool(mcp, "agora.bot_emit")(
+        FakeCtx("bs1"), payload={"msgtype": "ghost_unregistered_xyz"}))
+    assert "registry에 없습니다" in res["error"]

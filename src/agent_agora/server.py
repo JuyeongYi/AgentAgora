@@ -221,6 +221,7 @@ def create_agora_app(
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
         instance_registry.unregister_session(session_id)
+        bot_registry.unregister_session(session_id)
         return json.dumps({"status": "ok"})
 
     @mcp.tool(name="agora.instances")
