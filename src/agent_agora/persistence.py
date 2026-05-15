@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -142,6 +143,28 @@ class Persistence:
             (cmd_id,),
         ).fetchone()
         return row[0] if row else None
+
+    def save_schema(
+        self, name: str, body: dict, kind: str, purpose: str,
+        registered_by: str | None = None,
+    ) -> None:
+        """schema를 동기 영속화한다. 동일 이름 재저장은 무시 (registry가 불변성 강제)."""
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        self._conn.execute(
+            "INSERT OR IGNORE INTO schemas (name, body, kind, purpose, registered_at, registered_by) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (name, json.dumps(body, ensure_ascii=False), kind, purpose, now, registered_by),
+        )
+
+    def restore_schemas(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT name, body, kind, purpose, registered_at, registered_by FROM schemas"
+        ).fetchall()
+        return [
+            {"name": r[0], "body": json.loads(r[1]), "kind": r[2],
+             "purpose": r[3], "registered_at": r[4], "registered_by": r[5]}
+            for r in rows
+        ]
 
 
 @dataclass

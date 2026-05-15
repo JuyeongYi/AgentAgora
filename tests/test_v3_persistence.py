@@ -139,3 +139,28 @@ def test_schemas_table_has_kind_and_purpose_columns(tmp_path):
     p.migrate()
     cols = [r[1] for r in p.conn.execute("PRAGMA table_info(schemas)").fetchall()]
     assert {"name", "body", "kind", "purpose", "registered_at", "registered_by"} <= set(cols)
+
+
+def test_save_and_restore_schemas(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    body = {"type": "object", "properties": {"msgtype": {"type": "string"}}}
+    p.save_schema("foo", body, kind="bot-task", purpose="테스트", registered_by="bot_x")
+    rows = p.restore_schemas()
+    assert len(rows) == 1
+    assert rows[0]["name"] == "foo"
+    assert rows[0]["kind"] == "bot-task"
+    assert rows[0]["body"] == body
+    assert rows[0]["purpose"] == "테스트"
+    assert rows[0]["registered_by"] == "bot_x"
+
+
+def test_save_schema_idempotent_on_same_name(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    body = {"properties": {"msgtype": {}}}
+    p.save_schema("foo", body, kind="bot-task", purpose="p")
+    p.save_schema("foo", body, kind="bot-task", purpose="p")  # no PK violation
+    assert len(p.restore_schemas()) == 1
