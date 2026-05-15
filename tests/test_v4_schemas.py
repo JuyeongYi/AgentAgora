@@ -85,3 +85,24 @@ def test_get_and_validator_return_none_for_unknown():
     reg = SchemaRegistry()
     assert reg.get("nope") is None
     assert reg.validator("nope") is None
+
+
+def test_register_isolates_body_from_caller_mutation():
+    reg = SchemaRegistry()
+    body = {"type": "object", "required": ["msgtype"],
+            "properties": {"msgtype": {"type": "string"}}}
+    reg.register("iso", body, kind="conversation", purpose="p")
+    body["required"].append("injected")
+    body["properties"]["extra"] = {"type": "string"}
+    stored = reg.get("iso").body
+    assert "injected" not in stored["required"]
+    assert "extra" not in stored["properties"]
+
+
+def test_register_rejects_malformed_schema_body():
+    reg = SchemaRegistry()
+    bad = {"type": "object", "properties": {"msgtype": {"type": "string"}},
+           "required": "not-a-list"}  # required must be an array
+    with pytest.raises(AgoraError) as ei:
+        reg.register("bad_schema", bad, kind="conversation", purpose="p")
+    assert ei.value.code == "schema_violation"
