@@ -40,13 +40,6 @@ async def test_self_dispatch_target_equals_source_allowed(setup):
 
 
 @pytest.mark.asyncio
-async def test_legacy_underscore_broadcast_target_rejected(setup):
-    _, _, dispatcher = setup
-    with pytest.raises(ValueError, match="agora.broadcast"):
-        await dispatcher.dispatch(source="Inst1", target="_broadcast", payload={"m": 1})
-
-
-@pytest.mark.asyncio
 async def test_conversation_id_inherited_across_multi_hop_chain(setup):
     _, _, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"a": 1})

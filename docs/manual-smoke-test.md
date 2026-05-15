@@ -79,7 +79,7 @@ Expected: A's `agora.wait` returns a command whose `source` is `"B"` and whose p
 
 In A:
 
-> Call `agora.dispatch` with `target="_broadcast"` and `payload={"ping": 1}`.
+> Call `agora.broadcast` with `payload={"ping": 1}`.
 
 Expected: B receives one command with payload `{"ping": 1}`. A does NOT receive its own broadcast.
 

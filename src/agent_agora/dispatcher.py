@@ -59,8 +59,6 @@ class DispatcherClosed(Exception):
 class Dispatcher:
     """v3 message router. In-memory hot path + SQLite cold path via AsyncWriteQueue."""
 
-    BROADCAST_LEGACY_TARGET = "_broadcast"
-
     def __init__(
         self,
         registry: InstanceRegistry,
@@ -177,8 +175,6 @@ class Dispatcher:
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
-        if target == self.BROADCAST_LEGACY_TARGET:
-            raise ValueError("use agora.broadcast for fan-out — v1 _broadcast is removed in v3")
         if not isinstance(target, str) or not target:
             raise ValueError("target must be a non-empty instance_id string")
         # validate payload + priority

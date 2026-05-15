@@ -217,8 +217,8 @@ agent-agora [-h] [--port PORT] [--dir DIR] [--cert-dir CERT_DIR]
 - **Streamable HTTP MCP**: 모든 도구는 FastMCP의 `streamable_http_app()`을
   통해 노출. `Mcp-Session-Id` 헤더로 세션 식별.
 - **Dispatcher**: per-instance future 기반 큐. dispatch 시 타깃의 큐에
-  enqueue하고 대기 중인 future가 있으면 깨움. `_broadcast`는 발신자 제외
-  모든 등록 인스턴스로 팬-아웃.
+  enqueue하고 대기 중인 future가 있으면 깨움. fan-out은 `agora.broadcast`
+  도구로 호출 (발신자 제외 모든 등록 인스턴스).
 - **InstanceRegistry**: session_id ↔ instance_id 양방향 매핑. 같은
   instance_id로 새 세션이 register하면 이전 세션 매핑은 덮어씀.
 - **AutoRegisterMiddleware**: ASGI 레벨에서 헤더 보고 자동 등록.
