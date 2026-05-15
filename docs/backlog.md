@@ -6,7 +6,8 @@
 
 - **cc-agora bots** — [spec](superpowers/specs/2026-05-15-cc-agora-bots-design.md). pub/sub broker 모델, 봇 fire-and-forget + `agora.bot_emit`(결정 25, B2).
   - **Plan 1 (스키마 강제) 구현 완료** — [plan](superpowers/plans/2026-05-16-cc-agora-bots-1-schema.md). SchemaRegistry, `dispatch`/`broadcast` msgtype 강제, schema 카탈로그(`.agentagora/schemas.jsonl`), `agora.register_schema`/`schemas`/`schemas_list` 도구. 전체 테스트 171개 통과.
-  - **Plan 2 (봇 라우팅) 다음 작업** — BotRegistry, broker fan-out, `register_bot`/`bot_emit`/`bots` 도구. full TDD plan(`2026-05-16-cc-agora-bots-2-routing.md`)을 Plan 1 실제 코드 상태 기준으로 작성 후 진행.
+  - **Plan 2 (봇 라우팅) 구현 완료** — [plan](superpowers/plans/2026-05-16-cc-agora-bots-2-routing.md). BotRegistry, broker fan-out(`subscribed`/`cc`), `agora.register_bot`/`bot_emit`/`bots`/`find` 도구, observer 모드, target 생략 schema-routed dispatch, `no_route` 에러. 전체 테스트 219개 통과.
+  - **다음 작업 (미구현):** plugin v2.2 — `agora-spawn-bot` 슬래시 커맨드, `agora_bot_sdk`, `bot.py.template`(spec §3.11 / §8 item 9). 기존 cc-agora 워커 payload에 `msgtype` 주입 + `examples/echo_bot` 업데이트(broker 실 배포 전 필수).
 - **통신 매트릭스** — [spec](superpowers/specs/2026-05-15-comm-matrix-design.md). worker↔worker dispatch ACL (`.agentagora/comm-matrix.csv`). spec §8 구현 우선순위대로.
 
 ## 개선 항목

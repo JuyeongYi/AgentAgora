@@ -202,3 +202,93 @@ async def test_bot_cannot_call_dispatch(app):
     res = json.loads(await _tool(mcp, "agora.dispatch")(
         FakeCtx("bs1"), payload={"msgtype": "t1"}, target="bot_d"))
     assert "봇은" in res["error"] and "bot_emit" in res["error"]
+
+
+async def _register_bot(mcp, sess, iid, subscribe, mode="handler"):
+    return json.loads(await _tool(mcp, "agora.register_bot")(
+        FakeCtx(sess), instance_id=iid, description="d",
+        bot_mode=mode, subscribe_schemas=subscribe))
+
+
+@pytest.mark.asyncio
+async def test_multi_bot_subscription_fan_out(app):
+    """같은 schema를 N봇이 구독하면 한 메시지가 N봇 모두에 fan-out (결정 25)."""
+    mcp, instance_registry, _, schema_reg = app
+    schema_reg.register("pytest_run",
+        {"type": "object", "required": ["msgtype"],
+         "properties": {"msgtype": {"const": "pytest_run"}}, "additionalProperties": True},
+        kind="bot-task", purpose="p")
+    await _register_bot(mcp, "bs1", "bot_a", ["pytest_run"])
+    await _register_bot(mcp, "bs2", "bot_b", ["pytest_run"])
+    instance_registry.register("ws1", "worker_x")
+    await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), payload={"msgtype": "pytest_run", "scenario": "s"})
+    a = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs1"), timeout_ms=200))
+    b = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs2"), timeout_ms=200))
+    assert len(a["commands"]) == 1 and len(b["commands"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_observer_receives_all_messages(app):
+    """observer는 schema 무관 모든 메시지를 cc로 받는다."""
+    mcp, instance_registry, _, _ = app
+    await _register_bot(mcp, "bo1", "bot_obs", [], mode="observer")
+    instance_registry.register("ws1", "worker_x")
+    instance_registry.register("ws2", "worker_y")
+    await _tool(mcp, "agora.dispatch")(FakeCtx("ws1"), target="worker_y",
+        payload={"msgtype": "worker_freeform", "type": "task",
+                 "from": "worker_x", "ts": "2026-01-01T00:00:00Z", "message": "hi"})
+    obs = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bo1"), timeout_ms=200))
+    assert len(obs["commands"]) == 1
+    assert obs["commands"][0]["delivered_as"] == "cc"
+
+
+@pytest.mark.asyncio
+async def test_no_route_when_no_subscriber_and_no_target(app):
+    """target 생략 + 구독 봇 없음 → no_route 에러."""
+    mcp, instance_registry, _, schema_reg = app
+    schema_reg.register("orphan_task",
+        {"type": "object", "required": ["msgtype"],
+         "properties": {"msgtype": {"const": "orphan_task"}}, "additionalProperties": True},
+        kind="bot-task", purpose="p")
+    instance_registry.register("ws1", "worker_x")
+    res = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), payload={"msgtype": "orphan_task"}))
+    assert "구독하는 봇이 없고" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_worker_freeform_regression_through_broker(app):
+    """v3 워커 payload(worker_freeform + 보조필드)가 broker를 통과한다 (§9.1)."""
+    mcp, instance_registry, _, _ = app
+    instance_registry.register("ws1", "worker_x")
+    instance_registry.register("ws2", "worker_y")
+    res = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), target="worker_y",
+        payload={"msgtype": "worker_freeform", "type": "reply", "from": "worker_x",
+                 "ts": "2026-01-01T00:00:00Z", "message": "자유 텍스트",
+                 "in_reply_to": "abc", "subject": "보조필드"}))
+    assert res["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_bot_error_emit_reaches_caller(app):
+    """봇이 bot_error를 in_reply_to로 emit하면 원 caller가 받는다 (§3.7)."""
+    mcp, instance_registry, _, schema_reg = app
+    schema_reg.register("job",
+        {"type": "object", "required": ["msgtype"],
+         "properties": {"msgtype": {"const": "job"}}, "additionalProperties": True},
+        kind="bot-task", purpose="p")
+    instance_registry.register("ws1", "worker_x")
+    await _register_bot(mcp, "bs1", "bot_j", ["job"])
+    disp = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), payload={"msgtype": "job"}))
+    cmd_id = disp["command_id"]
+    await _tool(mcp, "agora.bot_emit")(
+        FakeCtx("bs1"),
+        payload={"msgtype": "bot_error", "from": "bot_j",
+                 "ts": "2026-01-01T00:00:00Z",
+                 "error_code": "boom", "error_message": "handler failed"},
+        in_reply_to=cmd_id)
+    reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
+    assert reply["commands"][0]["payload"]["error_code"] == "boom"
