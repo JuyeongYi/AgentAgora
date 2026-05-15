@@ -1379,6 +1379,9 @@ git commit -m "test: Plan 1 integration — msgtype enforcement, worker_freeform
 
 ## 범위 밖 (양쪽 plan 공통 후속)
 
+> **breaking change 경고.** Plan 1은 `msgtype`을 *모든* 메시지 송신자에 강제한다. 서버 사이드(본 plan)는 완결됐으나, `msgtype` 없이 dispatch하던 *기존 클라이언트는 전부 `payload_missing_msgtype`로 깨진다*. 따라서 Plan 1은 **서버 사이드 증분**으로서 완료지 — plugin/예제 사용자에게 배포 가능한 상태가 아니다. 아래 클라이언트 측 후속이 끝나야 deploy-ready가 된다.
+
+- **기존 cc-agora 워커 슬래시 스킬** — `plugin/cc-agora/scripts/payload.py`의 `make_payload`가 `msgtype`을 넣지 않는다. `invoke`/`broadcast`/`agora-close` 등 워커 슬래시가 전부 `payload_missing_msgtype`로 깨진다. `msgtype: "worker_freeform"` 주입이 필요한 별도 plugin 작업(§5.3).
+- **`examples/echo_bot/`** — `bot.py`가 `msgtype` 없는 payload를 dispatch하므로 Plan 1 서버에 대고 돌리면 깨진다. 모듈 docstring의 "v3 서버 도구만으로 동작한다"도 stale. echo_bot은 Plan 2에서 정식 schema-subscriber 봇으로 재작성될 예정 — 그때 함께 정리한다(지금 고치면 throwaway).
 - plugin v2.2 — `/cc-agora:agora-spawn-bot`, `agora_bot_sdk`, `bot.py.template` (별도 spec, §3.11·§8 item 9).
-- 기존 cc-agora 워커 슬래시 스킬에 `msgtype: "worker_freeform"` 주입 — Plan 1 배포 후 기존 워커가 `payload_missing_msgtype`로 깨지므로 별도 plugin 작업 필요(§5.3).
 - spec §7 후속: schema versioning, competing-consumer `load_balance`, observer backpressure, streaming progress, schema RBAC, 봇 다운 감지.
