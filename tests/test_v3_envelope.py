@@ -75,3 +75,12 @@ def test_make_envelope_cc_marker():
     )
     assert env.delivered_as == "cc"
     assert env.cc == ["Inst3", "Inst4"]
+
+
+def test_make_envelope_accepts_subscribed_delivered_as():
+    env = make_envelope(
+        cmd_id="c1", source="s", target="t", payload={"msgtype": "x"},
+        created_at="2026-01-01T00:00:00Z", conversation_id="conv1",
+        delivered_as="subscribed",
+    )
+    assert env.delivered_as == "subscribed"

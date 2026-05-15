@@ -20,7 +20,7 @@ class Envelope:
     expect_result: bool
     reply_to: str | None
     cc: list[str] | None
-    delivered_as: Literal["primary", "cc"]
+    delivered_as: Literal["primary", "cc", "subscribed"]
     dispatch_kind: Literal["direct", "broadcast"]
     in_reply_to: str | None
     conversation_id: str
@@ -64,7 +64,7 @@ def make_envelope(
     expect_result: bool = False,
     reply_to: str | None = None,
     cc: list[str] | None = None,
-    delivered_as: Literal["primary", "cc"] = "primary",
+    delivered_as: Literal["primary", "cc", "subscribed"] = "primary",
     dispatch_kind: Literal["direct", "broadcast"] = "direct",
     in_reply_to: str | None = None,
     closing: bool = False,
