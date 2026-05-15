@@ -135,6 +135,77 @@ def create_agora_app(
             "wait_mode": info.wait_mode,
         })
 
+    @mcp.tool(name="agora.register_bot")
+    async def agora_register_bot(
+        ctx: Context,
+        instance_id: str,
+        description: str,
+        bot_mode: Literal["handler", "observer"] = "handler",
+        subscribe_schemas: list[str] | None = None,
+        emit_schemas: list[str] | None = None,
+        schemas: dict[str, dict] | None = None,
+    ) -> str:
+        """Register this session as a bot (schema subscriber). 결정 16·25.
+
+        bot_mode='handler': subscribe_schemas (모두 bot-task kind) 필수.
+        bot_mode='observer': schema 무관 전체 메시지를 cc로 수신.
+        schemas: 신규 schema 동시 등록. {name: {kind, purpose, body}} (kind는 'bot-task').
+        """
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        subscribe = list(subscribe_schemas or [])
+        emit = list(emit_schemas or [])
+        schemas = schemas or {}
+        try:
+            if not description:
+                raise AgoraError("description_required")
+            if bot_mode == "handler" and not subscribe:
+                raise AgoraError("subscribe_required")
+
+            # (1) inline schemas 사전 검증 — diff preflight (§3.3, §9.6)
+            for name, defn in schemas.items():
+                if defn.get("kind") != "bot-task":
+                    raise AgoraError("schema_kind_not_bot_task", name=name)
+                existing = schema_registry.get(name)
+                if existing is not None and existing.body != defn.get("body"):
+                    raise AgoraError("schema_immutable", name=name)
+            # (2) 일괄 등록 — 모두 검증 통과 후
+            for name, defn in schemas.items():
+                schema_registry.register(
+                    name, defn["body"], kind="bot-task",
+                    purpose=defn.get("purpose", ""), registered_by=instance_id)
+                persistence.save_schema(
+                    name, defn["body"], kind="bot-task",
+                    purpose=defn.get("purpose", ""), registered_by=instance_id)
+            # (3) 구독 schema 검증 — 존재 + bot-task kind
+            if bot_mode == "handler":
+                for s in subscribe:
+                    entry = schema_registry.get(s)
+                    if entry is None:
+                        raise AgoraError("unknown_msgtype", msgtype=s)
+                    if entry.kind != "bot-task":
+                        raise AgoraError("cannot_subscribe_conversation", name=s)
+
+            info = bot_registry.register(
+                session_id=session_id, instance_id=instance_id,
+                description=description, bot_mode=bot_mode,
+                subscribe_schemas=subscribe if bot_mode == "handler" else (),
+                emit_schemas=emit if bot_mode == "handler" else ())
+            persistence.save_bot_subscriptions(
+                instance_id, subscribe=list(info.subscribe_schemas),
+                emit=list(info.emit_schemas))
+        except AgoraError as e:
+            return json.dumps({"error": str(e)})
+        return json.dumps({
+            "status": "ok", "instance_id": info.instance_id,
+            "bot_mode": info.bot_mode,
+            "subscribe_schemas": list(info.subscribe_schemas),
+            "emit_schemas": list(info.emit_schemas),
+            "registered_at": info.registered_at,
+        })
+
     @mcp.tool(name="agora.unregister")
     async def agora_unregister(ctx: Context) -> str:
         try:
