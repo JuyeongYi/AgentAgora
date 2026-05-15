@@ -179,3 +179,61 @@ async def test_broadcast_inactive_matrix_denied_empty(tmp_path):
         res = await d.broadcast(source="Coder1", payload=tany(m=1))
         assert res["denied"] == []
         assert {x["instance_id"] for x in res["dispatched_to"]} == {"Inst1", "Reviewer1", "Tester1"}
+
+
+import json
+from agent_agora.server import create_agora_app
+
+
+class _FakeCtx:
+    def __init__(self, session_id):
+        self.request_context = type("RC", (), {"request": type("R", (), {
+            "headers": {"mcp-session-id": session_id}})()})()
+
+
+def _tool(mcp, name):
+    return mcp._tool_manager.get_tool(name).fn
+
+
+@pytest.fixture
+async def cm_app(tmp_path):
+    instance_registry = InstanceRegistry()
+    for name in ("Inst1", "Coder1", "Reviewer1", "Tester1"):
+        instance_registry.register(f"sess-{name}", name)
+    bot_registry = BotRegistry()
+    comm_matrix = CommMatrix()
+    schema_registry = make_schema_registry()
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    async with queue:
+        dispatcher = Dispatcher(
+            instance_registry, persistence, queue,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, default_timeout_ms=200)
+        mcp = create_agora_app(
+            agora_dir=tmp_path, instance_registry=instance_registry,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, persistence=persistence,
+            dispatcher=dispatcher, port=0)
+        yield mcp, dispatcher, comm_matrix
+
+
+@pytest.mark.asyncio
+async def test_register_comm_matrix_activates_acl(cm_app):
+    mcp, dispatcher, comm_matrix = cm_app
+    res = json.loads(await _tool(mcp, "agora.register_comm_matrix")(csv_text=_HUB))
+    assert res["status"] == "ok"
+    assert comm_matrix.active is True
+    r = json.loads(await _tool(mcp, "agora.dispatch")(
+        _FakeCtx("sess-Coder1"), payload=tany(m=1), target="Reviewer1"))
+    assert "comm_denied" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_register_comm_matrix_rejects_bad_shape(cm_app):
+    mcp, _, comm_matrix = cm_app
+    res = json.loads(await _tool(mcp, "agora.register_comm_matrix")(
+        csv_text="A,B,C\n0,1,1\n1,0,0"))
+    assert "shape" in res["error"]
+    assert comm_matrix.active is False  # rejected — not activated
