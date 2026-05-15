@@ -1,9 +1,17 @@
 # tests/conftest.py
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
+
+# Make plugin/cc-agora/scripts/ importable for test_plugin_* modules.
+# spawn.py / spawn_team.py use ``from role_policy import ...`` (flat layout, not a
+# package), so the scripts dir must be on sys.path before they can be imported.
+_PLUGIN_SCRIPTS = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora" / "scripts"
+if _PLUGIN_SCRIPTS.is_dir() and str(_PLUGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_SCRIPTS))
 
 
 @pytest.fixture

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "team": [
+    {
+      "id": "Coder1",
+      "role": "coder",
+      "description": "프런트엔드 React 코딩 담당. 컴포넌트·훅·상태관리·diff 단위 패치."
+    },
+    {
+      "id": "Reviewer1",
+      "role": "reviewer",
+      "description": "Pull Request 리뷰 및 코멘트. 정합성·테스트 커버리지 점검."
+    },
+    {
+      "id": "Tester1",
+      "role": "tester",
+      "description": "pytest 골든패스·엣지케이스 시나리오 작성과 회귀 검증."
+    }
+  ]
+}

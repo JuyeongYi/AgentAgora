@@ -1,0 +1,5 @@
+{
+  "name": "cc-agora",
+  "description": "AgentAgora MCP 서버용 Claude Code 클라이언트 플러그인 — 워커 spawn·통신 슬래시·역할 페르소나 묶음.",
+  "version": "0.1.0"
+}

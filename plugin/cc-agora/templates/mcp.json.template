@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "agentagora": {
+      "type": "http",
+      "url": "{{SERVER_URL}}",
+      "headers": {
+        "X-Agora-Instance-Id": "{{INSTANCE_ID}}",
+        "X-Agora-Role": "{{ROLE}}",
+        "X-Agora-Description": "{{DESCRIPTION}}",
+        {{WAIT_MODE_HEADER_LINE}}
+        "X-Agora-Wait-Timeout-Ms": "{{WAIT_TIMEOUT_MS}}"
+      }
+    }
+  }
+}
