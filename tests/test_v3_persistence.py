@@ -164,3 +164,21 @@ def test_save_schema_idempotent_on_same_name(tmp_path):
     p.save_schema("foo", body, kind="bot-task", purpose="p")
     p.save_schema("foo", body, kind="bot-task", purpose="p")  # no PK violation
     assert len(p.restore_schemas()) == 1
+
+
+def test_migrate_creates_bot_subscriptions_table(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    names = {r[0] for r in p.conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert "bot_subscriptions" in names
+
+
+def test_messages_delivered_as_check_allows_subscribed(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    sql = p.conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name='messages'").fetchone()[0]
+    assert "subscribed" in sql

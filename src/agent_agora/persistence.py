@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS messages (
   expect_result INTEGER NOT NULL DEFAULT 0,
   reply_to TEXT,
   cc TEXT,
-  delivered_as TEXT NOT NULL DEFAULT 'primary' CHECK (delivered_as IN ('primary','cc')),
+  delivered_as TEXT NOT NULL DEFAULT 'primary' CHECK (delivered_as IN ('primary','cc','subscribed')),
   dispatch_kind TEXT NOT NULL DEFAULT 'direct' CHECK (dispatch_kind IN ('direct','broadcast')),
   closing INTEGER NOT NULL DEFAULT 0,
   priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
@@ -75,6 +75,13 @@ CREATE TABLE IF NOT EXISTS schemas (
   registered_at TEXT NOT NULL,
   registered_by TEXT
 );
+CREATE TABLE IF NOT EXISTS bot_subscriptions (
+  instance_id TEXT NOT NULL,
+  schema_name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('subscribe','emit')),
+  PRIMARY KEY (instance_id, schema_name, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_bot_sub_schema ON bot_subscriptions(schema_name);
 """
 
 
