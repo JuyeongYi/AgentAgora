@@ -679,6 +679,13 @@ class Dispatcher:
         ))
         await self._write_queue.submit_transaction(stmts)
 
+    def _touch_last_seen(self, instance_id: str) -> None:
+        """instance_id가 봇이면 BotRegistry, 워커면 InstanceRegistry의 last_seen을 갱신한다."""
+        if self._bot_registry.is_bot(instance_id):
+            self._bot_registry.touch_last_seen(instance_id)
+        else:
+            self._registry.touch_last_seen(instance_id)
+
     async def wait(
         self,
         instance_id: str,
@@ -735,10 +742,7 @@ class Dispatcher:
                 async with self._lock:
                     if fut in self._waiters.get(instance_id, []):
                         self._waiters[instance_id].remove(fut)
-                if self._bot_registry.is_bot(instance_id):
-                    self._bot_registry.touch_last_seen(instance_id)
-                else:
-                    self._registry.touch_last_seen(instance_id)
+                self._touch_last_seen(instance_id)
                 return []
             async with self._lock:
                 drained = _drain_matching()
@@ -750,10 +754,7 @@ class Dispatcher:
             drained.sort(key=lambda e: (e.created_at, e.id))
 
         # last_seen + wait_age_ms
-        if self._bot_registry.is_bot(instance_id):
-            self._bot_registry.touch_last_seen(instance_id)
-        else:
-            self._registry.touch_last_seen(instance_id)
+        self._touch_last_seen(instance_id)
         now_dt = datetime.datetime.now(datetime.timezone.utc)
         results: list[dict[str, Any]] = []
         for e in drained:

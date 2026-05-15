@@ -184,3 +184,24 @@ async def test_bot_emit_in_reply_to_unknown_cmd_no_crash(setup):
     res = await dispatcher.bot_emit(source="bot_a", payload=_bot_reply(),
                                     in_reply_to="cmd-never-existed")
     assert res["dispatched_to"] == []
+
+
+@pytest.mark.asyncio
+async def test_bot_can_wait_even_though_not_in_instance_registry(setup):
+    registry, dispatcher = setup
+    payload = _register_pytest_schema(dispatcher)
+    dispatcher._bot_registry.register(
+        session_id="bs1", instance_id="bot_a", description="d",
+        bot_mode="handler", subscribe_schemas=["pytest_run"])
+    await dispatcher.dispatch(source="Inst1", target=None, payload=payload)
+    # bot_a is NOT in InstanceRegistry — wait must still resolve it via BotRegistry
+    got = await dispatcher.wait("bot_a", timeout_ms=200)
+    assert len(got) == 1
+
+
+@pytest.mark.asyncio
+async def test_wait_unknown_id_still_raises(setup):
+    registry, dispatcher = setup
+    from agent_agora.registry import NotRegisteredError
+    with pytest.raises(NotRegisteredError):
+        await dispatcher.wait("ghost_nobody", timeout_ms=50)
