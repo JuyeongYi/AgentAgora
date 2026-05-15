@@ -83,3 +83,64 @@ def test_load_comm_matrix_present_file_loads(tmp_path):
     cm = load_comm_matrix(p)
     assert cm.active is True
     assert cm.is_allowed("Reviewer1", "Coder1") is False
+
+
+from agent_agora.dispatcher import Dispatcher
+from agent_agora.registry import InstanceRegistry
+from agent_agora.bot_registry import BotRegistry
+from agent_agora.persistence import Persistence, AsyncWriteQueue
+from _helpers import make_schema_registry, tany
+
+
+async def _make_dispatcher(tmp_path, comm_matrix):
+    registry = InstanceRegistry()
+    for name in ("Inst1", "Coder1", "Reviewer1", "Tester1"):
+        registry.register(f"sess-{name}", name)
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    return registry, persistence, queue
+
+
+@pytest.mark.asyncio
+async def test_dispatch_denied_pair_raises_comm_denied(tmp_path):
+    cm = CommMatrix()
+    cm.load_csv(_HUB)
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        with pytest.raises(AgoraError) as ei:
+            await d.dispatch(source="Coder1", target="Reviewer1", payload=tany(m=1))
+        assert ei.value.code == "comm_denied"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_allowed_pair_passes(tmp_path):
+    cm = CommMatrix()
+    cm.load_csv(_HUB)
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        res = await d.dispatch(source="Coder1", target="Inst1", payload=tany(m=1))
+        assert res["command_id"]
+        drained = await d.wait("Inst1", timeout_ms=200)
+        assert len(drained) == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatch_inactive_matrix_allows_all(tmp_path):
+    cm = CommMatrix()  # inactive
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        res = await d.dispatch(source="Coder1", target="Reviewer1", payload=tany(m=1))
+        assert res["command_id"]

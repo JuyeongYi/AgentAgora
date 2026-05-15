@@ -229,6 +229,10 @@ class Dispatcher:
         for c in cc_list:
             self._registry.resolve_instance_id(c)
 
+        # comm-matrix ACL — worker→worker primary dispatch만 검사 (봇·schema-routed·cc 제외)
+        if target_kind == "worker" and not self._comm_matrix.is_allowed(source, target):
+            raise AgoraError("comm_denied", from_=source, to=target)
+
         # 봇 체커 — msgtype 구독 handler 봇 + observer
         subscriber_bots = sorted(self._bot_registry.subscribers_of(msgtype))
         observer_bots = sorted(self._bot_registry.observers())
