@@ -66,6 +66,14 @@ CREATE TABLE IF NOT EXISTS schema_version (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS schemas (
+  name TEXT PRIMARY KEY,
+  body TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('conversation','bot-task')),
+  purpose TEXT NOT NULL DEFAULT '',
+  registered_at TEXT NOT NULL,
+  registered_by TEXT
+);
 """
 
 

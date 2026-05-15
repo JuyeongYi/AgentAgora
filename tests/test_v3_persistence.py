@@ -121,3 +121,21 @@ def test_lookup_conversation_for_returns_id_when_command_exists(tmp_path):
     )
     assert p.lookup_conversation_for("cmd-x") == "c1"
     assert p.lookup_conversation_for("cmd-missing") is None
+
+
+def test_migrate_creates_schemas_table(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    conn = sqlite3.connect(db)
+    names = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert "schemas" in names
+
+
+def test_schemas_table_has_kind_and_purpose_columns(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    cols = [r[1] for r in p.conn.execute("PRAGMA table_info(schemas)").fetchall()]
+    assert {"name", "body", "kind", "purpose", "registered_at", "registered_by"} <= set(cols)
