@@ -63,6 +63,7 @@ def _build_app(
     that only inspect tool registration don't need it.
     """
     from agent_agora.bot_registry import BotRegistry
+    from agent_agora.comm_matrix import load_comm_matrix
     from agent_agora.dispatcher import Dispatcher
     from agent_agora.persistence import AsyncWriteQueue, Persistence
     from agent_agora.registry import InstanceRegistry
@@ -73,6 +74,7 @@ def _build_app(
 
     instance_registry = InstanceRegistry()
     bot_registry = BotRegistry()
+    comm_matrix = load_comm_matrix(agora_dir / "comm-matrix.csv")
     persistence = Persistence(db_path or (agora_dir / "agora.db"))
     persistence.migrate()
 
@@ -103,6 +105,7 @@ def _build_app(
         write_queue=write_queue,
         schema_registry=schema_registry,
         bot_registry=bot_registry,
+        comm_matrix=comm_matrix,
         default_timeout_ms=default_wait_timeout_ms,
         max_inbox_depth=max_inbox_depth if max_inbox_depth > 0 else 10**9,
         close_timeout_ms=close_timeout_ms,
@@ -114,6 +117,7 @@ def _build_app(
         instance_registry=instance_registry,
         schema_registry=schema_registry,
         bot_registry=bot_registry,
+        comm_matrix=comm_matrix,
         persistence=persistence,
         dispatcher=dispatcher,
         port=port,
@@ -121,6 +125,7 @@ def _build_app(
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
     mcp._agora_bot_registry = bot_registry  # type: ignore[attr-defined]
+    mcp._agora_comm_matrix = comm_matrix  # type: ignore[attr-defined]
     mcp._agora_dispatcher = dispatcher  # type: ignore[attr-defined]
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]

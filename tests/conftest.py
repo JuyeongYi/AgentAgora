@@ -39,3 +39,11 @@ from agent_agora.bot_registry import BotRegistry  # noqa: E402
 @pytest.fixture
 def bot_registry():
     return BotRegistry()
+
+
+from agent_agora.comm_matrix import CommMatrix  # noqa: E402
+
+
+@pytest.fixture
+def comm_matrix():
+    return CommMatrix()

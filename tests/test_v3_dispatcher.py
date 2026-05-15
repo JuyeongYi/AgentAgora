@@ -2,6 +2,7 @@ import pytest
 import asyncio
 
 from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry
 from agent_agora.persistence import Persistence, AsyncWriteQueue
@@ -20,6 +21,7 @@ async def setup(tmp_path):
         dispatcher = Dispatcher(registry, persistence, queue,
                                 schema_registry=make_schema_registry(),
                                 bot_registry=BotRegistry(),
+                                comm_matrix=CommMatrix(),
                                 default_timeout_ms=500)
         yield registry, persistence, dispatcher
 
@@ -167,6 +169,7 @@ async def test_max_inbox_depth_dispatch_rejected_when_full(tmp_path):
         dispatcher = Dispatcher(registry, persistence, queue,
                                 schema_registry=make_schema_registry(),
                                 bot_registry=BotRegistry(),
+                                comm_matrix=CommMatrix(),
                                 default_timeout_ms=500, max_inbox_depth=3)
         await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(i=1))
         await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(i=2))
@@ -187,6 +190,7 @@ async def test_cc_inbox_full_marked_skipped_full(tmp_path):
         dispatcher = Dispatcher(registry, persistence, queue,
                                 schema_registry=make_schema_registry(),
                                 bot_registry=BotRegistry(),
+                                comm_matrix=CommMatrix(),
                                 default_timeout_ms=500, max_inbox_depth=2)
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(x=1))
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(x=2))
@@ -262,7 +266,8 @@ def test_conversation_status_returns_unknown_error_for_missing_id(tmp_path):
     # build dispatcher without async queue running (sync method test only)
     dispatcher = Dispatcher(registry, persistence, queue,
                             schema_registry=make_schema_registry(),
-                            bot_registry=BotRegistry())
+                            bot_registry=BotRegistry(),
+                            comm_matrix=CommMatrix())
     status = dispatcher.conversation_status("conv-does-not-exist")
     assert status.get("error") == "unknown_conversation"
 
@@ -311,6 +316,7 @@ async def test_broadcast_partial_inbox_full_dispatches_to_remaining_with_skipped
         dispatcher = Dispatcher(registry, persistence, queue,
                                 schema_registry=make_schema_registry(),
                                 bot_registry=BotRegistry(),
+                                comm_matrix=CommMatrix(),
                                 max_inbox_depth=2)
         # fill Inst3's queue
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(x=1))
@@ -356,7 +362,8 @@ async def test_broadcast_with_zero_other_registered_instances_returns_empty_disp
     async with queue:
         dispatcher = Dispatcher(registry, persistence, queue,
                                 schema_registry=make_schema_registry(),
-                                bot_registry=BotRegistry())
+                                bot_registry=BotRegistry(),
+                                comm_matrix=CommMatrix())
         res = await dispatcher.broadcast(source="Inst1", payload=tany(hi=True))
         assert res["dispatched_to"] == []
         assert "conversation_id" in res

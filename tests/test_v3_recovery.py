@@ -7,6 +7,7 @@ import time
 import pytest
 
 from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
@@ -25,7 +26,7 @@ async def test_restart_recovery_restores_inflight_messages(tmp_path):
     pers1.migrate()
     q1 = AsyncWriteQueue(pers1)
     async with q1:
-        d1 = Dispatcher(reg1, pers1, q1, schema_registry=make_schema_registry(), bot_registry=BotRegistry())
+        d1 = Dispatcher(reg1, pers1, q1, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         await d1.dispatch(source="Inst1", target="Inst2", payload=tany(keep=True))
     pers1.close()
 
@@ -36,7 +37,7 @@ async def test_restart_recovery_restores_inflight_messages(tmp_path):
     pers2 = Persistence(db)
     q2 = AsyncWriteQueue(pers2)
     async with q2:
-        d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry())
+        d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         d2.restore_from_persistence()
         msgs = await d2.wait("Inst2", timeout_ms=200)
     pers2.close()
@@ -56,7 +57,7 @@ async def test_restart_recovery_drops_closed_conversation_messages_with_drop_rea
     pers.migrate()
     q = AsyncWriteQueue(pers)
     async with q:
-        d = Dispatcher(reg, pers, q, schema_registry=make_schema_registry(), bot_registry=BotRegistry())
+        d = Dispatcher(reg, pers, q, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         # close a conversation explicitly
         conv_closed = "conv-closed-x"
         await d.dispatch(source="Inst1", target="Inst3", payload=tany(a=1),
@@ -80,7 +81,7 @@ async def test_restart_recovery_drops_closed_conversation_messages_with_drop_rea
     pers2 = Persistence(db)
     q2 = AsyncWriteQueue(pers2)
     async with q2:
-        d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry())
+        d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         d2.restore_from_persistence()
         msgs = await d2.wait("Inst2", timeout_ms=100)
     # orphan must NOT be in restored queue
@@ -105,7 +106,7 @@ async def test_async_write_queue_does_not_block_hot_path_under_burst_dispatch(tm
     pers.migrate()
     q = AsyncWriteQueue(pers)
     async with q:
-        d = Dispatcher(reg, pers, q, schema_registry=make_schema_registry(), bot_registry=BotRegistry())
+        d = Dispatcher(reg, pers, q, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         start = time.perf_counter()
         for i in range(20):
             await d.dispatch(source="Inst1", target="Inst2", payload=tany(i=i))

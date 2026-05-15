@@ -1,4 +1,5 @@
 import pytest
+from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry
 from agent_agora.bot_registry import BotRegistry
@@ -35,6 +36,7 @@ async def setup(tmp_path):
             registry, persistence, queue,
             schema_registry=make_schema_registry(),
             bot_registry=BotRegistry(),
+            comm_matrix=CommMatrix(),
             default_timeout_ms=500)
         yield registry, dispatcher
 

@@ -47,3 +47,13 @@ def test_build_app_wires_schema_registry(tmp_path):
     assert (agora_dir / "schemas.jsonl").is_file()
     # SQLite에도 영속됨
     assert len(mcp._agora_persistence.restore_schemas()) >= 6
+
+
+def test_build_app_wires_comm_matrix(tmp_path):
+    from agent_agora.__main__ import _build_app
+    agora_dir = tmp_path / ".agentagora"
+    agora_dir.mkdir()
+    mcp = _build_app(agora_dir=agora_dir, port=0)
+    comm_matrix = mcp._agora_comm_matrix
+    # comm-matrix.csv가 없으므로 비활성 (all-allow)
+    assert comm_matrix.active is False

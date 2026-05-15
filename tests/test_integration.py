@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
@@ -21,6 +22,7 @@ async def runtime(tmp_path):
         disp = Dispatcher(inst_reg, persistence, queue,
                           schema_registry=make_schema_registry(),
                           bot_registry=BotRegistry(),
+                          comm_matrix=CommMatrix(),
                           default_timeout_ms=2000)
         yield inst_reg, disp
 

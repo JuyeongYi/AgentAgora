@@ -18,6 +18,7 @@ from agent_agora.envelope import (
     validate_priority,
 )
 from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
 from agent_agora.errors import AgoraError
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
@@ -70,6 +71,7 @@ class Dispatcher:
         *,
         schema_registry: SchemaRegistry,
         bot_registry: BotRegistry,
+        comm_matrix: CommMatrix,
         default_timeout_ms: int = 60000,
         max_inbox_depth: int = 100,
         close_timeout_ms: int = 300_000,
@@ -81,6 +83,7 @@ class Dispatcher:
         self._write_queue = write_queue
         self._schema_registry = schema_registry
         self._bot_registry = bot_registry
+        self._comm_matrix = comm_matrix
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
         self._close_timeout_ms = close_timeout_ms

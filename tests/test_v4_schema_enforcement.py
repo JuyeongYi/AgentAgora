@@ -1,6 +1,7 @@
 import json
 import pytest
 from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry
 from agent_agora.persistence import Persistence, AsyncWriteQueue
@@ -21,6 +22,7 @@ async def setup(tmp_path):
         dispatcher = Dispatcher(registry, persistence, queue,
                                 schema_registry=make_schema_registry(),
                                 bot_registry=BotRegistry(),
+                                comm_matrix=CommMatrix(),
                                 default_timeout_ms=500)
         yield registry, dispatcher
 
@@ -101,13 +103,16 @@ async def app(tmp_path):
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     async with queue:
+        comm_matrix = CommMatrix()
         dispatcher = Dispatcher(instance_registry, persistence, queue,
                                 schema_registry=schema_registry,
                                 bot_registry=bot_registry,
+                                comm_matrix=comm_matrix,
                                 default_timeout_ms=300)
         mcp = create_agora_app(
             agora_dir=tmp_path, instance_registry=instance_registry,
             schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix,
             persistence=persistence, dispatcher=dispatcher, port=0)
         yield mcp, instance_registry, schema_registry
 
