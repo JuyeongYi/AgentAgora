@@ -524,6 +524,99 @@ class Dispatcher:
             "skipped_full": skipped_full,
         }
 
+    async def bot_emit(
+        self,
+        source: str,
+        payload: Any,
+        in_reply_to: str | None = None,
+    ) -> dict[str, Any]:
+        """봇 결과 emit (결정 25). in_reply_to 지정 시 원 메시지의 source로 라우팅,
+        미지정 시 payload msgtype 구독 봇에 schema-routed fan-out. 항상 observer cc."""
+        if self._closed:
+            raise DispatcherClosed("Dispatcher is closed")
+        msgtype = self._validate_payload(payload)
+        payload_bytes = validate_payload_size(payload)
+        priority_rank = validate_priority("normal")
+
+        reply_target: str | None = None
+        if in_reply_to is not None:
+            reply_target = self._message_source.get(in_reply_to)
+            if reply_target is None:
+                reply_target = self._persistence.lookup_source_for(in_reply_to)
+        subscriber_bots: list[str] = []
+        if in_reply_to is None:
+            subscriber_bots = sorted(self._bot_registry.subscribers_of(msgtype))
+        observer_bots = sorted(self._bot_registry.observers())
+
+        cmd_id = str(uuid.uuid4())
+        now = _now_iso()
+        conv_id, is_new_conv, substituted = self._resolve_conversation_id(None, in_reply_to)
+
+        async with self._lock:
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
+            if is_new_conv or conv_id not in self._conversations:
+                self._conversations[conv_id] = self._new_conversation_state(kind="direct")
+            state = self._conversations[conv_id]
+            self._add_participant(state, source, role="cc", delivered=True)
+            state["last_message_at"] = now
+            state["message_count"] += 1
+            self._conversation_of[cmd_id] = conv_id
+            self._message_source[cmd_id] = source
+
+            envs: list[Envelope] = []
+            delivered: list[dict[str, str]] = []
+            skipped_full: list[str] = []
+
+            def _enqueue(tid: str, das: str) -> None:
+                if len(self._queues[tid]) >= self._max_inbox_depth:
+                    skipped_full.append(tid)
+                    return
+                e = make_envelope(
+                    cmd_id=cmd_id, source=source, target=tid, payload=payload,
+                    created_at=now, conversation_id=conv_id,
+                    expect_result=False, reply_to=None, cc=None,
+                    delivered_as=das, dispatch_kind="direct",
+                    in_reply_to=in_reply_to, closing=False,
+                    priority="normal", deadline_ts=None,
+                )
+                envs.append(e)
+                self._queues[tid].append(e)
+                self._add_participant(
+                    state, tid, role="primary" if das == "primary" else "cc", delivered=True)
+                self._last_dispatch_to[tid] = now
+                self._wake(tid)
+                delivered.append({"instance_id": tid, "as": das})
+
+            if reply_target is not None:
+                _enqueue(reply_target, "primary")
+            for bot_id in subscriber_bots:
+                if bot_id == reply_target:
+                    continue
+                _enqueue(bot_id, "subscribed")
+            for bot_id in observer_bots:
+                if bot_id == reply_target or bot_id in subscriber_bots:
+                    continue
+                _enqueue(bot_id, "cc")
+
+            await self._persist_dispatch_txn(
+                state=state, conv_id=conv_id, is_new_conv=is_new_conv,
+                env=None, cc_envs=envs, skipped_full=skipped_full,
+                payload_bytes=payload_bytes, priority_rank=priority_rank,
+            )
+            print(
+                f"[agora] {_colored(source)} bot_emit"
+                + (f" -> {_colored(reply_target)}" if reply_target else " (schema-routed)")
+                + f" : {_fmt_payload(payload)}",
+                flush=True,
+            )
+
+        return {
+            "command_id": cmd_id, "created_at": now, "conversation_id": conv_id,
+            "conversation_id_substituted": substituted,
+            "dispatched_to": delivered, "skipped_full": skipped_full,
+        }
+
     async def _persist_dispatch_txn(
         self,
         state: dict,

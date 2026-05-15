@@ -132,3 +132,55 @@ async def test_broadcast_observer_receives_cc(setup):
     await dispatcher.broadcast(source="Inst1", payload=wf("공지"))
     obs = await dispatcher.wait("bot_obs", timeout_ms=200)
     assert len(obs) == 1 and obs[0]["delivered_as"] == "cc"
+
+
+def _bot_reply(result="ok"):
+    return {"msgtype": "bot_reply", "from": "bot_a",
+            "ts": "2026-01-01T00:00:00Z", "result": result}
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_in_reply_to_routes_to_original_source(setup):
+    registry, dispatcher = setup
+    payload = _register_pytest_schema(dispatcher)
+    dispatcher._bot_registry.register(
+        session_id="bs1", instance_id="bot_a", description="d",
+        bot_mode="handler", subscribe_schemas=["pytest_run"])
+    res = await dispatcher.dispatch(source="Inst1", target=None, payload=payload)
+    cmd_id = res["command_id"]
+    await dispatcher.bot_emit(source="bot_a", payload=_bot_reply(), in_reply_to=cmd_id)
+    inst1 = await dispatcher.wait("Inst1", timeout_ms=200)
+    assert len(inst1) == 1
+    assert inst1[0]["payload"]["msgtype"] == "bot_reply"
+    assert inst1[0]["in_reply_to"] == cmd_id
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_without_in_reply_to_fans_out_to_subscribers(setup):
+    registry, dispatcher = setup
+    body = {"type": "object", "required": ["msgtype"],
+            "properties": {"msgtype": {"type": "string", "const": "metric_log"}},
+            "additionalProperties": True}
+    dispatcher._schema_registry.register("metric_log", body, kind="bot-task", purpose="metric")
+    dispatcher._bot_registry.register(
+        session_id="bs1", instance_id="bot_metric", description="d",
+        bot_mode="handler", subscribe_schemas=["metric_log"])
+    await dispatcher.bot_emit(source="bot_src", payload={"msgtype": "metric_log", "v": 1})
+    got = await dispatcher.wait("bot_metric", timeout_ms=200)
+    assert len(got) == 1 and got[0]["delivered_as"] == "subscribed"
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_validates_payload(setup):
+    registry, dispatcher = setup
+    with pytest.raises(AgoraError) as ei:
+        await dispatcher.bot_emit(source="bot_a", payload={"no": "msgtype"})
+    assert ei.value.code == "payload_missing_msgtype"
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_in_reply_to_unknown_cmd_no_crash(setup):
+    registry, dispatcher = setup
+    res = await dispatcher.bot_emit(source="bot_a", payload=_bot_reply(),
+                                    in_reply_to="cmd-never-existed")
+    assert res["dispatched_to"] == []
