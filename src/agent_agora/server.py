@@ -11,6 +11,7 @@ from mcp.server.fastmcp import Context
 from mcp.types import ToolExecution
 
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
+from agent_agora.errors import AgoraError
 from agent_agora.persistence import Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schemas import SchemaRegistry
@@ -69,6 +70,35 @@ def create_agora_app(
             "port": port,
             "uptime": int(time.time() - start_time),
         }, ensure_ascii=False)
+
+    @mcp.tool(name="agora.register_schema")
+    async def agora_register_schema(
+        name: str,
+        body: dict,
+        kind: Literal["conversation", "bot-task"],
+        purpose: str,
+    ) -> str:
+        """Register a schema. Immutable — 동일 이름 다른 body는 거부.
+        body에 msgtype property 필수 (결정 20)."""
+        try:
+            schema_registry.register(name, body, kind=kind, purpose=purpose)
+            persistence.save_schema(name, body, kind=kind, purpose=purpose)
+        except AgoraError as e:
+            return json.dumps({"error": str(e)})
+        return json.dumps({"status": "ok", "name": name, "kind": kind})
+
+    @mcp.tool(name="agora.schemas")
+    async def agora_schemas() -> str:
+        """Full schema catalog — name, kind, purpose, body."""
+        return json.dumps({"schemas": [
+            {"name": e.name, "kind": e.kind, "purpose": e.purpose, "body": e.body}
+            for e in schema_registry.list_all()
+        ]}, ensure_ascii=False)
+
+    @mcp.tool(name="agora.schemas_list")
+    async def agora_schemas_list() -> str:
+        """Schema metadata only — name, kind, purpose (body 제외)."""
+        return json.dumps({"schemas": schema_registry.list_meta()}, ensure_ascii=False)
 
     @mcp.tool(name="agora.register")
     async def agora_register(
