@@ -144,3 +144,38 @@ async def test_dispatch_inactive_matrix_allows_all(tmp_path):
                        default_timeout_ms=200)
         res = await d.dispatch(source="Coder1", target="Reviewer1", payload=tany(m=1))
         assert res["command_id"]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_filters_denied_targets_and_reports(tmp_path):
+    cm = CommMatrix()
+    cm.load_csv(_HUB)
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        # Inst1 broadcasts — hub -> all spokes is allowed
+        res1 = await d.broadcast(source="Inst1", payload=tany(m=1))
+        assert res1["denied"] == []
+        delivered = {x["instance_id"] for x in res1["dispatched_to"]}
+        assert delivered == {"Coder1", "Reviewer1", "Tester1"}
+        # Coder1 broadcasts — only Coder1 -> Inst1 allowed; spokes denied
+        res2 = await d.broadcast(source="Coder1", payload=tany(m=2))
+        assert {x["instance_id"] for x in res2["dispatched_to"]} == {"Inst1"}
+        assert sorted(res2["denied"]) == ["Reviewer1", "Tester1"]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_inactive_matrix_denied_empty(tmp_path):
+    cm = CommMatrix()  # inactive
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        res = await d.broadcast(source="Coder1", payload=tany(m=1))
+        assert res["denied"] == []
+        assert {x["instance_id"] for x in res["dispatched_to"]} == {"Inst1", "Reviewer1", "Tester1"}

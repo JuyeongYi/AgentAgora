@@ -413,6 +413,13 @@ class Dispatcher:
             info.instance_id for info in self._registry.list_instances()
             if info.instance_id != source
         ]
+        # comm-matrix ACL — 금지된 worker target은 fan-out에서 제외, denied로 보고
+        denied: list[str] = []
+        allowed_targets: list[str] = []
+        for t in targets:
+            (allowed_targets if self._comm_matrix.is_allowed(source, t) else denied).append(t)
+        targets = allowed_targets
+        denied.sort()
         subscriber_bots = sorted(self._bot_registry.subscribers_of(msgtype))
         observer_bots = sorted(self._bot_registry.observers())
         cmd_id = str(uuid.uuid4())
@@ -529,6 +536,7 @@ class Dispatcher:
                    if b not in subscriber_bots],
             "target_inbox_depth_after": {t: len(self._queues[t]) for t in deliverable},
             "skipped_full": skipped_full,
+            "denied": denied,
         }
 
     async def bot_emit(
