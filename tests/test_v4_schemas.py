@@ -167,3 +167,23 @@ def test_load_schemas_into_registers_all_six():
     assert count == 6
     assert reg.get("worker_freeform").kind == "conversation"
     assert reg.get("bot_reply").kind == "bot-task"
+
+
+def test_plan2_bot_codes_present():
+    expected = {
+        "no_route", "unhandled_schema", "bot_emit_not_a_bot",
+        "description_required", "subscribe_required",
+        "cannot_subscribe_conversation", "schema_kind_not_bot_task",
+    }
+    assert expected <= set(ERROR_MESSAGES)
+
+
+def test_no_route_message_formats_msgtype():
+    e = AgoraError("no_route", msgtype="pytest_run")
+    assert e.code == "no_route"
+    assert "pytest_run" in str(e)
+
+
+def test_unhandled_schema_message_formats_bot_and_msgtype():
+    e = AgoraError("unhandled_schema", bot="bot_x", msgtype="deploy")
+    assert "bot_x" in str(e) and "deploy" in str(e)

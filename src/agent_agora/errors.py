@@ -10,6 +10,14 @@ ERROR_MESSAGES: dict[str, str] = {
     "schema_violation": "[agora] schema_violation: {detail}",
     "schema_immutable": "[agora] schema '{name}'는 다른 body로 이미 등록됨.",
     "schema_missing_msgtype": "[agora] schema '{name}' body에 msgtype property가 없습니다. (결정 20)",
+    # Plan 2 — bot routing codes
+    "no_route": "[agora] msgtype '{msgtype}'를 구독하는 봇이 없고 target도 없습니다.",
+    "unhandled_schema": "[agora] 봇 {bot}는 msgtype '{msgtype}'를 구독하지 않습니다.",
+    "bot_emit_not_a_bot": "[agora] agora.bot_emit은 봇만 호출할 수 있습니다.",
+    "description_required": "[agora] 봇 mode는 description이 필수입니다.",
+    "subscribe_required": "[agora] bot-handler는 구독 schema가 비어있을 수 없습니다.",
+    "cannot_subscribe_conversation": "[agora] conversation kind schema '{name}'는 봇이 구독할 수 없습니다.",
+    "schema_kind_not_bot_task": "[agora] 봇이 등록하는 schema '{name}'는 kind가 'bot-task'여야 합니다.",
 }
 
 
