@@ -18,6 +18,9 @@ ERROR_MESSAGES: dict[str, str] = {
     "subscribe_required": "[agora] bot-handler는 구독 schema가 비어있을 수 없습니다.",
     "cannot_subscribe_conversation": "[agora] conversation kind schema '{name}'는 봇이 구독할 수 없습니다.",
     "schema_kind_not_bot_task": "[agora] 봇이 등록하는 schema '{name}'는 kind가 'bot-task'여야 합니다.",
+    # comm-matrix codes
+    "comm_denied": "[agora] comm_denied: {from_} -> {to} (통신 매트릭스가 이 쌍의 dispatch를 금지함).",
+    "comm_matrix_shape_mismatch": "[agora] comm-matrix CSV shape 불일치: {detail}",
 }
 
 
