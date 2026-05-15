@@ -65,6 +65,7 @@ def _build_app(
     from agent_agora.dispatcher import Dispatcher
     from agent_agora.persistence import AsyncWriteQueue, Persistence
     from agent_agora.registry import InstanceRegistry
+    from agent_agora.schemas import SchemaRegistry, ensure_schemas_file, load_schemas_into
     from agent_agora.server import create_agora_app
 
     _warn_legacy_schemas_json(agora_dir)
@@ -72,11 +73,33 @@ def _build_app(
     instance_registry = InstanceRegistry()
     persistence = Persistence(db_path or (agora_dir / "agora.db"))
     persistence.migrate()
+
+    # Schema 로드: (1) SQLite의 등록 schema 복원, (2) .agentagora/schemas.jsonl 로드.
+    # 둘 다 idempotent — 동일 body는 무시. 충돌 시 startup 경고 후 SQLite본 유지.
+    schema_registry = SchemaRegistry()
+    for row in persistence.restore_schemas():
+        try:
+            schema_registry.register(
+                row["name"], row["body"], kind=row["kind"],
+                purpose=row["purpose"], registered_by=row["registered_by"])
+        except Exception as e:  # noqa: BLE001 — startup 복원은 best-effort
+            print(f"[agora] WARNING: schema '{row['name']}' 복원 실패: {e}", file=sys.stderr)
+    schemas_file = ensure_schemas_file(agora_dir / "schemas.jsonl")
+    try:
+        load_schemas_into(schema_registry, schemas_file)
+    except Exception as e:  # noqa: BLE001
+        print(f"[agora] WARNING: {schemas_file} 로드 중 일부 schema 충돌: {e}", file=sys.stderr)
+    # jsonl로 새로 등록된 기본 schema를 SQLite에도 영속 (idempotent)
+    for entry in schema_registry.list_all():
+        persistence.save_schema(entry.name, entry.body, kind=entry.kind,
+                                purpose=entry.purpose, registered_by=entry.registered_by)
+
     write_queue = AsyncWriteQueue(persistence)
     dispatcher = Dispatcher(
         registry=instance_registry,
         persistence=persistence,
         write_queue=write_queue,
+        schema_registry=schema_registry,
         default_timeout_ms=default_wait_timeout_ms,
         max_inbox_depth=max_inbox_depth if max_inbox_depth > 0 else 10**9,
         close_timeout_ms=close_timeout_ms,
@@ -86,10 +109,13 @@ def _build_app(
     mcp = create_agora_app(
         agora_dir=agora_dir,
         instance_registry=instance_registry,
+        schema_registry=schema_registry,
+        persistence=persistence,
         dispatcher=dispatcher,
         port=port,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
+    mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
     mcp._agora_dispatcher = dispatcher  # type: ignore[attr-defined]
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]

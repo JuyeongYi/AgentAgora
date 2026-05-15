@@ -11,7 +11,9 @@ from mcp.server.fastmcp import Context
 from mcp.types import ToolExecution
 
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
+from agent_agora.persistence import Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
+from agent_agora.schemas import SchemaRegistry
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
@@ -45,6 +47,8 @@ def _session_id_from_ctx(ctx: Context) -> str:
 def create_agora_app(
     agora_dir: Path,
     instance_registry: InstanceRegistry,
+    schema_registry: SchemaRegistry,
+    persistence: Persistence,
     dispatcher: Dispatcher,
     port: int,
 ) -> FastMCP:

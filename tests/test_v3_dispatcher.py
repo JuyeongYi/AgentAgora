@@ -4,6 +4,7 @@ import asyncio
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry
 from agent_agora.persistence import Persistence, AsyncWriteQueue
+from _helpers import make_schema_registry
 
 
 @pytest.fixture
@@ -15,7 +16,9 @@ async def setup(tmp_path):
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     async with queue:
-        dispatcher = Dispatcher(registry, persistence, queue, default_timeout_ms=500)
+        dispatcher = Dispatcher(registry, persistence, queue,
+                                schema_registry=make_schema_registry(),
+                                default_timeout_ms=500)
         yield registry, persistence, dispatcher
 
 
@@ -159,7 +162,9 @@ async def test_max_inbox_depth_dispatch_rejected_when_full(tmp_path):
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     async with queue:
-        dispatcher = Dispatcher(registry, persistence, queue, default_timeout_ms=500, max_inbox_depth=3)
+        dispatcher = Dispatcher(registry, persistence, queue,
+                                schema_registry=make_schema_registry(),
+                                default_timeout_ms=500, max_inbox_depth=3)
         await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"i": 1})
         await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"i": 2})
         await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"i": 3})
@@ -176,7 +181,9 @@ async def test_cc_inbox_full_marked_skipped_full(tmp_path):
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     async with queue:
-        dispatcher = Dispatcher(registry, persistence, queue, default_timeout_ms=500, max_inbox_depth=2)
+        dispatcher = Dispatcher(registry, persistence, queue,
+                                schema_registry=make_schema_registry(),
+                                default_timeout_ms=500, max_inbox_depth=2)
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload={"x": 1})
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload={"x": 2})
         res = await dispatcher.dispatch(
@@ -249,7 +256,8 @@ def test_conversation_status_returns_unknown_error_for_missing_id(tmp_path):
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     # build dispatcher without async queue running (sync method test only)
-    dispatcher = Dispatcher(registry, persistence, queue)
+    dispatcher = Dispatcher(registry, persistence, queue,
+                            schema_registry=make_schema_registry())
     status = dispatcher.conversation_status("conv-does-not-exist")
     assert status.get("error") == "unknown_conversation"
 
@@ -295,7 +303,9 @@ async def test_broadcast_partial_inbox_full_dispatches_to_remaining_with_skipped
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     async with queue:
-        dispatcher = Dispatcher(registry, persistence, queue, max_inbox_depth=2)
+        dispatcher = Dispatcher(registry, persistence, queue,
+                                schema_registry=make_schema_registry(),
+                                max_inbox_depth=2)
         # fill Inst3's queue
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload={"x": 1})
         await dispatcher.dispatch(source="Inst1", target="Inst3", payload={"x": 2})
@@ -338,7 +348,8 @@ async def test_broadcast_with_zero_other_registered_instances_returns_empty_disp
     persistence.migrate()
     queue = AsyncWriteQueue(persistence)
     async with queue:
-        dispatcher = Dispatcher(registry, persistence, queue)
+        dispatcher = Dispatcher(registry, persistence, queue,
+                                schema_registry=make_schema_registry())
         res = await dispatcher.broadcast(source="Inst1", payload={"hi": True})
         assert res["dispatched_to"] == []
         assert "conversation_id" in res

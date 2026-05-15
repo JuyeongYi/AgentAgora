@@ -19,6 +19,7 @@ from agent_agora.envelope import (
 )
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
+from agent_agora.schemas import SchemaRegistry
 
 
 def _fmt_payload(payload: Any) -> str:
@@ -64,6 +65,8 @@ class Dispatcher:
         registry: InstanceRegistry,
         persistence: Persistence,
         write_queue: AsyncWriteQueue,
+        *,
+        schema_registry: SchemaRegistry,
         default_timeout_ms: int = 60000,
         max_inbox_depth: int = 100,
         close_timeout_ms: int = 300_000,
@@ -73,6 +76,7 @@ class Dispatcher:
         self._registry = registry
         self._persistence = persistence
         self._write_queue = write_queue
+        self._schema_registry = schema_registry
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
         self._close_timeout_ms = close_timeout_ms
