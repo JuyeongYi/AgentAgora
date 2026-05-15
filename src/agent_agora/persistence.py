@@ -173,6 +173,37 @@ class Persistence:
             for r in rows
         ]
 
+    def save_bot_subscriptions(
+        self, instance_id: str, subscribe: list[str], emit: list[str],
+    ) -> None:
+        """봇 구독을 audit용으로 영속화한다. 같은 instance_id의 기존 행은 교체한다.
+        (BotRegistry는 재시작 시 이 테이블에서 복원하지 않는다 — 봇이 재접속하며 재등록한다.)"""
+        self._conn.execute("DELETE FROM bot_subscriptions WHERE instance_id=?", (instance_id,))
+        for s in subscribe:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO bot_subscriptions (instance_id, schema_name, kind) "
+                "VALUES (?, ?, 'subscribe')", (instance_id, s))
+        for s in emit:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO bot_subscriptions (instance_id, schema_name, kind) "
+                "VALUES (?, ?, 'emit')", (instance_id, s))
+
+    def restore_bot_subscriptions(self) -> dict[str, dict[str, list[str]]]:
+        rows = self._conn.execute(
+            "SELECT instance_id, schema_name, kind FROM bot_subscriptions").fetchall()
+        out: dict[str, dict[str, list[str]]] = {}
+        for instance_id, schema_name, kind in rows:
+            entry = out.setdefault(instance_id, {"subscribe": [], "emit": []})
+            entry["subscribe" if kind == "subscribe" else "emit"].append(schema_name)
+        return out
+
+    def lookup_source_for(self, cmd_id: str) -> str | None:
+        """cmd_id의 원 source를 SQLite에서 조회 (bot_emit in_reply_to cache miss 폴백)."""
+        row = self._conn.execute(
+            "SELECT source FROM messages WHERE command_id=? LIMIT 1", (cmd_id,)
+        ).fetchone()
+        return row[0] if row else None
+
 
 @dataclass
 class _TxnRequest:

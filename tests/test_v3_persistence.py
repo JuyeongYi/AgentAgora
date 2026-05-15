@@ -182,3 +182,37 @@ def test_messages_delivered_as_check_allows_subscribed(tmp_path):
     sql = p.conn.execute(
         "SELECT sql FROM sqlite_master WHERE name='messages'").fetchone()[0]
     assert "subscribed" in sql
+
+
+def test_save_and_restore_bot_subscriptions(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    p.save_bot_subscriptions("bot_x", subscribe=["s1", "s2"], emit=["s1"])
+    subs = p.restore_bot_subscriptions()
+    assert sorted(subs["bot_x"]["subscribe"]) == ["s1", "s2"]
+    assert subs["bot_x"]["emit"] == ["s1"]
+
+
+def test_save_bot_subscriptions_replaces_prior_rows(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    p.save_bot_subscriptions("bot_x", subscribe=["old"], emit=[])
+    p.save_bot_subscriptions("bot_x", subscribe=["new"], emit=[])
+    subs = p.restore_bot_subscriptions()
+    assert subs["bot_x"]["subscribe"] == ["new"]
+
+
+def test_lookup_source_for_returns_message_source(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    p.conn.execute(
+        "INSERT INTO conversations (conversation_id, status, started_at, last_message_at) "
+        "VALUES ('c1', 'open', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')")
+    p.conn.execute(
+        "INSERT INTO messages (command_id, target, conversation_id, source, created_at, payload) "
+        "VALUES ('cmd1', 'Inst2', 'c1', 'Inst1', '2026-01-01T00:00:00Z', '{}')")
+    assert p.lookup_source_for("cmd1") == "Inst1"
+    assert p.lookup_source_for("nonexistent") is None
