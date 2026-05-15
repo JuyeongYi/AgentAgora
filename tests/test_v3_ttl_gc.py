@@ -8,7 +8,7 @@ import pytest
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
-from _helpers import make_schema_registry
+from _helpers import make_schema_registry, tany
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ async def test_close_ttl_sweep_transitions_half_closed_to_closed_after_timeout(s
     _, _, dispatcher = setup
     conv = "conv-ttl-1"
     # only Inst1 sends closing → half_closed
-    await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"x": 1},
+    await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(x=1),
                                conversation_id=conv, closing=True)
     assert dispatcher.conversation_status(conv)["status"] == "half_closed"
     # sweep at t = last_message_at + close_timeout + 1s → should close
@@ -55,10 +55,10 @@ async def test_close_ttl_sweep_transitions_half_closed_to_closed_after_timeout(s
 async def test_close_ttl_sweep_resets_on_new_message_within_window(setup):
     _, _, dispatcher = setup
     conv = "conv-ttl-2"
-    await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"x": 1},
+    await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(x=1),
                                conversation_id=conv, closing=True)
     # new message arrives → resets last_message_at
-    await dispatcher.dispatch(source="Inst2", target="Inst1", payload={"x": 2},
+    await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(x=2),
                                conversation_id=conv)
     last = datetime.datetime.fromisoformat(
         dispatcher.conversation_status(conv)["last_message_at"]
@@ -74,7 +74,7 @@ async def test_close_ttl_sweep_resets_on_new_message_within_window(setup):
 async def test_close_ttl_sweep_ignores_open_conversations(setup):
     _, _, dispatcher = setup
     conv = "conv-ttl-open"
-    await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"x": 1},
+    await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(x=1),
                                conversation_id=conv)
     future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
     closed_ids = dispatcher.close_ttl_sweep(now=future)
@@ -118,9 +118,9 @@ async def test_message_gc_sweep_deletes_old_closed_messages_preserves_meta(setup
     _, persistence, dispatcher = setup
     conv = "conv-gc-1"
     # create + close + age beyond retention
-    await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"old": 1},
+    await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(old=1),
                                conversation_id=conv, closing=True)
-    await dispatcher.dispatch(source="Inst2", target="Inst1", payload={"old": 2},
+    await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(old=2),
                                conversation_id=conv, closing=True)
     assert dispatcher.conversation_status(conv)["status"] == "closed"
     # mock closed_at to far past via direct SQLite
@@ -148,9 +148,9 @@ async def test_message_gc_sweep_deletes_old_closed_messages_preserves_meta(setup
 async def test_message_gc_sweep_evicts_in_memory_cache(setup):
     _, persistence, dispatcher = setup
     conv = "conv-gc-cache"
-    res = await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"m": 1},
+    res = await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m=1),
                                      conversation_id=conv, closing=True)
-    await dispatcher.dispatch(source="Inst2", target="Inst1", payload={"m": 2},
+    await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(m=2),
                                conversation_id=conv, closing=True)
     cmd_id = res["command_id"]
     assert conv in dispatcher._conversations
@@ -172,9 +172,9 @@ async def test_message_gc_sweep_evicts_in_memory_cache(setup):
 async def test_message_gc_sweep_skips_recently_closed(setup):
     _, _, dispatcher = setup
     conv = "conv-gc-recent"
-    await dispatcher.dispatch(source="Inst1", target="Inst2", payload={"m": 1},
+    await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m=1),
                                conversation_id=conv, closing=True)
-    await dispatcher.dispatch(source="Inst2", target="Inst1", payload={"m": 2},
+    await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(m=2),
                                conversation_id=conv, closing=True)
     # closed_at is now — well within 90d
     deleted = dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))

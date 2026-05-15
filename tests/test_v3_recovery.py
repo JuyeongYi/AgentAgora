@@ -9,7 +9,7 @@ import pytest
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
-from _helpers import make_schema_registry
+from _helpers import make_schema_registry, tany
 
 
 @pytest.mark.asyncio
@@ -25,7 +25,7 @@ async def test_restart_recovery_restores_inflight_messages(tmp_path):
     q1 = AsyncWriteQueue(pers1)
     async with q1:
         d1 = Dispatcher(reg1, pers1, q1, schema_registry=make_schema_registry())
-        await d1.dispatch(source="Inst1", target="Inst2", payload={"keep": True})
+        await d1.dispatch(source="Inst1", target="Inst2", payload=tany(keep=True))
     pers1.close()
 
     # phase 2: cold restart
@@ -40,7 +40,7 @@ async def test_restart_recovery_restores_inflight_messages(tmp_path):
         msgs = await d2.wait("Inst2", timeout_ms=200)
     pers2.close()
     assert len(msgs) == 1
-    assert msgs[0]["payload"] == {"keep": True}
+    assert msgs[0]["payload"] == tany(keep=True)
 
 
 @pytest.mark.asyncio
@@ -58,9 +58,9 @@ async def test_restart_recovery_drops_closed_conversation_messages_with_drop_rea
         d = Dispatcher(reg, pers, q, schema_registry=make_schema_registry())
         # close a conversation explicitly
         conv_closed = "conv-closed-x"
-        await d.dispatch(source="Inst1", target="Inst3", payload={"a": 1},
+        await d.dispatch(source="Inst1", target="Inst3", payload=tany(a=1),
                          conversation_id=conv_closed, closing=True)
-        await d.dispatch(source="Inst3", target="Inst1", payload={"b": 2},
+        await d.dispatch(source="Inst3", target="Inst1", payload=tany(b=2),
                          conversation_id=conv_closed, closing=True)
         assert d.conversation_status(conv_closed)["status"] == "closed"
         # force an undrained orphan message into that closed conversation
@@ -107,7 +107,7 @@ async def test_async_write_queue_does_not_block_hot_path_under_burst_dispatch(tm
         d = Dispatcher(reg, pers, q, schema_registry=make_schema_registry())
         start = time.perf_counter()
         for i in range(20):
-            await d.dispatch(source="Inst1", target="Inst2", payload={"i": i})
+            await d.dispatch(source="Inst1", target="Inst2", payload=tany(i=i))
         elapsed = time.perf_counter() - start
     pers.close()
     # 20 dispatches with synchronous SQLite would still be fast on local disk,
