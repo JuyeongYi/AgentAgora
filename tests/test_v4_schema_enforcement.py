@@ -148,3 +148,56 @@ async def test_schemas_returns_full_body(app):
     full = json.loads(await _tool(mcp, "agora.schemas")())["schemas"]
     wf = next(s for s in full if s["name"] == "worker_freeform")
     assert "body" in wf and "properties" in wf["body"]
+
+
+@pytest.mark.asyncio
+async def test_all_six_default_schemas_have_msgtype_property(app):
+    """default 포함 기본 제공 schema 6종 모두 msgtype property를 가진다 (결정 20)."""
+    _, _, schema_reg = app
+    for name in ("default", "worker_freeform", "bot_reply", "bot_error", "closing", "ack"):
+        entry = schema_reg.get(name)
+        assert entry is not None, name
+        assert "msgtype" in entry.body["properties"], name
+
+
+@pytest.mark.asyncio
+async def test_worker_freeform_regression(app):
+    """v3 워커 payload(worker_freeform + 보조필드)가 schema를 통과한다 (§9.1)."""
+    mcp, instance_registry, _ = app
+    instance_registry.register("ws1", "worker_x")
+    instance_registry.register("ws2", "worker_y")
+    res = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), target="worker_y",
+        payload={"msgtype": "worker_freeform", "type": "reply", "from": "worker_x",
+                 "ts": "2026-01-01T00:00:00Z", "message": "자유 텍스트",
+                 "in_reply_to": "abc", "subject": "보조필드"}))
+    assert res["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_msgtype_required_and_unknown_rejected(app):
+    mcp, instance_registry, _ = app
+    instance_registry.register("ws1", "worker_x")
+    instance_registry.register("ws2", "worker_y")
+    r1 = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), target="worker_y", payload={"no": "msgtype"}))
+    assert "msgtype이 없습니다" in r1["error"]
+    r2 = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), target="worker_y", payload={"msgtype": "ghost"}))
+    assert "registry에 없습니다" in r2["error"]
+
+
+@pytest.mark.asyncio
+async def test_schema_persists_across_restart(tmp_path):
+    """register된 도메인 schema가 서버 재시작(_build_app 재호출) 후에도 살아있다."""
+    from agent_agora.__main__ import _build_app
+    agora_dir = tmp_path / ".agentagora"
+    agora_dir.mkdir()
+    mcp1 = _build_app(agora_dir=agora_dir, port=0)
+    body = {"type": "object", "required": ["msgtype"],
+            "properties": {"msgtype": {"const": "domain_x"}}}
+    # save_schema는 동기 쓰기(autocommit)라 flush 불필요
+    mcp1._agora_persistence.save_schema("domain_x", body, kind="bot-task", purpose="p")
+    # 재시작 — _build_app 재호출이 SQLite에서 schema를 복원해야 한다
+    mcp2 = _build_app(agora_dir=agora_dir, port=0)
+    assert mcp2._agora_schema_registry.get("domain_x") is not None

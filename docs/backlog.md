@@ -4,9 +4,9 @@
 
 ## spec 완료 — 구현 대기
 
-- **cc-agora bots** — [spec](superpowers/specs/2026-05-15-cc-agora-bots-design.md). pub/sub broker 모델, 봇 fire-and-forget + `agora.bot_emit`(결정 25, B2). 구현 전 할 일:
-  1. **spec 통독 검토** — B2 정리에 13개 이상의 Edit이 들어갔으므로, 누락·모순을 통독으로 한 번 확인.
-  2. **server-side 구현** — spec §8 의존성 트리(Schema Registry → BotRegistry → server 도구 → Dispatcher 라우팅) 순.
+- **cc-agora bots** — [spec](superpowers/specs/2026-05-15-cc-agora-bots-design.md). pub/sub broker 모델, 봇 fire-and-forget + `agora.bot_emit`(결정 25, B2).
+  - **Plan 1 (스키마 강제) 구현 완료** — [plan](superpowers/plans/2026-05-16-cc-agora-bots-1-schema.md). SchemaRegistry, `dispatch`/`broadcast` msgtype 강제, schema 카탈로그(`.agentagora/schemas.jsonl`), `agora.register_schema`/`schemas`/`schemas_list` 도구. 전체 테스트 171개 통과.
+  - **Plan 2 (봇 라우팅) 다음 작업** — BotRegistry, broker fan-out, `register_bot`/`bot_emit`/`bots` 도구. full TDD plan(`2026-05-16-cc-agora-bots-2-routing.md`)을 Plan 1 실제 코드 상태 기준으로 작성 후 진행.
 - **통신 매트릭스** — [spec](superpowers/specs/2026-05-15-comm-matrix-design.md). worker↔worker dispatch ACL (`.agentagora/comm-matrix.csv`). spec §8 구현 우선순위대로.
 
 ## 개선 항목
