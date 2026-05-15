@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import copy
 import datetime
+import json
+import shutil
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from jsonschema import Draft202012Validator
@@ -98,3 +101,41 @@ class SchemaRegistry:
     def list_all(self) -> list[SchemaEntry]:
         with self._lock:
             return list(self._entries.values())
+
+
+BUNDLED_DEFAULT_SCHEMAS = Path(__file__).with_name("default_schemas.jsonl")
+
+
+def parse_schema_lines(text: str) -> list[dict[str, Any]]:
+    """jsonl 텍스트를 {name, kind, purpose, body} dict 리스트로 파싱. 빈 줄 무시."""
+    out: list[dict[str, Any]] = []
+    for lineno, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"schemas.jsonl line {lineno}: invalid JSON ({e})") from e
+        for key in ("name", "kind", "purpose", "body"):
+            if key not in obj:
+                raise ValueError(f"schemas.jsonl line {lineno}: missing '{key}'")
+        out.append(obj)
+    return out
+
+
+def ensure_schemas_file(target: Path) -> Path:
+    """target이 없으면 repo 동봉 default_schemas.jsonl을 복사한다 (결정 21).
+    이미 있으면 손대지 않는다 (사용자 편집 보존)."""
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(BUNDLED_DEFAULT_SCHEMAS, target)
+    return target
+
+
+def load_schemas_into(registry: SchemaRegistry, path: Path) -> int:
+    """path의 jsonl을 registry에 등록한다. 등록된 schema 개수를 반환."""
+    parsed = parse_schema_lines(path.read_text("utf-8"))
+    for p in parsed:
+        registry.register(p["name"], p["body"], kind=p["kind"], purpose=p["purpose"])
+    return len(parsed)
