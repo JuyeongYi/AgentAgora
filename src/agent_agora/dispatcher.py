@@ -17,6 +17,7 @@ from agent_agora.envelope import (
     validate_payload_size,
     validate_priority,
 )
+from agent_agora.errors import AgoraError
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schemas import SchemaRegistry
@@ -163,6 +164,21 @@ class Dispatcher:
             return True
         return False
 
+    def _validate_payload(self, payload: Any) -> str:
+        """payload의 msgtype을 검증하고 schema validate. msgtype 문자열을 반환.
+        실패 시 AgoraError(payload_missing_msgtype | unknown_msgtype | schema_violation)."""
+        if not isinstance(payload, dict) or "msgtype" not in payload:
+            raise AgoraError("payload_missing_msgtype")
+        msgtype = payload["msgtype"]
+        validator = self._schema_registry.validator(msgtype)
+        if validator is None:
+            raise AgoraError("unknown_msgtype", msgtype=msgtype)
+        errors = sorted(validator.iter_errors(payload), key=lambda e: list(e.absolute_path))
+        if errors:
+            detail = "; ".join(e.message for e in errors[:3])
+            raise AgoraError("schema_violation", detail=detail)
+        return msgtype
+
     async def dispatch(
         self,
         source: str,
@@ -182,6 +198,7 @@ class Dispatcher:
         if not isinstance(target, str) or not target:
             raise ValueError("target must be a non-empty instance_id string")
         # validate payload + priority
+        self._validate_payload(payload)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority(priority)
         # registry validations
@@ -335,6 +352,7 @@ class Dispatcher:
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
+        self._validate_payload(payload)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority(priority)
         if reply_to is not None:
@@ -675,7 +693,11 @@ class Dispatcher:
             try:
                 await self.dispatch(
                     source=caller, target=o,
-                    payload={"type": "closing", "from": caller, "reason": reason},
+                    payload={
+                        "msgtype": "closing", "from": caller,
+                        "ts": _now_iso(),
+                        **({"reason": reason} if reason else {}),
+                    },
                     conversation_id=conv_id, closing=True,
                 )
             except (ValueError, NotRegisteredError):
