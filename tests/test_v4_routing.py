@@ -106,3 +106,29 @@ async def test_dispatch_to_worker_still_works_unchanged(setup):
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m="hi"))
     drained = await dispatcher.wait("Inst2", timeout_ms=200)
     assert len(drained) == 1 and drained[0]["delivered_as"] == "primary"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_fans_out_to_subscribing_bots(setup):
+    registry, dispatcher = setup
+    payload = _register_pytest_schema(dispatcher)
+    dispatcher._bot_registry.register(
+        session_id="bs1", instance_id="bot_a", description="d",
+        bot_mode="handler", subscribe_schemas=["pytest_run"])
+    res = await dispatcher.broadcast(source="Inst1", payload=payload)
+    bot_a = await dispatcher.wait("bot_a", timeout_ms=200)
+    assert len(bot_a) == 1 and bot_a[0]["delivered_as"] == "subscribed"
+    inst2 = await dispatcher.wait("Inst2", timeout_ms=200)
+    assert inst2[0]["delivered_as"] == "primary"
+    delivered = {d["instance_id"]: d["as"] for d in res["dispatched_to"]}
+    assert delivered["bot_a"] == "subscribed"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_observer_receives_cc(setup):
+    registry, dispatcher = setup
+    dispatcher._bot_registry.register(
+        session_id="bo1", instance_id="bot_obs", description="d", bot_mode="observer")
+    await dispatcher.broadcast(source="Inst1", payload=wf("공지"))
+    obs = await dispatcher.wait("bot_obs", timeout_ms=200)
+    assert len(obs) == 1 and obs[0]["delivered_as"] == "cc"

@@ -396,7 +396,7 @@ class Dispatcher:
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
-        self._validate_payload(payload)
+        msgtype = self._validate_payload(payload)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority(priority)
         if reply_to is not None:
@@ -406,6 +406,8 @@ class Dispatcher:
             info.instance_id for info in self._registry.list_instances()
             if info.instance_id != source
         ]
+        subscriber_bots = sorted(self._bot_registry.subscribers_of(msgtype))
+        observer_bots = sorted(self._bot_registry.observers())
         cmd_id = str(uuid.uuid4())
         now = _now_iso()
         conv_id, is_new_conv, substituted = self._resolve_conversation_id(conversation_id, in_reply_to)
@@ -452,6 +454,43 @@ class Dispatcher:
                 if expect_result:
                     self._in_flight.setdefault(source, {}).setdefault(cmd_id, set()).add(t)
 
+            # subscriber 봇 fan-out (delivered_as=subscribed)
+            for bot_id in subscriber_bots:
+                if len(self._queues[bot_id]) >= self._max_inbox_depth:
+                    skipped_full.append(bot_id)
+                    continue
+                s_env = make_envelope(
+                    cmd_id=cmd_id, source=source, target=bot_id, payload=payload,
+                    created_at=now, conversation_id=conv_id,
+                    expect_result=False, reply_to=reply_to, cc=None,
+                    delivered_as="subscribed", dispatch_kind="broadcast",
+                    in_reply_to=in_reply_to,
+                    closing=False, priority=priority, deadline_ts=deadline_ts,
+                )
+                envs.append(s_env)
+                self._queues[bot_id].append(s_env)
+                self._last_dispatch_to[bot_id] = now
+                self._wake(bot_id)
+            # observer 봇 fan-out (delivered_as=cc)
+            for bot_id in observer_bots:
+                if bot_id in subscriber_bots:
+                    continue
+                if len(self._queues[bot_id]) >= self._max_inbox_depth:
+                    skipped_full.append(bot_id)
+                    continue
+                o_env = make_envelope(
+                    cmd_id=cmd_id, source=source, target=bot_id, payload=payload,
+                    created_at=now, conversation_id=conv_id,
+                    expect_result=False, reply_to=reply_to, cc=None,
+                    delivered_as="cc", dispatch_kind="broadcast",
+                    in_reply_to=in_reply_to,
+                    closing=False, priority=priority, deadline_ts=deadline_ts,
+                )
+                envs.append(o_env)
+                self._queues[bot_id].append(o_env)
+                self._last_dispatch_to[bot_id] = now
+                self._wake(bot_id)
+            self._message_source[cmd_id] = source
             # closing → if broadcast announcement, close immediately
             if closing:
                 state["status"] = "closed"
@@ -477,7 +516,10 @@ class Dispatcher:
             "created_at": now,
             "conversation_id": conv_id,
             "conversation_id_substituted": substituted,
-            "dispatched_to": [{"instance_id": t, "as": "primary"} for t in deliverable],
+            "dispatched_to": [{"instance_id": t, "as": "primary"} for t in deliverable]
+                + [{"instance_id": b, "as": "subscribed"} for b in subscriber_bots]
+                + [{"instance_id": b, "as": "cc"} for b in observer_bots
+                   if b not in subscriber_bots],
             "target_inbox_depth_after": {t: len(self._queues[t]) for t in deliverable},
             "skipped_full": skipped_full,
         }
