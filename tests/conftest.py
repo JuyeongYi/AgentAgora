@@ -13,9 +13,21 @@ _PLUGIN_SCRIPTS = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
 if _PLUGIN_SCRIPTS.is_dir() and str(_PLUGIN_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_SCRIPTS))
 
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))
+
 
 @pytest.fixture
 def agora_dir(tmp_path: Path) -> Path:
     d = tmp_path / ".agentagora"
     d.mkdir()
     return d
+
+
+from _helpers import make_schema_registry  # noqa: E402
+
+
+@pytest.fixture
+def schema_registry():
+    return make_schema_registry()
