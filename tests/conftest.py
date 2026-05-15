@@ -31,3 +31,11 @@ from _helpers import make_schema_registry  # noqa: E402
 @pytest.fixture
 def schema_registry():
     return make_schema_registry()
+
+
+from agent_agora.bot_registry import BotRegistry  # noqa: E402
+
+
+@pytest.fixture
+def bot_registry():
+    return BotRegistry()

@@ -62,6 +62,7 @@ def _build_app(
     Note: this helper does NOT start AsyncWriteQueue's worker task — tests
     that only inspect tool registration don't need it.
     """
+    from agent_agora.bot_registry import BotRegistry
     from agent_agora.dispatcher import Dispatcher
     from agent_agora.persistence import AsyncWriteQueue, Persistence
     from agent_agora.registry import InstanceRegistry
@@ -71,6 +72,7 @@ def _build_app(
     _warn_legacy_schemas_json(agora_dir)
 
     instance_registry = InstanceRegistry()
+    bot_registry = BotRegistry()
     persistence = Persistence(db_path or (agora_dir / "agora.db"))
     persistence.migrate()
 
@@ -100,6 +102,7 @@ def _build_app(
         persistence=persistence,
         write_queue=write_queue,
         schema_registry=schema_registry,
+        bot_registry=bot_registry,
         default_timeout_ms=default_wait_timeout_ms,
         max_inbox_depth=max_inbox_depth if max_inbox_depth > 0 else 10**9,
         close_timeout_ms=close_timeout_ms,
@@ -110,12 +113,14 @@ def _build_app(
         agora_dir=agora_dir,
         instance_registry=instance_registry,
         schema_registry=schema_registry,
+        bot_registry=bot_registry,
         persistence=persistence,
         dispatcher=dispatcher,
         port=port,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
+    mcp._agora_bot_registry = bot_registry  # type: ignore[attr-defined]
     mcp._agora_dispatcher = dispatcher  # type: ignore[attr-defined]
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]

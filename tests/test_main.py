@@ -25,6 +25,15 @@ def test_no_timeout_and_default_wait_are_exclusive():
         parse_args(["--no-timeout", "--default-wait-timeout-ms", "5000"])
 
 
+def test_build_app_wires_bot_registry(tmp_path):
+    from agent_agora.__main__ import _build_app
+    agora_dir = tmp_path / ".agentagora"
+    agora_dir.mkdir()
+    mcp = _build_app(agora_dir=agora_dir, port=0)
+    bot_registry = mcp._agora_bot_registry
+    assert bot_registry.list_bots() == []
+
+
 def test_build_app_wires_schema_registry(tmp_path):
     from agent_agora.__main__ import _build_app
     agora_dir = tmp_path / ".agentagora"

@@ -17,6 +17,7 @@ from agent_agora.envelope import (
     validate_payload_size,
     validate_priority,
 )
+from agent_agora.bot_registry import BotRegistry
 from agent_agora.errors import AgoraError
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
@@ -68,6 +69,7 @@ class Dispatcher:
         write_queue: AsyncWriteQueue,
         *,
         schema_registry: SchemaRegistry,
+        bot_registry: BotRegistry,
         default_timeout_ms: int = 60000,
         max_inbox_depth: int = 100,
         close_timeout_ms: int = 300_000,
@@ -78,6 +80,7 @@ class Dispatcher:
         self._persistence = persistence
         self._write_queue = write_queue
         self._schema_registry = schema_registry
+        self._bot_registry = bot_registry
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
         self._close_timeout_ms = close_timeout_ms
@@ -94,6 +97,8 @@ class Dispatcher:
         # _in_flight[source][cmd_id] = set of primary replyers still pending
         self._in_flight: dict[str, dict[str, set[str]]] = {}
         self._last_dispatch_to: dict[str, str] = {}
+        # cmd_id -> source (bot_emit in_reply_to 라우팅용)
+        self._message_source: dict[str, str] = {}
 
     @property
     def default_timeout_ms(self) -> int:

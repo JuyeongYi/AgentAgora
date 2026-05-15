@@ -5,6 +5,7 @@ import datetime
 
 import pytest
 
+from agent_agora.bot_registry import BotRegistry
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
@@ -23,6 +24,7 @@ async def setup(tmp_path):
         dispatcher = Dispatcher(
             registry, persistence, queue,
             schema_registry=make_schema_registry(),
+            bot_registry=BotRegistry(),
             default_timeout_ms=500,
             close_timeout_ms=300_000,
             dead_session_timeout_ms=1_800_000,

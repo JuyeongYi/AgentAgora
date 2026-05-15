@@ -10,6 +10,7 @@ from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
 from mcp.types import ToolExecution
 
+from agent_agora.bot_registry import BotRegistry
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
 from agent_agora.errors import AgoraError
 from agent_agora.persistence import Persistence
@@ -49,6 +50,7 @@ def create_agora_app(
     agora_dir: Path,
     instance_registry: InstanceRegistry,
     schema_registry: SchemaRegistry,
+    bot_registry: BotRegistry,
     persistence: Persistence,
     dispatcher: Dispatcher,
     port: int,
