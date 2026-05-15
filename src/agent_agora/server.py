@@ -46,6 +46,14 @@ def _session_id_from_ctx(ctx: Context) -> str:
     raise RuntimeError("Cannot determine MCP session id from Context (no active streamable-HTTP request?)")
 
 
+def _session_is_bot(bot_registry: BotRegistry, session_id: str) -> bool:
+    try:
+        bot_registry.resolve_session(session_id)
+        return True
+    except NotRegisteredError:
+        return False
+
+
 def create_agora_app(
     agora_dir: Path,
     instance_registry: InstanceRegistry,
@@ -235,30 +243,52 @@ def create_agora_app(
             })
         return json.dumps({"instances": items}, ensure_ascii=False)
 
-    @mcp.tool(name="agora.find")
-    async def agora_find(query: str) -> str:
-        if not query:
-            return json.dumps({"instances": []})
-        q = query.lower()
+    @mcp.tool(name="agora.bots")
+    async def agora_bots() -> str:
+        """List registered bots only (결정 16 — workers excluded)."""
         items = [
             {
-                "instance_id": i.instance_id,
-                "role": i.role,
-                "description": i.description,
-                "registered_at": i.registered_at,
+                "instance_id": b.instance_id, "description": b.description,
+                "bot_mode": b.bot_mode,
+                "subscribe_schemas": list(b.subscribe_schemas),
+                "emit_schemas": list(b.emit_schemas),
+                "registered_at": b.registered_at, "last_seen_at": b.last_seen_at,
             }
-            for i in instance_registry.list_instances()
-            if q in i.instance_id.lower()
-            or q in i.role.lower()
-            or q in i.description.lower()
+            for b in bot_registry.list_bots()
         ]
-        return json.dumps({"instances": items}, ensure_ascii=False)
+        return json.dumps({"bots": items}, ensure_ascii=False)
+
+    @mcp.tool(name="agora.find")
+    async def agora_find(query: str) -> str:
+        """Search workers AND bots. Each result tagged kind: 'worker' | 'bot'."""
+        if not query:
+            return json.dumps({"results": []})
+        q = query.lower()
+        results = []
+        for i in instance_registry.list_instances():
+            if q in i.instance_id.lower() or q in i.role.lower() or q in i.description.lower():
+                results.append({
+                    "kind": "worker", "instance_id": i.instance_id,
+                    "role": i.role, "description": i.description,
+                    "registered_at": i.registered_at,
+                })
+        for b in bot_registry.list_bots():
+            hay = (b.instance_id + " " + b.description + " "
+                   + " ".join(b.subscribe_schemas)).lower()
+            if q in hay:
+                results.append({
+                    "kind": "bot", "instance_id": b.instance_id,
+                    "description": b.description, "bot_mode": b.bot_mode,
+                    "subscribe_schemas": list(b.subscribe_schemas),
+                    "registered_at": b.registered_at,
+                })
+        return json.dumps({"results": results}, ensure_ascii=False)
 
     @mcp.tool(name="agora.dispatch")
     async def agora_dispatch(
         ctx: Context,
-        target: str,
         payload: Any,
+        target: str | None = None,
         expect_result: bool = False,
         reply_to: str | None = None,
         cc: list[str] | None = None,
@@ -278,9 +308,13 @@ def create_agora_app(
         Caller MUST be registered.
         """
         try:
-            source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
+            session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
+        if _session_is_bot(bot_registry, session_id):
+            return json.dumps({"error": "[agora] 봇은 agora.dispatch를 호출할 수 없습니다. agora.bot_emit을 쓰세요."})
+        try:
+            source = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
         try:
@@ -310,9 +344,13 @@ def create_agora_app(
     ) -> str:
         """Fan-out to ALL other registered instances. closing=True → announcement (immediate close)."""
         try:
-            source = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
+            session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
+        if _session_is_bot(bot_registry, session_id):
+            return json.dumps({"error": "[agora] 봇은 agora.broadcast를 호출할 수 없습니다. agora.bot_emit을 쓰세요."})
+        try:
+            source = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
             return json.dumps({"error": str(e)})
         try:
@@ -366,6 +404,31 @@ def create_agora_app(
         except ValueError as e:
             return json.dumps({"error": str(e)})
 
+    @mcp.tool(name="agora.bot_emit")
+    async def agora_bot_emit(
+        ctx: Context,
+        payload: dict,
+        in_reply_to: str | None = None,
+    ) -> str:
+        """Emit a bot result. Bots only. in_reply_to 지정 시 원 caller로,
+        미지정 시 payload msgtype 구독 봇에 fan-out (결정 25)."""
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        try:
+            bot = bot_registry.resolve_session(session_id)
+        except NotRegisteredError:
+            return json.dumps({"error": str(AgoraError("bot_emit_not_a_bot"))})
+        try:
+            result = await dispatcher.bot_emit(
+                source=bot.instance_id, payload=payload, in_reply_to=in_reply_to)
+            return json.dumps({"status": "ok", **result}, ensure_ascii=False)
+        except (ValueError, NotRegisteredError) as e:
+            return json.dumps({"error": str(e)})
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
+
     @mcp.tool(name=_WAIT_TOOL_NAME)
     async def agora_wait(
         ctx: Context,
@@ -389,18 +452,23 @@ def create_agora_app(
         The caller MUST be registered before waiting.
         """
         try:
-            info = instance_registry.resolve_session(_session_id_from_ctx(ctx))
+            session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
-        except NotRegisteredError as e:
-            return json.dumps({"error": str(e)})
+        try:
+            who = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError:
+            try:
+                who = bot_registry.resolve_session(session_id).instance_id
+            except NotRegisteredError as e:
+                return json.dumps({"error": str(e)})
 
         if timeout_ms is None:
             timeout_ms = _header_int(ctx, "x-agora-wait-timeout-ms")
 
         try:
             commands = await dispatcher.wait(
-                instance_id=info.instance_id,
+                instance_id=who,
                 timeout_ms=timeout_ms,
                 from_sources=from_sources,
                 sort=sort,

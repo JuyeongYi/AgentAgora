@@ -119,3 +119,86 @@ async def test_register_bot_observer_mode(app):
         bot_mode="observer"))
     assert res["status"] == "ok"
     assert bot_registry.observers() == {"bot_obs"}
+
+
+@pytest.mark.asyncio
+async def test_bots_lists_only_bots_instances_lists_only_workers(app):
+    mcp, instance_registry, bot_registry, schema_reg = app
+    instance_registry.register("ws1", "worker_x")
+    schema_reg.register("x_task",
+        {"type": "object", "properties": {"msgtype": {"const": "x_task"}}},
+        kind="bot-task", purpose="p")
+    bot_registry.register(session_id="bs1", instance_id="bot_x", description="d",
+                          bot_mode="handler", subscribe_schemas=["x_task"])
+    bots = json.loads(await _tool(mcp, "agora.bots")())["bots"]
+    instances = json.loads(await _tool(mcp, "agora.instances")())["instances"]
+    assert {b["instance_id"] for b in bots} == {"bot_x"}
+    assert {i["instance_id"] for i in instances} == {"worker_x"}
+
+
+@pytest.mark.asyncio
+async def test_find_returns_workers_and_bots_with_kind(app):
+    mcp, instance_registry, bot_registry, schema_reg = app
+    instance_registry.register("ws1", "worker_build", description="build helper")
+    schema_reg.register("build_task",
+        {"type": "object", "properties": {"msgtype": {"const": "build_task"}}},
+        kind="bot-task", purpose="p")
+    bot_registry.register(session_id="bs1", instance_id="bot_build",
+                          description="build bot", bot_mode="handler",
+                          subscribe_schemas=["build_task"])
+    found = json.loads(await _tool(mcp, "agora.find")("build"))["results"]
+    kinds = {r["instance_id"]: r["kind"] for r in found}
+    assert kinds == {"worker_build": "worker", "bot_build": "bot"}
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_requires_bot_caller(app):
+    mcp, instance_registry, *_ = app
+    instance_registry.register("ws1", "worker_x")
+    res = json.loads(await _tool(mcp, "agora.bot_emit")(
+        FakeCtx("ws1"),
+        payload={"msgtype": "bot_reply", "from": "worker_x",
+                 "ts": "2026-01-01T00:00:00Z", "result": "x"}))
+    assert "봇만 호출" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_worker_dispatch_to_bot_then_bot_emit_chain(app):
+    mcp, instance_registry, bot_registry, schema_reg = app
+    schema_reg.register("ping_task",
+        {"type": "object", "required": ["msgtype"],
+         "properties": {"msgtype": {"const": "ping_task"}}, "additionalProperties": True},
+        kind="bot-task", purpose="p")
+    instance_registry.register("ws1", "worker_x")
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("bs1"), instance_id="bot_p", description="d",
+        bot_mode="handler", subscribe_schemas=["ping_task"])
+    # worker dispatches with target omitted -> schema-routed to bot
+    disp = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("ws1"), payload={"msgtype": "ping_task", "v": 1}))
+    assert disp["status"] == "ok"
+    got = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs1"), timeout_ms=200))
+    assert len(got["commands"]) == 1
+    cmd_id = got["commands"][0]["id"]
+    # bot emits a result back to the original caller
+    await _tool(mcp, "agora.bot_emit")(
+        FakeCtx("bs1"),
+        payload={"msgtype": "bot_reply", "from": "bot_p",
+                 "ts": "2026-01-01T00:00:00Z", "result": {"pong": 1}},
+        in_reply_to=cmd_id)
+    reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
+    assert reply["commands"][0]["payload"]["result"] == {"pong": 1}
+
+
+@pytest.mark.asyncio
+async def test_bot_cannot_call_dispatch(app):
+    mcp, _, bot_registry, schema_reg = app
+    schema_reg.register("t1",
+        {"type": "object", "properties": {"msgtype": {"const": "t1"}}},
+        kind="bot-task", purpose="p")
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("bs1"), instance_id="bot_d", description="d",
+        bot_mode="handler", subscribe_schemas=["t1"])
+    res = json.loads(await _tool(mcp, "agora.dispatch")(
+        FakeCtx("bs1"), payload={"msgtype": "t1"}, target="bot_d"))
+    assert "봇은" in res["error"] and "bot_emit" in res["error"]
