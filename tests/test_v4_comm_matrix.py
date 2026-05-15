@@ -237,3 +237,60 @@ async def test_register_comm_matrix_rejects_bad_shape(cm_app):
         csv_text="A,B,C\n0,1,1\n1,0,0"))
     assert "shape" in res["error"]
     assert comm_matrix.active is False  # rejected — not activated
+
+
+@pytest.mark.asyncio
+async def test_no_file_means_all_allow(tmp_path):
+    """comm-matrix.csv가 없으면 ACL 비활성 — 모든 worker↔worker dispatch 허용."""
+    from agent_agora.__main__ import _build_app
+    agora_dir = tmp_path / ".agentagora"
+    agora_dir.mkdir()
+    mcp = _build_app(agora_dir=agora_dir, port=0)
+    assert mcp._agora_comm_matrix.active is False
+
+
+@pytest.mark.asyncio
+async def test_startup_loads_comm_matrix_file(tmp_path):
+    """서버 시작 시 .agentagora/comm-matrix.csv가 있으면 ACL 활성."""
+    from agent_agora.__main__ import _build_app
+    agora_dir = tmp_path / ".agentagora"
+    agora_dir.mkdir()
+    (agora_dir / "comm-matrix.csv").write_text(_HUB, encoding="utf-8")
+    mcp = _build_app(agora_dir=agora_dir, port=0)
+    cm = mcp._agora_comm_matrix
+    assert cm.active is True
+    assert cm.is_allowed("Reviewer1", "Coder1") is False
+
+
+@pytest.mark.asyncio
+async def test_hub_and_spoke_enforced_end_to_end(cm_app):
+    """hub-and-spoke: 워커는 hub에만 회신, 워커끼리 직접 dispatch 차단."""
+    mcp, _, _ = cm_app
+    await _tool(mcp, "agora.register_comm_matrix")(csv_text=_HUB)
+    r1 = json.loads(await _tool(mcp, "agora.dispatch")(
+        _FakeCtx("sess-Reviewer1"), payload=tany(m=1), target="Tester1"))
+    assert "comm_denied" in r1["error"]
+    r2 = json.loads(await _tool(mcp, "agora.dispatch")(
+        _FakeCtx("sess-Reviewer1"), payload=tany(m=1), target="Inst1"))
+    assert r2["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_unregistered_worker_denied(cm_app):
+    """CSV 미등재 워커는 from/to 모두 거부 (strict whitelist)."""
+    mcp, _, _ = cm_app
+    await _tool(mcp, "agora.register_comm_matrix")(csv_text="Inst1,Coder1\n0,1\n1,0")
+    r = json.loads(await _tool(mcp, "agora.dispatch")(
+        _FakeCtx("sess-Inst1"), payload=tany(m=1), target="Reviewer1"))
+    assert "comm_denied" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_partial_filter_through_tool(cm_app):
+    """agora.broadcast도 매트릭스 필터 — denied 목록 보고."""
+    mcp, _, _ = cm_app
+    await _tool(mcp, "agora.register_comm_matrix")(csv_text=_HUB)
+    res = json.loads(await _tool(mcp, "agora.broadcast")(
+        _FakeCtx("sess-Coder1"), payload=tany(m=1)))
+    assert res["status"] == "ok"
+    assert sorted(res["denied"]) == ["Reviewer1", "Tester1"]
