@@ -84,3 +84,17 @@ class SchemaRegistry:
     def validator(self, name: str) -> Draft202012Validator | None:
         with self._lock:
             return self._validators.get(name)
+
+    def list_meta(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [
+                {
+                    "name": e.name, "kind": e.kind, "purpose": e.purpose,
+                    "registered_at": e.registered_at, "registered_by": e.registered_by,
+                }
+                for e in self._entries.values()
+            ]
+
+    def list_all(self) -> list[SchemaEntry]:
+        with self._lock:
+            return list(self._entries.values())

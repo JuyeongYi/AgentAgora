@@ -106,3 +106,21 @@ def test_register_rejects_malformed_schema_body():
     with pytest.raises(AgoraError) as ei:
         reg.register("bad_schema", bad, kind="conversation", purpose="p")
     assert ei.value.code == "schema_violation"
+
+
+def test_list_meta_exposes_kind_and_purpose_no_body():
+    reg = SchemaRegistry()
+    reg.register("wf", _WF_BODY, kind="conversation", purpose="자유 통신")
+    meta = reg.list_meta()
+    assert len(meta) == 1
+    assert meta[0]["name"] == "wf"
+    assert meta[0]["kind"] == "conversation"
+    assert meta[0]["purpose"] == "자유 통신"
+    assert "body" not in meta[0]
+
+
+def test_list_all_returns_entries_with_body():
+    reg = SchemaRegistry()
+    reg.register("wf", _WF_BODY, kind="conversation", purpose="p")
+    entries = reg.list_all()
+    assert len(entries) == 1 and entries[0].body == _WF_BODY
