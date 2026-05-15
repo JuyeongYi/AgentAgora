@@ -187,7 +187,7 @@ class Dispatcher:
     async def dispatch(
         self,
         source: str,
-        target: str,
+        target: str | None,
         payload: Any,
         expect_result: bool = False,
         reply_to: str | None = None,
@@ -200,36 +200,48 @@ class Dispatcher:
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
-        if not isinstance(target, str) or not target:
-            raise ValueError("target must be a non-empty instance_id string")
-        # validate payload + priority
-        self._validate_payload(payload)
+        if target is not None and (not isinstance(target, str) or not target):
+            raise ValueError("target must be a non-empty instance_id string or None")
+        msgtype = self._validate_payload(payload)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority(priority)
-        # registry validations
-        self._registry.resolve_instance_id(target)
+
+        # target resolution — worker or bot (결정 22: 봇 체커 우선)
+        target_kind: str | None = None  # "worker" | "bot"
+        if target is not None:
+            if self._bot_registry.is_bot(target):
+                target_kind = "bot"
+                bot_info = self._bot_registry.resolve_instance_id(target)
+                if bot_info.bot_mode == "handler" and msgtype not in bot_info.subscribe_schemas:
+                    raise AgoraError("unhandled_schema", bot=target, msgtype=msgtype)
+            else:
+                self._registry.resolve_instance_id(target)  # raises NotRegisteredError
+                target_kind = "worker"
         if reply_to is not None:
             self._registry.resolve_instance_id(reply_to)
         cc_list = list(cc) if cc else []
-        # cc cleanup: remove source & target
         cc_list = [c for c in cc_list if c != source and c != target]
         if reply_to is not None and reply_to in cc_list:
             raise ValueError("instance cannot be both reply_to and cc")
         for c in cc_list:
             self._registry.resolve_instance_id(c)
 
+        # 봇 체커 — msgtype 구독 handler 봇 + observer
+        subscriber_bots = sorted(self._bot_registry.subscribers_of(msgtype))
+        observer_bots = sorted(self._bot_registry.observers())
+        if target is None and not subscriber_bots:
+            raise AgoraError("no_route", msgtype=msgtype)
+
         cmd_id = str(uuid.uuid4())
         now = _now_iso()
-
         conv_id, is_new_conv, substituted = self._resolve_conversation_id(conversation_id, in_reply_to)
 
         async with self._lock:
             if self._closed:
                 raise DispatcherClosed("Dispatcher is closed")
-            # primary inbox depth check
-            if len(self._queues[target]) >= self._max_inbox_depth:
+            # primary inbox depth (target 있을 때만)
+            if target is not None and len(self._queues[target]) >= self._max_inbox_depth:
                 raise ValueError(f"inbox_full: {target} has {len(self._queues[target])} pending")
-            # cc inbox depth: split into deliverable + skipped_full
             cc_deliver: list[str] = []
             skipped_full: list[str] = []
             for c in cc_list:
@@ -238,12 +250,12 @@ class Dispatcher:
                 else:
                     cc_deliver.append(c)
 
-            # conversation state
             if is_new_conv or conv_id not in self._conversations:
                 self._conversations[conv_id] = self._new_conversation_state(kind="direct")
             state = self._conversations[conv_id]
             self._add_participant(state, source, role="primary", delivered=True)
-            self._add_participant(state, target, role="primary", delivered=True)
+            if target is not None:
+                self._add_participant(state, target, role="primary", delivered=True)
             for c in cc_deliver:
                 self._add_participant(state, c, role="cc", delivered=True)
             for c in skipped_full:
@@ -251,47 +263,78 @@ class Dispatcher:
             state["last_message_at"] = now
             state["message_count"] += 1
 
-            # primary envelope
-            env = make_envelope(
-                cmd_id=cmd_id, source=source, target=target, payload=payload,
-                created_at=now, conversation_id=conv_id,
-                expect_result=expect_result, reply_to=reply_to,
-                cc=(cc_list if cc_list else None),
-                delivered_as="primary", dispatch_kind="direct",
-                in_reply_to=in_reply_to,
-                closing=closing, priority=priority, deadline_ts=deadline_ts,
-            )
-            self._queues[target].append(env)
             self._conversation_of[cmd_id] = conv_id
-            self._last_dispatch_to[target] = now
-            self._wake(target)
+            self._message_source[cmd_id] = source
 
-            # in_flight tracking (primary only, expect_result=True)
-            if expect_result and target != source:
+            def _make(tid: str, das: str, *, er: bool, cl: bool) -> Envelope:
+                return make_envelope(
+                    cmd_id=cmd_id, source=source, target=tid, payload=payload,
+                    created_at=now, conversation_id=conv_id,
+                    expect_result=er, reply_to=reply_to,
+                    cc=(cc_list if cc_list else None),
+                    delivered_as=das, dispatch_kind="direct",
+                    in_reply_to=in_reply_to,
+                    closing=cl,
+                    priority=priority, deadline_ts=deadline_ts,
+                )
+
+            # primary envelope (target 있을 때만). primary/cc observer는 closing 플래그를
+            # 그대로 싣는다(기존 동작 유지). 봇 fan-out 봉투는 closing=False — 봇은
+            # conversation 종결 참가자가 아니다.
+            primary_env: Envelope | None = None
+            if target is not None:
+                primary_env = _make(target, "primary", er=expect_result, cl=closing)
+                self._queues[target].append(primary_env)
+                self._last_dispatch_to[target] = now
+                self._wake(target)
+
+            if expect_result and target is not None and target != source and target_kind != "bot":
                 self._in_flight.setdefault(source, {}).setdefault(cmd_id, set()).add(target)
 
-            # cc envelopes (delivered_as=cc)
+            # cc observer envelopes (명시 cc)
+            cc_envs: list[Envelope] = []
             for c in cc_deliver:
-                cc_env = make_envelope(
-                    cmd_id=cmd_id, source=source, target=c, payload=payload,
-                    created_at=now, conversation_id=conv_id,
-                    expect_result=expect_result, reply_to=reply_to,
-                    cc=(cc_list if cc_list else None),
-                    delivered_as="cc", dispatch_kind="direct",
-                    in_reply_to=in_reply_to,
-                    closing=closing, priority=priority, deadline_ts=deadline_ts,
-                )
-                self._queues[c].append(cc_env)
+                e = _make(c, "cc", er=expect_result, cl=closing)
+                cc_envs.append(e)
+                self._queues[c].append(e)
                 self._last_dispatch_to[c] = now
                 self._wake(c)
 
+            # subscriber 봇 fan-out (delivered_as=subscribed). target과 같은 봇은 중복 제외.
+            sub_envs: list[Envelope] = []
+            for bot_id in subscriber_bots:
+                if bot_id == target:
+                    continue
+                if len(self._queues[bot_id]) >= self._max_inbox_depth:
+                    skipped_full.append(bot_id)
+                    continue
+                e = _make(bot_id, "subscribed", er=False, cl=False)
+                sub_envs.append(e)
+                self._queues[bot_id].append(e)
+                self._add_participant(state, bot_id, role="cc", delivered=True)
+                self._last_dispatch_to[bot_id] = now
+                self._wake(bot_id)
+
+            # observer 봇 fan-out (delivered_as=cc)
+            obs_envs: list[Envelope] = []
+            for bot_id in observer_bots:
+                if bot_id == target or bot_id in subscriber_bots:
+                    continue
+                if len(self._queues[bot_id]) >= self._max_inbox_depth:
+                    skipped_full.append(bot_id)
+                    continue
+                e = _make(bot_id, "cc", er=False, cl=False)
+                obs_envs.append(e)
+                self._queues[bot_id].append(e)
+                self._add_participant(state, bot_id, role="cc", delivered=True)
+                self._last_dispatch_to[bot_id] = now
+                self._wake(bot_id)
+
             # reply correlation: decrement in_flight for original source
             if in_reply_to is not None:
-                # find who originally sent the message we're replying to
                 original_conv = self._conversation_of.get(in_reply_to)
                 if original_conv is not None:
-                    # decrement in_flight of original_target whose pending set contained source
-                    for original_sender, pending_map in self._in_flight.items():
+                    for _original_sender, pending_map in self._in_flight.items():
                         s = pending_map.get(in_reply_to)
                         if s is not None and source in s:
                             s.discard(source)
@@ -306,40 +349,36 @@ class Dispatcher:
                     state["status"] = "half_closed"
                 self._maybe_close(conv_id, state)
 
-            # SQLite write (single transaction)
             await self._persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
-                env=env, cc_envs=[
-                    make_envelope(
-                        cmd_id=cmd_id, source=source, target=c, payload=payload,
-                        created_at=now, conversation_id=conv_id,
-                        expect_result=expect_result, reply_to=reply_to,
-                        cc=(cc_list if cc_list else None),
-                        delivered_as="cc", dispatch_kind="direct",
-                        in_reply_to=in_reply_to,
-                        closing=closing, priority=priority, deadline_ts=deadline_ts,
-                    ) for c in cc_deliver
-                ],
+                env=primary_env, cc_envs=cc_envs + sub_envs + obs_envs,
                 skipped_full=skipped_full,
-                payload_bytes=payload_bytes,
-                priority_rank=priority_rank,
+                payload_bytes=payload_bytes, priority_rank=priority_rank,
             )
 
+            _to = _colored(target) if target is not None else "(schema-routed)"
             print(
-                f"[agora] {_colored(source)} -> {_colored(target)}"
+                f"[agora] {_colored(source)} -> {_to}"
                 + (f" (cc: {','.join(_colored(c) for c in cc_deliver)})" if cc_deliver else "")
+                + (f" (bots: {','.join(_colored(b) for b in subscriber_bots)})" if subscriber_bots else "")
                 + f" : {_fmt_payload(payload)}",
                 flush=True,
             )
 
+        dispatched_to: list[dict[str, str]] = []
+        if target is not None:
+            dispatched_to.append({"instance_id": target, "as": "primary"})
+        dispatched_to += [{"instance_id": c, "as": "cc"} for c in cc_deliver]
+        dispatched_to += [{"instance_id": b, "as": "subscribed"}
+                          for b in subscriber_bots if b != target]
         return {
             "command_id": cmd_id,
             "created_at": now,
             "conversation_id": conv_id,
             "conversation_id_substituted": substituted,
-            "dispatched_to": [{"instance_id": target, "as": "primary"}]
-                + [{"instance_id": c, "as": "cc"} for c in cc_deliver],
-            "target_inbox_depth_after": {target: len(self._queues[target])},
+            "dispatched_to": dispatched_to,
+            "target_inbox_depth_after": (
+                {target: len(self._queues[target])} if target is not None else {}),
             "skipped_full": skipped_full,
         }
 
@@ -515,7 +554,9 @@ class Dispatcher:
     ) -> list[dict[str, Any]]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
-        self._registry.resolve_instance_id(instance_id)
+        # 봇 instance_id는 bot_registry에서, 워커는 worker registry에서 검증 (결정 22)
+        if not self._bot_registry.is_bot(instance_id):
+            self._registry.resolve_instance_id(instance_id)
         effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
         loop = asyncio.get_running_loop()
 
@@ -559,7 +600,10 @@ class Dispatcher:
                 async with self._lock:
                     if fut in self._waiters.get(instance_id, []):
                         self._waiters[instance_id].remove(fut)
-                self._registry.touch_last_seen(instance_id)
+                if self._bot_registry.is_bot(instance_id):
+                    self._bot_registry.touch_last_seen(instance_id)
+                else:
+                    self._registry.touch_last_seen(instance_id)
                 return []
             async with self._lock:
                 drained = _drain_matching()
@@ -571,7 +615,10 @@ class Dispatcher:
             drained.sort(key=lambda e: (e.created_at, e.id))
 
         # last_seen + wait_age_ms
-        self._registry.touch_last_seen(instance_id)
+        if self._bot_registry.is_bot(instance_id):
+            self._bot_registry.touch_last_seen(instance_id)
+        else:
+            self._registry.touch_last_seen(instance_id)
         now_dt = datetime.datetime.now(datetime.timezone.utc)
         results: list[dict[str, Any]] = []
         for e in drained:
@@ -824,6 +871,7 @@ class Dispatcher:
         stale_cmds = [cid for cid, conv in self._conversation_of.items() if conv in victim_ids]
         for cid in stale_cmds:
             self._conversation_of.pop(cid, None)
+            self._message_source.pop(cid, None)
         return deleted
 
     # ------------------------------------------------------------------------
