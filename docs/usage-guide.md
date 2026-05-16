@@ -223,8 +223,10 @@ dispatch 불가.
 적용하는 두 방법:
 
 1. **startup 로드** — `<dir>/.agentagora/comm-matrix.csv`에 두면 서버 기동 때 읽는다.
-2. **런타임 교체** — `agora.register_comm_matrix(csv_text=...)`로 서버 전역 ACL을
-   교체한다.
+2. **런타임 교체** — 운영자 전용 엔드포인트 `POST /admin/comm-matrix`(바디에 CSV)로
+   재기동 없이 교체한다. 서버를 `AGORA_ADMIN_TOKEN` 환경변수와 함께 띄워야 활성화되고,
+   요청엔 `Authorization: Bearer <token>` 헤더가 필요하다. 워커가 호출하던 옛
+   `agora.register_comm_matrix` 도구는 제거됐다 — ACL은 운영자만 바꾼다.
 
 매트릭스가 금지한 dispatch는 `comm_denied` 에러로 거부되고, broadcast에서는
 금지 대상이 fan-out에서 빠진 채 `denied` 목록으로 보고된다. 봇으로 가는
