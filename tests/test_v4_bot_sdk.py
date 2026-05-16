@@ -192,3 +192,31 @@ async def test_lifecycle_unregisters_even_on_exception(monkeypatch):
             raise RuntimeError("boom")
     # 예외 종료에도 unregister는 세션이 닫히기 전에 실행된다
     assert "agora.unregister" in [n for n, _ in session.calls]
+
+
+# ── run() — bounded wait heartbeat ──────────────────────────────────────────
+
+class _StopLoop(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_run_uses_bounded_wait_timeout():
+    """run()의 wait 루프는 WAIT_TIMEOUT_MS로 bounded 호출해야 한다 (무한 wait 금지)."""
+    seen_timeouts: list = []
+
+    class _WaitSession(FakeSession):
+        async def call_tool(self, name, args):
+            if name == "agora.wait":
+                seen_timeouts.append(args.get("timeout_ms"))
+                if len(seen_timeouts) >= 2:
+                    raise _StopLoop()  # 루프 탈출
+                return _FakeResult({"commands": []})
+            return await super().call_tool(name, args)
+
+    bot = _ReturnBot()
+    bot._session = _WaitSession()
+    with pytest.raises(_StopLoop):
+        await bot.run()
+    assert seen_timeouts
+    assert all(t == _ReturnBot.WAIT_TIMEOUT_MS for t in seen_timeouts)
