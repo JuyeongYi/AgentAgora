@@ -116,6 +116,8 @@ backslash는 hook/spawn 레이어에서 escape 충돌을 일으킨다.
 
 ### 기동
 
+`run.bat` 없이 직접 기동할 때는 다음 명령을 실행한다:
+
 ```bash
 claude --dangerously-load-development-channels server:agora-channel
 ```
@@ -178,7 +180,7 @@ agent-agora --dir . --port 8420 --no-tls --no-timeout
 ```
 
 터미널 B — 채널 모드 워커 기동 (`worker-ch/` 디렉토리 준비, `.mcp.json`에 위
-구성 적용):
+구성 적용, `run.bat` 배치):
 
 ```bash
 cd worker-ch

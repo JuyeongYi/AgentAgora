@@ -47,7 +47,7 @@ claude
 # 3. 새 터미널에서 워커 기동 (채널 모드 — run.bat이 --dangerously-load-development-channels 적용)
 cd C:/AgoraTeam/Coder1
 run.bat
-# 워커가 채널 모드로 기동 — agora-channel 어댑터가 서버 인박스를 감시하다
+# 워커가 채널 모드로 기동 — agora-channel 어댑터가 서버 인박스를 감시하며,
 # 메시지 도착 시 claude/channel push로 워커 턴을 깨운다
 
 # 4. orchestrator로 돌아가 작업 보내기
@@ -92,7 +92,7 @@ manifest 일괄 셋업:
 
 ### `--launch=auto`가 안 된다
 
-Windows Terminal `wt.exe`가 PATH에 없으면 자동으로 `--launch=manual`로 강등되고 stderr에 안내가 출력된다. macOS·Linux는 `--launch=manual`만 사용하거나, 직접 새 터미널에서 `cd <id> && claude`를 실행한다.
+Windows Terminal `wt.exe`가 PATH에 없으면 자동으로 `--launch=manual`로 강등되고 stderr에 안내가 출력된다. macOS·Linux는 `--launch=manual`만 사용하거나, 직접 새 터미널에서 `cd <id> && claude --dangerously-load-development-channels server:agora-channel`를 실행한다.
 
 ### "role X는 roles.json에 정의되지 않음" 경고가 떴다
 

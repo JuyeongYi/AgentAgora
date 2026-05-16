@@ -17,7 +17,7 @@ cc-agora 워커 인스턴스 한 명을 셋업한다. spec §4.2.
 
 ## 동작
 
-1. plugin root는 `<repo>/plugin/cc-agora/`로 가정한다. 채널 모드 묶음(.mcp.json 2-서버, run.bat)을 생성한다. Bash 도구로 `python <plugin-root>/scripts/spawn.py $ARGUMENTS`를 실행한다. plugin root 경로는 호출 시점에 모델이 절대경로 또는 forward-slash 상대경로로 구성한다.
+1. plugin root는 `<repo>/plugin/cc-agora/`로 가정한다. Bash 도구로 `python <plugin-root>/scripts/spawn.py $ARGUMENTS`를 실행한다. plugin root 경로는 호출 시점에 모델이 절대경로 또는 forward-slash 상대경로로 구성한다.
 2. 스크립트가 `config/roles.json` 조회 → preset 결정. 미정의 role은 §4.1 처리(디렉토리·CLAUDE.md·.mcp.json·run.bat은 생성, stderr 경고).
 3. 디렉토리 디폴트 결정 순서는 spec §4.2 step 2를 따른다 — `--dir` → `AGORA_HOME` → cwd가 워커 디렉토리면 부모, 그 외에는 cwd 자체(경고).
 4. 3개 파일: `CLAUDE.md`, `.mcp.json`(HTTP + agora-channel stdio), `run.bat`을 생성한다.
