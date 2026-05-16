@@ -169,7 +169,7 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 
 - step 3: Coder1 터미널에 `<channel source="agora-channel">` 태그와 함께 워커 턴이 시작된다.
 - 워커가 `agora.flush`를 호출해 메시지를 드레인하고, `type=reply` payload로 응답한다.
-- orchestrator 다음 wait에서 reply 수신.
+- orchestrator 다음 `agora.flush`에서 reply 수신.
 
 **실패 진단**:
 
@@ -196,7 +196,7 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
    /cc-agora:agora-close conv-test-01 --reason="테스트 종료."
    ```
 
-4. Coder1 터미널에서 다음 wait 결과에 `type=closing` payload가 들어오는지 본다.
+4. Coder1 터미널에서 다음 `agora.flush` 결과에 `type=closing` payload가 들어오는지 본다.
 
 5. `agora.conversation_status(conv-test-01)`를 호출해 상태 확인.
 
