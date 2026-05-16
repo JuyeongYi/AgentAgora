@@ -992,6 +992,23 @@ class Dispatcher:
                 removed.append(info.instance_id)
         return removed
 
+    def dead_bot_sweep(self, now: datetime.datetime | None = None) -> list[str]:
+        """Unregister bots whose last_seen_at (or registered_at, if the bot has
+        never returned from a wait) exceeded dead_session_timeout. Detaches the
+        bot's schema subscriptions so routing immediately stops targeting it.
+        Returns swept bot instance_ids. Queued messages are left untouched —
+        identical to dead_session_sweep for workers."""
+        if now is None:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff = now - datetime.timedelta(milliseconds=self._dead_session_timeout_ms)
+        removed: list[str] = []
+        for bot in self._bot_registry.list_bots():
+            marker = bot.last_seen_at or bot.registered_at
+            if datetime.datetime.fromisoformat(marker) < cutoff:
+                self._bot_registry.unregister_session(bot.session_id)
+                removed.append(bot.instance_id)
+        return removed
+
     def message_gc_sweep(self, now: datetime.datetime | None = None) -> int:
         """Delete messages of closed conversations older than gc_retention_days.
         Conversations meta is preserved; in-memory caches (Inst4 우려4) are evicted.
