@@ -367,3 +367,47 @@ async def test_broadcast_with_zero_other_registered_instances_returns_empty_disp
         res = await dispatcher.broadcast(source="Inst1", payload=tany(hi=True))
         assert res["dispatched_to"] == []
         assert "conversation_id" in res
+
+
+def _make_dispatcher(registry, persistence, queue):
+    return Dispatcher(
+        registry, persistence, queue,
+        schema_registry=make_schema_registry(),
+        bot_registry=BotRegistry(),
+        comm_matrix=CommMatrix(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_drop_inflight_on_restart_marks_all_undrained_and_restore_finds_nothing(tmp_path):
+    """drop_inflight_on_restart() 후 동일 DB로 restore_from_persistence()를 해도
+    _queues에 복원될 메시지가 없어야 한다 — 클린 스타트 검증."""
+    db_path = tmp_path / "agora.db"
+    registry = InstanceRegistry()
+    registry.register("s1", "Inst1")
+    registry.register("s2", "Inst2")
+
+    # ── 1. 최초 Dispatcher: 메시지 dispatch → undrained 행 생성 ──────────────
+    persistence1 = Persistence(db_path)
+    persistence1.migrate()
+    queue1 = AsyncWriteQueue(persistence1)
+    async with queue1:
+        dispatcher1 = _make_dispatcher(registry, persistence1, queue1)
+        await dispatcher1.dispatch(source="Inst1", target="Inst2", payload=tany(m="hello"))
+    # queue1 컨텍스트 종료 → 백그라운드 쓰기 완료 보장
+
+    # ── 2. 재시작 시뮬레이션: 새 Dispatcher + drop_inflight_on_restart() ─────
+    persistence2 = Persistence(db_path)
+    queue2 = AsyncWriteQueue(persistence2)
+    async with queue2:
+        dispatcher2 = _make_dispatcher(registry, persistence2, queue2)
+        dispatcher2.drop_inflight_on_restart()
+
+    # ── 3. 또 다른 새 Dispatcher + restore_from_persistence() → 큐가 비어야 함 ─
+    persistence3 = Persistence(db_path)
+    queue3 = AsyncWriteQueue(persistence3)
+    async with queue3:
+        dispatcher3 = _make_dispatcher(registry, persistence3, queue3)
+        dispatcher3.restore_from_persistence()
+        # _queues는 collections.defaultdict(deque) — "Inst2" 큐가 비어 있어야 함
+        assert len(dispatcher3._queues["Inst2"]) == 0

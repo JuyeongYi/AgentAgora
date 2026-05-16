@@ -991,6 +991,20 @@ class Dispatcher:
         for source, m in pending.items():
             self._in_flight.setdefault(source, {}).update(m)
 
+    def drop_inflight_on_restart(self) -> None:
+        """클린 스타트 — 이전 실행의 미배달(undrained) 메시지를 전부 drop
+        마킹한다. restore_from_persistence와 달리 _queues에 싣지 않는다.
+        대화·메시지 행 자체는 audit용으로 남는다."""
+        now = _now_iso()
+        self._persistence.conn.execute(
+            """
+            UPDATE messages
+            SET drained_at = ?, drop_reason = 'server_restart'
+            WHERE drained_at IS NULL
+            """,
+            (now,),
+        )
+
     # ------------------------- M2: background sweeps -------------------------
 
     def close_ttl_sweep(self, now: datetime.datetime | None = None) -> list[str]:
