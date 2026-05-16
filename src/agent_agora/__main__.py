@@ -207,12 +207,13 @@ async def run_server(args: argparse.Namespace) -> None:
 
 
 async def _sweep_loop_60s(dispatcher) -> None:
-    """60-second close TTL + dead-session sweeps."""
+    """60-second close TTL + dead-session + dead-bot sweeps."""
     while True:
         await asyncio.sleep(60)
         try:
             dispatcher.close_ttl_sweep()
             dispatcher.dead_session_sweep()
+            dispatcher.dead_bot_sweep()
         except Exception as e:
             print(f"[agora] sweep error: {e}", file=sys.stderr)
 
