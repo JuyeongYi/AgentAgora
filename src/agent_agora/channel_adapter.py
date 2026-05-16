@@ -24,8 +24,10 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCNotification
 
 CHANNEL_INSTRUCTIONS = (
-    "AgentAgora 인박스 알림이 <channel source=\"agora-channel\"> 태그로 도착하면, "
-    "agora.wait 도구로 메시지를 수신해 처리하라. 답신은 agora.dispatch를 쓴다."
+    "AgentAgora channel adapter. When an inbox notification arrives as a "
+    "<channel source=\"agora-channel\"> tag, call agora.wait(timeout_ms=0) to "
+    "drain your inbox (non-blocking — the channel already woke you), handle the "
+    "messages, and reply with agora.dispatch. Do not enter a long blocking wait."
 )
 
 # 브로커 재연결 backoff (초) — 1, 2, 4, ... 30 cap.
@@ -55,8 +57,11 @@ def format_channel_notification(
     content는 <channel> 태그 본문, meta의 각 키는 태그 속성이 된다.
     meta 키는 식별자만(letters/digits/underscore), 값은 문자열이어야 한다."""
     src = ", ".join(sources) if sources else "(unknown)"
-    content = (f"AgentAgora 인박스에 {pending}건 도착 (from: {src}). "
-               f"agora.wait로 메시지를 수신해 처리하라.")
+    content = (f"New messages in your AgentAgora inbox (from: {src}). "
+               f"Call agora.wait(timeout_ms=0) once to drain everything currently "
+               f"queued and process all of it, then reply with agora.dispatch. "
+               f"Do not block on a long wait — the channel wakes you again when "
+               f"more arrives.")
     meta = {
         "instance_id": instance_id,
         "pending": str(pending),
