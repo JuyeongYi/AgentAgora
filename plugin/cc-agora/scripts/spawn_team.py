@@ -21,7 +21,6 @@ from pathlib import Path
 
 from spawn import (
     DEFAULT_SERVER_URL,
-    DEFAULT_WAIT_TIMEOUT_MS,
     _plugin_root,
     _resolve_target_dir,
     do_spawn,
@@ -145,12 +144,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SERVER_URL,
         help=f"MCP server URL (default: {DEFAULT_SERVER_URL}).",
     )
-    p.add_argument(
-        "--wait-timeout-ms",
-        type=int,
-        default=DEFAULT_WAIT_TIMEOUT_MS,
-        help="X-Agora-Wait-Timeout-Ms header value (default: 0).",
-    )
     return p
 
 
@@ -207,7 +200,6 @@ def main(argv: list[str] | None = None) -> int:
             target_dir=target_dir,
             force=args.force,
             server_url=args.server_url,
-            wait_timeout_ms=args.wait_timeout_ms,
             plugin_root=plugin_root,
         )
         if rc != 0:
