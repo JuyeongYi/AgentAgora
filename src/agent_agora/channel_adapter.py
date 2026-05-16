@@ -82,6 +82,10 @@ async def watch_loop(
     폴링하다 wait_notify로 복귀한다 — 워커가 드레인하기 전 중복 알림 방지."""
     while True:
         signal = await wait_notify(instance_id, wait_timeout_ms)
+        if isinstance(signal, dict) and "error" in signal:
+            # 브로커 도구 에러 — 즉시 재시도하면 busy-loop. 잠깐 쉬고 재시도.
+            await asyncio.sleep(drain_poll_s)
+            continue
         pending = signal.get("pending", 0)
         if pending <= 0:
             continue                          # timeout heartbeat — emit 안 함

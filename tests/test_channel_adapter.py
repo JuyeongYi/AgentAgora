@@ -96,3 +96,53 @@ async def test_watch_loop_skips_emit_on_timeout():
         await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
                          wait_timeout_ms=1000, drain_poll_s=0)
     assert emits == []
+
+
+@pytest.mark.asyncio
+async def test_watch_loop_refires_on_second_rising_edge():
+    """드레인 감지 후 다음 rising edge에 다시 emit한다 — 두 번째 발화 확인."""
+    emits: list = []
+    wait_calls = [0]
+
+    async def fake_wait_notify(iid, timeout_ms):
+        wait_calls[0] += 1
+        if wait_calls[0] <= 2:                       # 두 번의 rising edge
+            return {"instance_id": iid, "pending": 1, "sources": ["PM"]}
+        raise _Stop()                                # 3번째 wait_notify → 루프 종료
+
+    # 두 번의 emit 각각 뒤에 워커가 드레인(peek 0)
+    peek_seq = [1, 0, 1, 0]
+    async def fake_peek(iid):
+        return peek_seq.pop(0)
+
+    async def fake_emit(content, meta):
+        emits.append((content, meta))
+
+    with pytest.raises(_Stop):
+        await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
+                         wait_timeout_ms=1000, drain_poll_s=0)
+    assert len(emits) == 2                           # 두 rising edge → 두 emit
+
+
+@pytest.mark.asyncio
+async def test_watch_loop_backs_off_on_error_signal():
+    """브로커 에러 신호({error:...})면 즉시 재시도하지 않고 backoff한다."""
+    emits: list = []
+    calls = [0]
+
+    async def fake_wait_notify(iid, timeout_ms):
+        calls[0] += 1
+        if calls[0] == 1:
+            return {"error": "broker tool failed"}    # 에러 신호
+        raise _Stop()
+
+    async def fake_peek(iid):
+        return 0
+
+    async def fake_emit(content, meta):
+        emits.append((content, meta))
+
+    with pytest.raises(_Stop):
+        await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
+                         wait_timeout_ms=1000, drain_poll_s=0)
+    assert emits == []                               # 에러 신호엔 emit 안 함
