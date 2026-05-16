@@ -32,6 +32,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     timeout_group = parser.add_mutually_exclusive_group()
     timeout_group.add_argument("--default-wait-timeout-ms", type=int, default=60000)
     timeout_group.add_argument("--no-timeout", action="store_true")
+    parser.add_argument(
+        "--restore",
+        action="store_true",
+        help="재시작 시 이전 미배달 메시지를 인박스로 복구한다 "
+             "(크래시 내구성). 미지정 시 클린 스타트 — 미배달 메시지는 drop된다.",
+    )
     return parser.parse_args(argv)
 
 
@@ -174,7 +180,10 @@ async def run_server(args: argparse.Namespace) -> None:
     print(f"  Cert     : {cert_path if cert_path else '(none -- HTTP mode, localhost only)'}")
 
     async with write_queue:
-        dispatcher.restore_from_persistence()
+        if args.restore:
+            dispatcher.restore_from_persistence()
+        else:
+            dispatcher.drop_inflight_on_restart()
 
         # M2 background tasks
         sweep_task = asyncio.create_task(_sweep_loop_60s(dispatcher))
