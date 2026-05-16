@@ -127,7 +127,6 @@ plugin/cc-agora/
     spawn_team.py            # /agora-spawn-team 본체 (manifest 검증 + sequential abort)
   templates/
     mcp.json.template        # 2-서버 템플릿 (agentagora HTTP + agora-channel stdio)
-    run.bat.template         # --dangerously-load-development-channels 기동 스크립트
     team.json.example
     presets/
       orchestrator.md
