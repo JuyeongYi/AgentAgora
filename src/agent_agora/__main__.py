@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -181,6 +182,12 @@ async def run_server(args: argparse.Namespace) -> None:
 
         starlette_app = mcp.streamable_http_app()
         starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
+        from agent_agora.admin_routes import maybe_register
+        if maybe_register(
+            starlette_app, mcp._agora_comm_matrix,  # type: ignore[attr-defined]
+            os.environ.get("AGORA_ADMIN_TOKEN"),
+        ):
+            print("  Admin    : POST/GET /admin/comm-matrix (AGORA_ADMIN_TOKEN set)")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
