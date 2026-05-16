@@ -794,6 +794,47 @@ class Dispatcher:
 
         return results
 
+    async def wait_notify(
+        self, instance_id: str, timeout_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Non-destructive long-poll. Block until instance_id's queue is
+        non-empty (or timeout), then return {instance_id, pending, sources}
+        WITHOUT draining. Used by the channel adapter to detect inbound.
+        Advisory like peek — instance_id need not be registered (an empty
+        queue just blocks, absorbing the worker/adapter startup race)."""
+        if self._closed:
+            raise DispatcherClosed("Dispatcher is closed")
+        effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
+        loop = asyncio.get_running_loop()
+
+        async with self._lock:
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
+            fut: asyncio.Future | None = None
+            if not self._queues.get(instance_id):
+                fut = loop.create_future()
+                self._waiters[instance_id].append(fut)
+
+        if fut is not None:
+            try:
+                if effective <= 0:
+                    await fut
+                else:
+                    await asyncio.wait_for(fut, timeout=effective / 1000.0)
+            except asyncio.TimeoutError:
+                async with self._lock:
+                    if fut in self._waiters.get(instance_id, []):
+                        self._waiters[instance_id].remove(fut)
+
+        self._touch_last_seen(instance_id)
+        async with self._lock:
+            queue = self._queues.get(instance_id, [])
+            return {
+                "instance_id": instance_id,
+                "pending": len(queue),
+                "sources": sorted({e.source for e in queue}),
+            }
+
     def in_flight_count(self, instance_id: str) -> int:
         """Number of expect_result=True messages sent TO instance_id that have not been replied."""
         count = 0
