@@ -27,7 +27,7 @@ from agent_agora.schemas import SchemaRegistry
 
 def _fmt_payload(payload: Any) -> str:
     try:
-        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(payload, ensure_ascii=False, indent=2)
     except (TypeError, ValueError):
         return repr(payload)
 

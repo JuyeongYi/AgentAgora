@@ -411,3 +411,20 @@ async def test_drop_inflight_on_restart_marks_all_undrained_and_restore_finds_no
         dispatcher3.restore_from_persistence()
         # _queues는 collections.defaultdict(deque) — "Inst2" 큐가 비어 있어야 함
         assert len(dispatcher3._queues["Inst2"]) == 0
+
+
+# ----------------------- _fmt_payload tests -----------------------
+
+from agent_agora.dispatcher import _fmt_payload
+
+
+def test_fmt_payload_is_pretty_printed():
+    out = _fmt_payload({"msgtype": "x", "from": "A", "n": 1})
+    assert "\n" in out                       # 멀티라인 (indent)
+    assert '"msgtype": "x"' in out            # ": " 구분자 — 압축 아님
+    assert '"n": 1' in out
+
+
+def test_fmt_payload_non_serializable_falls_back_to_repr():
+    out = _fmt_payload(object())              # JSON 직렬화 불가
+    assert "object" in out                    # repr fallback
