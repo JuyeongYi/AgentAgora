@@ -5,7 +5,7 @@ spawn.py for each entry. On the first failure, remaining entries are skipped
 and reported (sequential abort, no rollback).
 
 ``--launch=auto`` opens a Windows Terminal tab per worker (``wt.exe -w 0
-new-tab -d <abs_path> claude``). Falls back to manual messaging if wt.exe is
+new-tab -d <abs_path> run.bat``). Falls back to manual messaging if wt.exe is
 missing.
 """
 from __future__ import annotations
@@ -102,17 +102,17 @@ def _validate_manifest(data: object) -> tuple[list[dict], list[str]]:
 
 
 def _launch_auto(worker_dir: Path, *, stderr=sys.stderr) -> bool:
-    """Open a Windows Terminal tab running ``claude`` in worker_dir.
+    """Open a Windows Terminal tab running ``run.bat`` in worker_dir.
 
     Returns True on success (wt.exe spawn launched), False if wt.exe is absent.
-    Spec §4.8 step 5: ``wt.exe -w 0 new-tab -d <abs> claude``.
+    Spec §4.8 step 5: ``wt.exe -w 0 new-tab -d <abs> run.bat``.
     """
     wt = shutil.which("wt.exe")
     if wt is None:
         return False
     abs_path = worker_dir.resolve().as_posix()
     # WHY -w 0: route to the current Windows Terminal window; spec §4.8 step 5.
-    subprocess.Popen([wt, "-w", "0", "new-tab", "-d", abs_path, "claude"])
+    subprocess.Popen([wt, "-w", "0", "new-tab", "-d", abs_path, "run.bat"])
     return True
 
 
@@ -126,7 +126,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--dir",
         dest="dir_override",
         default=None,
-        help="Parent directory under which to create each <id>/. See §4.2 cascade.",
+        help="Parent directory under which to create each <id>/.",
     )
     p.add_argument(
         "--launch",
@@ -210,8 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         worker_dir = target_dir / entry["id"]
         if launch_mode == "manual":
             print(
-                f"[cc-agora] {entry['id']}/에서 claude 실행 필요: "
-                f"cd {worker_dir.as_posix()} && claude",
+                f"[cc-agora] {entry['id']}/에서 run.bat 실행 필요: "
+                f"cd {worker_dir.as_posix()} && run.bat",
             )
         elif launch_mode == "auto":
             ok = _launch_auto(worker_dir)
@@ -219,14 +219,14 @@ def main(argv: list[str] | None = None) -> int:
                 # Re-check in case wt.exe vanished mid-loop; degrade for this entry.
                 print(
                     f"[cc-agora] {entry['id']}: wt.exe 호출 실패. 수동 실행: "
-                    f"cd {worker_dir.as_posix()} && claude",
+                    f"cd {worker_dir.as_posix()} && run.bat",
                     file=sys.stderr,
                 )
 
     if failed_id is None:
         print(
             f"[cc-agora] spawn 성공 {len(succeeded)}건. "
-            f"시작: 각 디렉토리에서 'claude' 또는 --launch=auto."
+            f"시작: 각 디렉토리에서 'run.bat' 또는 --launch=auto."
         )
         return 0
 

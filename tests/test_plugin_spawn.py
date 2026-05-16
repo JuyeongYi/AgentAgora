@@ -73,6 +73,8 @@ def test_spawn_run_bat_launches_channel_mode(tmp_path: Path) -> None:
     assert "claude" in run_bat
     assert "--dangerously-load-development-channels" in run_bat
     assert "server:agora-channel" in run_bat
+    assert "@echo off" in run_bat
+    assert "%*" in run_bat
 
 
 def test_spawn_undefined_role_falls_back_to_general(
