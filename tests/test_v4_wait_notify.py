@@ -103,3 +103,11 @@ async def test_coexists_with_wait(setup):
     # 둘 다 깨어났다(데드락 없음). wait가 메시지를 드레인한다.
     assert snap["instance_id"] == "Inst2"
     assert len(drained) == 1
+
+
+def test_wait_notify_tool_registered(agora_dir):
+    """_build_app이 agora.wait_notify 도구를 등록한다."""
+    from agent_agora.__main__ import _build_app
+    mcp = _build_app(agora_dir=agora_dir, port=8499)
+    names = {t.name for t in mcp._tool_manager.list_tools()}
+    assert "agora.wait_notify" in names

@@ -493,6 +493,18 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
+    @mcp.tool(name="agora.wait_notify")
+    async def agora_wait_notify(instance_id: str, timeout_ms: int | None = None) -> str:
+        """Non-destructive long-poll — block until instance_id has inbound,
+        then return {instance_id, pending, sources} without draining the queue.
+        For the agora-channel adapter. instance_id need not be registered."""
+        try:
+            result = await dispatcher.wait_notify(
+                instance_id=instance_id, timeout_ms=timeout_ms)
+            return json.dumps(result, ensure_ascii=False)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
+
     # --- MCP execution.taskSupport hint on agora.wait ---
     _original_list_tools = mcp.list_tools
 
