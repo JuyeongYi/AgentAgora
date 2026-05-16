@@ -48,6 +48,10 @@ class CommMatrix:
             return True
         return from_ in self._allowed.get(to, set())
 
+    def snapshot(self) -> dict[str, list[str]]:
+        """현재 ACL을 {to: sorted([from, ...])} dict로 반환 (조회용)."""
+        return {to: sorted(froms) for to, froms in self._allowed.items()}
+
 
 def load_comm_matrix(path: Path) -> CommMatrix:
     """path의 comm-matrix.csv를 로드한다. 파일이 없으면 비활성 CommMatrix(all-allow)."""

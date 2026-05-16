@@ -71,6 +71,18 @@ def test_load_csv_replaces_prior_matrix_in_place():
     assert cm.is_allowed("Coder1", "Inst1") is False
 
 
+def test_snapshot_returns_sorted_allowed_map():
+    cm = CommMatrix()
+    cm.load_csv(_HUB)
+    snap = cm.snapshot()
+    assert snap["Inst1"] == ["Coder1", "Reviewer1", "Tester1"]
+    assert snap["Coder1"] == ["Inst1"]
+
+
+def test_snapshot_inactive_is_empty():
+    assert CommMatrix().snapshot() == {}
+
+
 def test_load_comm_matrix_absent_file_returns_inactive(tmp_path):
     cm = load_comm_matrix(tmp_path / "comm-matrix.csv")
     assert cm.active is False
