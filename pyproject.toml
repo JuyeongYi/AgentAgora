@@ -18,6 +18,7 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
 
 [project.scripts]
 agent-agora = "agent_agora.__main__:main"
+agora-channel = "agent_agora.channel_adapter:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

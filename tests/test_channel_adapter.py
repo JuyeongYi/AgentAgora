@@ -146,3 +146,18 @@ async def test_watch_loop_backs_off_on_error_signal():
         await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
                          wait_timeout_ms=1000, drain_poll_s=0)
     assert emits == []                               # 에러 신호엔 emit 안 함
+
+
+def test_cli_entrypoint_registered():
+    """agora-channel 콘솔 스크립트가 pyproject에 등록되고 cli()가 동기 호출 가능하다."""
+    import pathlib
+    from agent_agora import channel_adapter
+
+    assert callable(channel_adapter.cli)
+    # cli는 동기 함수여야 한다 (콘솔 스크립트 엔트리는 코루틴을 못 받는다)
+    import inspect
+    assert not inspect.iscoroutinefunction(channel_adapter.cli)
+
+    pyproject = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    assert 'agora-channel = "agent_agora.channel_adapter:cli"' in text

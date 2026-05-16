@@ -247,8 +247,13 @@ async def main(argv: list[str] | None = None) -> None:
         pass
 
 
+def cli() -> None:
+    """콘솔 스크립트 진입점 (동기). pyproject [project.scripts]가 가리킨다.
+
+    채널 어댑터의 main은 async라 콘솔 스크립트 엔트리로 직접 못 쓴다 —
+    이 동기 래퍼가 asyncio 런루프를 연다."""
+    asyncio.run(main())
+
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    cli()
