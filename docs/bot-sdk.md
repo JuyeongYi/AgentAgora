@@ -40,7 +40,7 @@ if __name__ == "__main__":
 | `SUBSCRIBE_SCHEMAS` | handler 필수 | 구독할 `bot-task` 스키마 이름 목록 |
 | `SCHEMAS` | | register_bot 때 인라인 등록할 스키마 `{name: {kind,purpose,body}}` |
 | `EMIT_SCHEMAS` | | emit할 스키마 선언(선택) |
-| `DEFAULT_URL` | | 서버 URL 기본값. `AGORA_URL` 환경변수 > 생성자 인자로 덮어쓴다 |
+| `DEFAULT_URL` | | 서버 URL 기본값. 우선순위는 생성자 인자 > `AGORA_URL` 환경변수 > `DEFAULT_URL` |
 | `WAIT_TIMEOUT_MS` | | bounded wait 주기(ms, 기본 30000). 서버 dead-bot sweep이 의존하는 heartbeat. |
 
 - **handler 모드**: `SUBSCRIBE_SCHEMAS`의 msgtype으로 dispatch된 메시지를 fan-out 수신.

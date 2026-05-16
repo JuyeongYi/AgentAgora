@@ -64,7 +64,8 @@ python examples/echo_bot/echo_bot.py
 등록한다(`agora.register_bot`의 `schemas` 인자). 출력:
 
 ```
-[bot_echo] 등록 완료 (구독: ['echo_task']). wait 루프 시작.
+[bot_echo] register_bot 완료 (구독: ['echo_task']).
+[bot_echo] wait 루프 시작 (mode=handler, subscribe=['echo_task'], heartbeat=30000ms).
 ```
 
 **터미널 3 — 메시지 보내기**
