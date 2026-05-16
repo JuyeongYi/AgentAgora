@@ -248,7 +248,7 @@ ACL 데모. [`examples/README.md`](examples/README.md) 참조.
 않는다(404) — 기본 비활성.
 
 - **`POST /admin/comm-matrix`** — 요청 바디에 CSV 텍스트를 담아 보내면 comm-matrix를 런타임 교체한다.
-- **`GET /admin/comm-matrix`** — 현재 적용 중인 comm-matrix를 CSV로 반환한다.
+- **`GET /admin/comm-matrix`** — 현재 적용 중인 comm-matrix 상태를 JSON(`{"active", "matrix"}`)으로 반환한다.
 - 두 요청 모두 `Authorization: Bearer <token>` 헤더가 필요하다 (`AGORA_ADMIN_TOKEN` 값).
 
 서버 startup 시에는 `<dir>/.agentagora/comm-matrix.csv`가 있으면 자동 로드, 없으면
