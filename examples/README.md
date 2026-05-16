@@ -9,7 +9,7 @@ examples/
   echo_bot/        데모 1 — 스키마 구독 봇
     echo_bot.py      echo_task 를 구독하고 bot_reply 로 회신하는 핸들러 봇 (AgoraBot SDK 상속)
     send.py          봇에게 태스크 하나를 보내고 회신을 받는 일회성 워커
-    run-bot.bat      bot.py 실행 (저장소 .venv 사용)
+    run-bot.bat      echo_bot.py 실행 (저장소 .venv 사용)
     run-send.bat     send.py 실행
   comm_demo/       데모 2 — 워커↔워커 dispatch ACL
     demo.py          워커 둘을 띄워 comm-matrix가 dispatch를 막는지 확인
