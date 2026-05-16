@@ -74,7 +74,7 @@ class AgoraBot(ABC):
     SCHEMAS: dict[str, dict] = {}          # 인라인 등록 스키마 {name: {kind,purpose,body}}
     EMIT_SCHEMAS: list[str] = []
     DEFAULT_URL = "http://127.0.0.1:8420/mcp"
-    WAIT_TIMEOUT_MS: int = 30000           # bounded wait 주기 — 서버에 heartbeat 갱신
+    WAIT_TIMEOUT_MS: int = 30000           # wait_notify heartbeat 주기 — 서버에 heartbeat 갱신
 
     def __init__(self, url: str | None = None) -> None:
         if not self.INSTANCE_ID:
@@ -132,15 +132,19 @@ class AgoraBot(ABC):
         return res
 
     async def run(self) -> None:
-        """wait 루프. WAIT_TIMEOUT_MS 주기의 bounded wait를 반복한다 — 무한 wait와
-        달리 메시지가 없어도 주기적으로 리턴해 서버에 last_seen(heartbeat)을
-        갱신한다. 서버의 dead-bot sweep이 이 heartbeat에 의존한다."""
-        print(f"[{self.INSTANCE_ID}] wait 루프 시작 "
+        """수신 루프. wait_notify로 도착을 기다리고(event-driven — 구독 스키마
+        메시지가 라우팅되면 즉시 리턴), flush로 인박스를 드레인한다.
+        메시지 없이 heartbeat 주기로 wait_notify가 리턴해도 이어지는 flush가
+        last_seen을 갱신해 dead-bot sweep용 heartbeat를 유지한다."""
+        print(f"[{self.INSTANCE_ID}] 수신 루프 시작 "
               f"(mode={self.BOT_MODE}, subscribe={self.SUBSCRIBE_SCHEMAS}, "
               f"heartbeat={self.WAIT_TIMEOUT_MS}ms).", flush=True)
         while True:
-            res = _result_json(await self.session.call_tool(
-                "agora.wait", {"timeout_ms": self.WAIT_TIMEOUT_MS}))
+            await self.session.call_tool(
+                "agora.wait_notify",
+                {"instance_id": self.INSTANCE_ID,
+                 "timeout_ms": self.WAIT_TIMEOUT_MS})
+            res = _result_json(await self.session.call_tool("agora.flush", {}))
             for cmd in res.get("commands", []):
                 await self._dispatch(cmd)
 
