@@ -54,7 +54,7 @@ agora.dispatch(
 
 ### 에러 처리 (§5.6)
 
-- `inbox_full: <target> has <N> pending` → `[cc-agora] 수신자 <id> 받은편지함이 가득 찼습니다 (N개 대기). 수신자가 wait를 못 따라가는 중입니다.` + 보조 한 줄 "`/cc-agora:agora-wait`로 직접 깨우거나 인스턴스 상태를 확인하세요."
+- `inbox_full: <target> has <N> pending` → `[cc-agora] 수신자 <id> 받은편지함이 가득 찼습니다 (N개 대기). 수신자가 wait를 못 따라가는 중입니다.` + 보조 한 줄 "수신자 터미널을 확인하거나 `agora.wait`로 직접 드레인하세요."
 - `NotRegisteredError` → `[cc-agora] 대상 <id>는 현재 등록되어 있지 않습니다. agora.instances로 확인하세요.`
 
 ## 예시

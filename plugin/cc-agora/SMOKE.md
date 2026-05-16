@@ -66,26 +66,28 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 
    ```bash
    cd C:/AgoraTeam/Coder1
-   claude
+   run.bat
    ```
+
+   Coder1이 채널 모드로 기동된다. 서버 로그에 `Coder1` 등록이 찍혀야 한다.
 
 3. orchestrator 터미널로 돌아가 `/cc-agora:invoke Coder1 "안녕. 자기소개 한 줄." --expect`.
 
-4. Coder1 터미널이 응답을 처리하고 `agora.dispatch`로 reply 발신.
+4. Coder1 터미널이 채널 알림으로 깨어나 `agora.wait`로 드레인, `agora.dispatch`로 reply 발신.
 
 5. orchestrator가 다음 `agora.wait`에서 reply 수신, 사용자에 보고.
 
 **기대 결과**:
 
-- `C:/AgoraTeam/Orch1/` — CLAUDE.md + .mcp.json **만** 존재 (`.claude/` 없음 — orchestrator는 hook=none).
-- `C:/AgoraTeam/Coder1/` — CLAUDE.md + .mcp.json + `.claude/settings.local.json` + `.claude/stop-hook.py` 4개 다 존재.
+- `C:/AgoraTeam/Orch1/` — CLAUDE.md + .mcp.json + run.bat 3개 존재 (`.claude/` 없음).
+- `C:/AgoraTeam/Coder1/` — CLAUDE.md + .mcp.json + run.bat 3개 존재 (`.claude/` 없음).
 - 서버 로그에 두 인스턴스 등록 이벤트 + dispatch + wait 짝.
 - orchestrator 터미널에 Coder1의 reply가 envelope 메타와 함께 출력.
 
 **실패 진단**:
 
-- Coder1이 응답 X → Stop hook 미발화. `Coder1/.claude/settings.local.json`의 hooks 섹션 + `stop-hook.py`가 존재하는지, `py -3.13` launcher가 PATH에 있는지 확인.
-- `inbox_full` → Coder1이 wait를 못 따라가고 있다. Coder1 터미널에서 `/cc-agora:agora-wait` 수동 호출.
+- Coder1이 응답 X → 채널 모드 미기동. `run.bat`이 `--dangerously-load-development-channels server:agora-channel`로 실행됐는지, `agora-channel` 콘솔 스크립트가 PATH에 있는지 확인.
+- `inbox_full` → Coder1이 wait를 못 따라가고 있다. Coder1 터미널에서 `agora.wait`를 직접 호출해 드레인.
 - "role 'orchestrator'는 roles.json에 정의되지 않음" 경고 → `config/roles.json`이 spawn 시점에 plugin_root 하위에 있는지 확인.
 
 ## 3. manifest 일괄 spawn + 자동 등록
@@ -105,81 +107,74 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 **기대 결과**:
 
 - `C:/AgoraTeam/Coder1/`, `Reviewer1/`, `Tester1/` 3개 디렉토리 생성.
-- 각 디렉토리에 4개 파일 (모두 hook=stop-auto-wait role).
-- `--launch=auto`라면 wt.exe가 새 탭 3개 띄움. 각 탭이 자기 디렉토리에서 `claude` 자동 실행.
+- 각 디렉토리에 3개 파일 (CLAUDE.md + .mcp.json + run.bat).
+- `--launch=auto`라면 wt.exe가 새 탭 3개 띄움. 각 탭이 자기 디렉토리에서 `run.bat` 자동 실행.
 - 서버 로그에 3개 인스턴스 등록.
 - `wt.exe` 미존재 환경 → stderr에 "wt.exe를 찾을 수 없어 --launch=auto를 manual로 강등합니다." + 각 항목에 manual 안내.
 
 **실패 진단**:
 
-- wt.exe가 PATH에 있는데도 탭이 안 뜸 → `subprocess.Popen` 실패. 수동으로 `wt.exe -w 0 new-tab -d C:/AgoraTeam/Coder1 claude`를 돌려 wt.exe 자체 동작 확인.
+- wt.exe가 PATH에 있는데도 탭이 안 뜸 → `subprocess.Popen` 실패. 수동으로 `wt.exe -w 0 new-tab -d C:/AgoraTeam/Coder1 run.bat`을 돌려 wt.exe 자체 동작 확인.
 - 디렉토리 생성 0건 → manifest 검증 실패. stderr 에러 메시지로 어느 항목·어느 키가 문제인지 확인.
 
-## 4. hook 충돌 케이스 (`--force` 동작)
+## 4. 덮어쓰기 케이스 (`--force` 동작)
 
 **사전 조건**: 1번 서버 가동. `C:/AgoraTeam/Coder1/`이 이전 spawn으로 이미 존재한다.
 
 **절차**:
 
-1. (사전) Coder1의 `.claude/settings.local.json`을 수동 편집해 다른 hook 항목(예: PostToolUse)을 추가해 둔다.
-
-2. orchestrator 디렉토리에서 `--force` 없이 spawn 재시도:
+1. orchestrator 디렉토리에서 `--force` 없이 spawn 재시도:
 
    ```
    /cc-agora:agora-spawn Coder1 coder "다른 설명."
    ```
 
-3. `--force`를 붙여 재시도:
+2. `--force`를 붙여 재시도:
 
    ```
    /cc-agora:agora-spawn Coder1 coder "다른 설명." --force
    ```
 
-4. `Coder1/.claude/settings.local.json`을 직접 열어 확인.
+3. `Coder1/` 디렉토리를 직접 열어 파일 목록 확인.
 
 **기대 결과**:
 
-- step 2: exit code 1, stderr에 "`Coder1/` 디렉토리가 이미 존재합니다. --force로 덮어쓰기 가능." (한국어). 파일은 변경되지 않는다.
-- step 3: exit code 0. `settings.local.json`이 템플릿 그대로 덮어써진다 — 사용자가 손으로 추가한 PostToolUse 항목은 사라진다. CLAUDE.md + .mcp.json + stop-hook.py도 갱신.
+- step 1: exit code 1, stderr에 "`Coder1/` 디렉토리가 이미 존재합니다. --force로 덮어쓰기 가능." (한국어). 파일은 변경되지 않는다.
+- step 2: exit code 0. CLAUDE.md + .mcp.json + run.bat이 템플릿 그대로 덮어써진다.
 
 **실패 진단**:
 
-- step 2가 통과해 버린다 → `do_spawn`의 `worker_dir.exists()` 체크 로직 회귀.
-- step 3에서 권한 에러 → Windows에서 다른 프로세스가 파일을 잡고 있을 가능성. Coder1에서 돌고 있는 `claude`를 종료한 뒤 재시도.
+- step 1이 통과해 버린다 → `do_spawn`의 `worker_dir.exists()` 체크 로직 회귀.
+- step 2에서 권한 에러 → Windows에서 다른 프로세스가 파일을 잡고 있을 가능성. Coder1에서 돌고 있는 `run.bat`/`claude`를 종료한 뒤 재시도.
 
-## 5. unwait / rewait 왕복
+## 5. 채널 모드 push wake 확인
 
-**사전 조건**: 1번 서버 가동 + Coder1이 4번 시나리오 끝에서 정상 상태 + Coder1에서 `claude`가 떠 있다.
+채널 모드 워커가 폴링 없이 서버 push로 깨어나는지 직접 확인한다.
+
+**사전 조건**: 1번 서버 가동 + Coder1이 `run.bat`으로 채널 모드로 떠 있다.
 
 **절차**:
 
-1. Coder1 안에서:
+1. Coder1이 idle 상태(턴 없음)인지 확인 — 터미널에 프롬프트가 없고 대기 중.
+
+2. orchestrator에서 메시지를 보낸다:
 
    ```
-   /cc-agora:agora-unwait
+   /cc-agora:invoke Coder1 "채널 모드 wake 테스트." --expect
    ```
 
-2. 한 턴을 끝까지 진행 (예: 일반 채팅 메시지 하나). Stop hook이 발화하지 않는지 본다.
-
-3. Coder1에서:
-
-   ```
-   /cc-agora:agora-rewait
-   ```
-
-4. 다시 한 턴을 끝까지 진행. Stop hook이 발화해 `agora.wait`로 진입하는지 본다.
+3. Coder1 터미널을 관찰한다. Stop hook 없이 워커 턴이 시작되는지 본다.
 
 **기대 결과**:
 
-- step 1 직후 `Coder1/.claude/settings.local.json.bak`이 새로 생기고, 원본의 `hooks` 섹션이 비워진다(`{}` 또는 키 삭제).
-- step 2에서 Stop 이벤트 시 hook이 발화하지 않고 정상 턴 종료. 사용자에 control 반환.
-- step 3 후 `.bak`이 사라지고 `settings.local.json`이 복원된다.
-- step 4에서 hook이 다시 발화 — Claude Code 응답에 `agora.wait(timeout_ms=0)` 호출이 포함된다.
+- step 3: Coder1 터미널에 `<channel source="agora-channel">` 태그와 함께 워커 턴이 시작된다.
+- 워커가 `agora.wait`를 호출해 메시지를 드레인하고, `type=reply` payload로 응답한다.
+- orchestrator 다음 wait에서 reply 수신.
 
 **실패 진단**:
 
-- step 1에서 "이미 unwait 상태입니다." 경고 → 이전 시나리오에서 `.bak`이 남아 있다. 수동으로 정리하거나 `/cc-agora:agora-rewait` 먼저.
-- step 2에서 hook이 계속 발화 → 백업 파일은 생겼지만 원본의 hooks 섹션이 비워지지 않았다. JSON 파싱·재기록 로직 확인.
+- Coder1이 깨어나지 않는다 → `agora-channel` 어댑터가 서버에 연결됐는지 확인 (서버 로그). `channelsEnabled` 조직 정책이 `true`인지 확인.
+- `<channel>` 태그가 없이 터미널이 깨어난다 → 어댑터가 연결됐지만 채널 알림이 드롭됐을 수 있다. Claude Code 버전(v2.1.80+) 확인.
 
 ## 6. conversation 명시 종결 (`/cc-agora:agora-close`)
 
@@ -231,15 +226,14 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 **기대 결과**:
 
 - exit code 0 — spawn 자체는 성공.
-- stderr에 한국어 경고: "role 'phantom'는 roles.json에 정의되지 않음. hook 미설치. roles.json 편집 가이드: ..."
-- `Phantom1/CLAUDE.md` + `Phantom1/.mcp.json` 생성됨.
-- `Phantom1/.claude/`는 **존재하지 않는다** (settings.local.json·stop-hook.py 없음).
-- `.mcp.json`에 `X-Agora-Wait-Mode` 헤더가 **없다** (서버는 wait_mode=unknown으로 기록).
+- stderr에 한국어 경고: "role 'phantom'는 roles.json에 정의되지 않음. roles.json 편집 가이드: ..."
+- `Phantom1/CLAUDE.md` + `Phantom1/.mcp.json` + `Phantom1/run.bat` 생성됨.
+- `Phantom1/.claude/`는 **존재하지 않는다**.
 - CLAUDE.md는 `general` preset을 fallback으로 사용한다.
 
 **실패 진단**:
 
-- `.claude/`가 만들어진다 → `do_spawn`의 `if hook == "stop-auto-wait":` 분기 회귀.
+- `.claude/`가 만들어진다 → `do_spawn` 분기 로직 회귀.
 - `.mcp.json`이 invalid JSON → `_render_mcp_json`의 sentinel line 제거 로직 회귀. 단위 테스트가 잡아야 한다.
 
 ## 8. 사후 정리
