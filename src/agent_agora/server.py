@@ -99,16 +99,6 @@ def create_agora_app(
             return json.dumps({"error": str(e)})
         return json.dumps({"status": "ok", "name": name, "kind": kind})
 
-    @mcp.tool(name="agora.register_comm_matrix")
-    async def agora_register_comm_matrix(csv_text: str) -> str:
-        """Replace the worker↔worker comm-matrix ACL from CSV text at runtime.
-        CSV: 헤더 1줄(N from) + 데이터 N줄, 셀 0/1. shape 불일치 시 거부."""
-        try:
-            comm_matrix.load_csv(csv_text)
-        except AgoraError as e:
-            return json.dumps({"error": str(e)})
-        return json.dumps({"status": "ok", "active": comm_matrix.active})
-
     @mcp.tool(name="agora.schemas")
     async def agora_schemas() -> str:
         """Full schema catalog — name, kind, purpose, body."""

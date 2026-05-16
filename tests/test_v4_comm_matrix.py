@@ -232,26 +232,6 @@ async def cm_app(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_register_comm_matrix_activates_acl(cm_app):
-    mcp, dispatcher, comm_matrix = cm_app
-    res = json.loads(await _tool(mcp, "agora.register_comm_matrix")(csv_text=_HUB))
-    assert res["status"] == "ok"
-    assert comm_matrix.active is True
-    r = json.loads(await _tool(mcp, "agora.dispatch")(
-        _FakeCtx("sess-Coder1"), payload=tany(m=1), target="Reviewer1"))
-    assert "comm_denied" in r["error"]
-
-
-@pytest.mark.asyncio
-async def test_register_comm_matrix_rejects_bad_shape(cm_app):
-    mcp, _, comm_matrix = cm_app
-    res = json.loads(await _tool(mcp, "agora.register_comm_matrix")(
-        csv_text="A,B,C\n0,1,1\n1,0,0"))
-    assert "shape" in res["error"]
-    assert comm_matrix.active is False  # rejected — not activated
-
-
-@pytest.mark.asyncio
 async def test_no_file_means_all_allow(tmp_path):
     """comm-matrix.csv가 없으면 ACL 비활성 — 모든 worker↔worker dispatch 허용."""
     from agent_agora.__main__ import _build_app
@@ -277,8 +257,8 @@ async def test_startup_loads_comm_matrix_file(tmp_path):
 @pytest.mark.asyncio
 async def test_hub_and_spoke_enforced_end_to_end(cm_app):
     """hub-and-spoke: 워커는 hub에만 회신, 워커끼리 직접 dispatch 차단."""
-    mcp, _, _ = cm_app
-    await _tool(mcp, "agora.register_comm_matrix")(csv_text=_HUB)
+    mcp, _, comm_matrix = cm_app
+    comm_matrix.load_csv(_HUB)
     r1 = json.loads(await _tool(mcp, "agora.dispatch")(
         _FakeCtx("sess-Reviewer1"), payload=tany(m=1), target="Tester1"))
     assert "comm_denied" in r1["error"]
@@ -290,8 +270,8 @@ async def test_hub_and_spoke_enforced_end_to_end(cm_app):
 @pytest.mark.asyncio
 async def test_unregistered_worker_denied(cm_app):
     """CSV 미등재 워커는 from/to 모두 거부 (strict whitelist)."""
-    mcp, _, _ = cm_app
-    await _tool(mcp, "agora.register_comm_matrix")(csv_text="Inst1,Coder1\n0,1\n1,0")
+    mcp, _, comm_matrix = cm_app
+    comm_matrix.load_csv("Inst1,Coder1\n0,1\n1,0")
     r = json.loads(await _tool(mcp, "agora.dispatch")(
         _FakeCtx("sess-Inst1"), payload=tany(m=1), target="Reviewer1"))
     assert "comm_denied" in r["error"]
@@ -300,8 +280,8 @@ async def test_unregistered_worker_denied(cm_app):
 @pytest.mark.asyncio
 async def test_broadcast_partial_filter_through_tool(cm_app):
     """agora.broadcast도 매트릭스 필터 — denied 목록 보고."""
-    mcp, _, _ = cm_app
-    await _tool(mcp, "agora.register_comm_matrix")(csv_text=_HUB)
+    mcp, _, comm_matrix = cm_app
+    comm_matrix.load_csv(_HUB)
     res = json.loads(await _tool(mcp, "agora.broadcast")(
         _FakeCtx("sess-Coder1"), payload=tany(m=1)))
     assert res["status"] == "ok"
