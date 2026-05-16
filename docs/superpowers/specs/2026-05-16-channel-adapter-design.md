@@ -80,7 +80,7 @@ agora.wait_notify(instance_id: str, timeout_ms: int | None = None) -> str
 
 **서버 측 (stdio, toward Claude Code):**
 - `mcp` 저수준 `Server` 사용 — `create_initialization_options(experimental_capabilities={"claude/channel": {}})`로 채널 capability 선언.
-- `instructions` 문자열 설정 — 워커 시스템 프롬프트에 들어가 행동 지침을 준다: "AgentAgora 인박스 알림이 `<channel source="agora">`로 도착하면 `agora.wait`로 메시지를 수신해 처리하라."
+- `instructions` 문자열 설정 — 워커 시스템 프롬프트에 들어가 행동 지침을 준다: "AgentAgora 인박스 알림이 `<channel source="agora-channel">`로 도착하면 `agora.wait`로 메시지를 수신해 처리하라." (`source` 속성은 채널 서버 이름 `agora-channel`로 자동 설정된다.)
 - one-way 채널 — `tools` capability 없음 (워커의 송신은 별도 HTTP `agora` 연결이 담당, §3.4).
 - 도착 시 `notifications/claude/channel` emit — `content` = 사람이 읽는 알림문("AgentAgora 인박스 N건 도착 (from: …). agora.wait로 수신하라."), `meta` = `{"instance_id": <id>, "pending": "<n>", "sources": "<comma-joined>"}`. meta 키는 식별자만(letters/digits/underscore), 값은 문자열.
 
@@ -104,7 +104,7 @@ agora.wait_notify(instance_id: str, timeout_ms: int | None = None) -> str
 
 `settings.local.json` — **wait Stop hook 제거.** 채널 푸시가 재무장 루프를 대체한다. 워커는 푸시 사이에 진짜로 idle(블록된 도구 콜 없음).
 
-흐름: `<channel source="agora">` 도착 → 워커 턴 깨어남 → `agora.wait`로 드레인 → 처리 → `agora.dispatch` 답신 → 턴 종료 → 다음 푸시까지 idle.
+흐름: `<channel source="agora-channel">` 도착 → 워커 턴 깨어남 → `agora.wait`로 드레인 → 처리 → `agora.dispatch` 답신 → 턴 종료 → 다음 푸시까지 idle.
 
 기동: 조직 정책 `channelsEnabled`가 true여야 하고, 자작 어댑터는 allowlist에 없으므로 `claude --dangerously-load-development-channels server:agora-channel`로 띄운다.
 
