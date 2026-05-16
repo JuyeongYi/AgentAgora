@@ -91,14 +91,22 @@ python examples/echo_bot/send.py "안녕, 아고라!"
 
 `comm-matrix`는 **워커가 다른 워커에게 dispatch할 수 있는지**를 N×N 화이트리스트로
 강제한다 (봇으로 가는 schema-routed 메시지나 cc는 대상이 아니다). `demo.py`는 한
-프로세스에서 워커 둘을 별도 세션으로 띄우고, 런타임에 매트릭스를 설치한 뒤 dispatch가
-규칙대로 막히는지 확인한다.
+프로세스에서 워커 둘을 별도 세션으로 띄우고 dispatch가 규칙대로 막히는지 확인한다.
 
-설치하는 매트릭스: `worker_a → worker_b`는 금지, `worker_b → worker_a`는 허용.
+comm-matrix는 서버 **기동 시** `<--dir>/.agentagora/comm-matrix.csv`에서 읽어 들인다.
+`examples/comm_demo/comm-matrix.csv`가 이 데모용 매트릭스다:
+`worker_a → worker_b`는 금지, `worker_b → worker_a`는 허용.
+
+`run-demo.bat`이 임시 데이터 디렉터리에 CSV를 심고 서버를 기동한 뒤 `demo.py`를
+실행한다. 수동으로 실행하려면:
 
 ```bash
+# 데이터 디렉터리에 CSV 심기
+mkdir mydir/.agentagora
+cp examples/comm_demo/comm-matrix.csv mydir/.agentagora/comm-matrix.csv
+
 # 서버 (데모 1과 별개로, 깨끗한 상태 권장)
-python -m agent_agora --port 8420 --no-tls --no-timeout
+python -m agent_agora --dir mydir --port 8420 --no-tls --no-timeout
 
 # 데모 실행
 python examples/comm_demo/demo.py
@@ -108,14 +116,10 @@ python examples/comm_demo/demo.py
 기대 출력:
 
 ```
-comm-matrix 설치: {'status': 'ok', 'active': True}
 [a -> b] 거부됨 (기대대로) : {'error': '[agora] comm_denied: worker_a -> worker_b ...'}
 [b -> a] 허용됨 (기대대로) : {'status': 'ok', ...}
 === PASS — ACL이 기대대로 동작 ===
 ```
-
-`agora.register_comm_matrix`는 서버 **전역** ACL을 교체하며 끌 수 없다. 매트릭스가
-없는 깨끗한 상태로 다시 보려면 서버를 재시작한다 (런타임 설치본은 영속되지 않는다).
 
 ---
 
@@ -147,4 +151,5 @@ pm,coder,reviewer
 보낼 수 있지만, `coder`와 `reviewer`는 서로 직접 dispatch하지 못한다(`pm` 경유만).
 
 주석 줄·빈 셀은 허용되지 않는다. 행·열 수가 안 맞으면 서버가 거부한다. 런타임
-교체는 `agora.register_comm_matrix(csv_text=...)` 도구로 같은 형식의 텍스트를 넘긴다.
+교체는 오퍼레이터 전용 어드민 엔드포인트 `POST /admin/comm-matrix`로 같은 형식의
+텍스트를 넘긴다 (`AGORA_ADMIN_TOKEN` 환경변수가 설정되어 있어야 한다).
