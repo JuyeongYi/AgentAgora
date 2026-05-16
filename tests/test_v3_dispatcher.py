@@ -30,7 +30,7 @@ async def setup(tmp_path):
 async def test_dispatch_wait_unchanged_when_new_optional_fields_omitted(setup):
     _, _, dispatcher = setup
     res = await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(m="hi"))
-    drained = await dispatcher.wait("Inst3", timeout_ms=200)
+    drained = await dispatcher.flush("Inst3")
     assert len(drained) == 1
     assert drained[0]["payload"] == tany(m="hi")
     assert drained[0]["id"] == res["command_id"]
@@ -41,7 +41,7 @@ async def test_dispatch_wait_unchanged_when_new_optional_fields_omitted(setup):
 async def test_self_dispatch_target_equals_source_allowed(setup):
     _, _, dispatcher = setup
     res = await dispatcher.dispatch(source="Inst1", target="Inst1", payload=tany(nudge=True))
-    drained = await dispatcher.wait("Inst1", timeout_ms=200)
+    drained = await dispatcher.flush("Inst1")
     assert len(drained) == 1
     assert drained[0]["payload"] == tany(nudge=True)
 
@@ -50,11 +50,11 @@ async def test_self_dispatch_target_equals_source_allowed(setup):
 async def test_conversation_id_inherited_across_multi_hop_chain(setup):
     _, _, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(a=1))
-    m1 = (await dispatcher.wait("Inst2", timeout_ms=200))[0]
+    m1 = (await dispatcher.flush("Inst2"))[0]
     await dispatcher.dispatch(source="Inst2", target="Inst3", payload=tany(b=2), in_reply_to=m1["id"])
-    m2 = (await dispatcher.wait("Inst3", timeout_ms=200))[0]
+    m2 = (await dispatcher.flush("Inst3"))[0]
     await dispatcher.dispatch(source="Inst3", target="Inst1", payload=tany(c=3), in_reply_to=m2["id"])
-    m3 = (await dispatcher.wait("Inst1", timeout_ms=200))[0]
+    m3 = (await dispatcher.flush("Inst1"))[0]
     assert m1["conversation_id"] == m2["conversation_id"] == m3["conversation_id"]
 
 
@@ -63,8 +63,8 @@ async def test_crossing_dispatch_without_conv_id_creates_distinct_ids(setup):
     _, _, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m=1))
     await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(m=2))
-    a = (await dispatcher.wait("Inst1", timeout_ms=200))[0]
-    b = (await dispatcher.wait("Inst2", timeout_ms=200))[0]
+    a = (await dispatcher.flush("Inst1"))[0]
+    b = (await dispatcher.flush("Inst2"))[0]
     assert a["conversation_id"] != b["conversation_id"]
 
 
@@ -74,8 +74,8 @@ async def test_explicit_same_conversation_id_merges_crossing_threads(setup):
     conv = "conv-shared-x"
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m=1), conversation_id=conv)
     await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(m=2), conversation_id=conv)
-    a = (await dispatcher.wait("Inst1", timeout_ms=200))[0]
-    b = (await dispatcher.wait("Inst2", timeout_ms=200))[0]
+    a = (await dispatcher.flush("Inst1"))[0]
+    b = (await dispatcher.flush("Inst2"))[0]
     assert a["conversation_id"] == conv == b["conversation_id"]
 
 
@@ -126,7 +126,7 @@ async def test_broadcast_fans_out_to_all_others_with_single_conversation_id(setu
     res = await dispatcher.broadcast(source="Inst1", payload=tany(announcement="hi"))
     received = []
     for i in range(2, 9):
-        msgs = await dispatcher.wait(f"Inst{i}", timeout_ms=200)
+        msgs = await dispatcher.flush(f"Inst{i}")
         if msgs:
             received.append(msgs[0]["conversation_id"])
     assert len(set(received)) == 1
@@ -153,7 +153,7 @@ async def test_priority_string_enum_orders_high_before_normal_before_low(setup):
     await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(p="low"), priority="low")
     await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(p="normal"), priority="normal")
     await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(p="high"), priority="high")
-    drained = await dispatcher.wait("Inst3", timeout_ms=200, sort="priority")
+    drained = await dispatcher.flush("Inst3", sort="priority")
     assert [c["payload"]["p"] for c in drained] == ["high", "normal", "low"]
 
 
@@ -208,7 +208,7 @@ async def test_in_flight_increments_on_expect_result_decrements_on_reply(setup):
     _, _, dispatcher = setup
     res = await dispatcher.dispatch(source="Inst1", target="Inst3", payload=tany(a=1), expect_result=True)
     assert dispatcher.in_flight_count("Inst3") == 1
-    msg = (await dispatcher.wait("Inst3", timeout_ms=200))[0]
+    msg = (await dispatcher.flush("Inst3"))[0]
     await dispatcher.dispatch(source="Inst3", target="Inst1", payload=tany(r=1), in_reply_to=msg["id"])
     assert dispatcher.in_flight_count("Inst3") == 0
 
@@ -344,7 +344,7 @@ async def test_wait_age_ms_calculation_matches_now_minus_created_at(setup):
     _, _, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m=1))
     await asyncio.sleep(0.05)  # let some time pass
-    msgs = await dispatcher.wait("Inst2", timeout_ms=200)
+    msgs = await dispatcher.flush("Inst2")
     assert len(msgs) == 1
     # wait_age_ms must be >= 50 (we slept 50ms) and within a generous upper bound
     assert msgs[0]["wait_age_ms"] >= 40

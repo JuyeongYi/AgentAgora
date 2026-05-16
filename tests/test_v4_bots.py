@@ -181,7 +181,7 @@ async def test_worker_dispatch_to_bot_then_bot_emit_chain(app):
     disp = json.loads(await _tool(mcp, "agora.dispatch")(
         FakeCtx("ws1"), payload={"msgtype": "ping_task", "v": 1}))
     assert disp["status"] == "ok"
-    got = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs1"), timeout_ms=200))
+    got = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bs1")))
     assert len(got["commands"]) == 1
     cmd_id = got["commands"][0]["id"]
     # bot emits a result back to the original caller
@@ -190,7 +190,7 @@ async def test_worker_dispatch_to_bot_then_bot_emit_chain(app):
         payload={"msgtype": "bot_reply", "from": "bot_p",
                  "ts": "2026-01-01T00:00:00Z", "result": {"pong": 1}},
         in_reply_to=cmd_id)
-    reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
+    reply = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("ws1")))
     assert reply["commands"][0]["payload"]["result"] == {"pong": 1}
 
 
@@ -227,8 +227,8 @@ async def test_multi_bot_subscription_fan_out(app):
     instance_registry.register("ws1", "worker_x")
     await _tool(mcp, "agora.dispatch")(
         FakeCtx("ws1"), payload={"msgtype": "pytest_run", "scenario": "s"})
-    a = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs1"), timeout_ms=200))
-    b = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs2"), timeout_ms=200))
+    a = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bs1")))
+    b = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bs2")))
     assert len(a["commands"]) == 1 and len(b["commands"]) == 1
 
 
@@ -242,7 +242,7 @@ async def test_observer_receives_all_messages(app):
     await _tool(mcp, "agora.dispatch")(FakeCtx("ws1"), target="worker_y",
         payload={"msgtype": "worker_freeform", "type": "task",
                  "from": "worker_x", "ts": "2026-01-01T00:00:00Z", "message": "hi"})
-    obs = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bo1"), timeout_ms=200))
+    obs = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bo1")))
     assert len(obs["commands"]) == 1
     assert obs["commands"][0]["delivered_as"] == "cc"
 
@@ -294,7 +294,7 @@ async def test_bot_error_emit_reaches_caller(app):
                  "ts": "2026-01-01T00:00:00Z",
                  "error_code": "boom", "error_message": "handler failed"},
         in_reply_to=cmd_id)
-    reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
+    reply = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("ws1")))
     assert reply["commands"][0]["payload"]["error_code"] == "boom"
 
 

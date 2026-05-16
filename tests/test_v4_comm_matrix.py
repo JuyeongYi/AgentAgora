@@ -141,7 +141,7 @@ async def test_dispatch_allowed_pair_passes(tmp_path):
                        default_timeout_ms=200)
         res = await d.dispatch(source="Coder1", target="Inst1", payload=tany(m=1))
         assert res["command_id"]
-        drained = await d.wait("Inst1", timeout_ms=200)
+        drained = await d.flush("Inst1")
         assert len(drained) == 1
 
 
