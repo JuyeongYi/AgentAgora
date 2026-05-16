@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 
+import anyio
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.lowlevel import Server
@@ -168,7 +169,17 @@ async def _run_watch(
                         broker_session)
 
                     async def emit(content: str, meta: dict[str, str]) -> None:
-                        await _emit(session, content, meta)
+                        # 채널 측 write stream이 닫힌 경우(부모 Claude Code
+                        # 종료로 stdin EOF → ServerSession 스트림 close)는
+                        # 브로커 장애가 아니라 정상 종료 신호다. anyio의
+                        # closed/broken 예외를 CancelledError로 변환해
+                        # 아래 backoff(브로커 재연결) 핸들러가 아니라
+                        # _run_watch의 CancelledError re-raise로 빠지게 한다.
+                        try:
+                            await _emit(session, content, meta)
+                        except (anyio.ClosedResourceError,
+                                anyio.BrokenResourceError) as exc:
+                            raise asyncio.CancelledError from exc
 
                     await watch_loop(
                         instance_id, wait_notify, peek_pending, emit,
@@ -212,8 +223,15 @@ async def _serve_channel(
                     watch_task.cancel()
                     try:
                         await watch_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
+                    except asyncio.CancelledError:
+                        pass  # cancel()로 인한 정상 종료
+                    except Exception as exc:
+                        # watch task의 비-CancelledError 예외는 진짜 버그다.
+                        # 종료를 크래시시키진 않되 stderr로 가시화한다.
+                        print(
+                            f"[agora-channel] watch task 종료 중 예외: {exc!r}",
+                            file=sys.stderr, flush=True,
+                        )
 
 
 async def main(argv: list[str] | None = None) -> None:
