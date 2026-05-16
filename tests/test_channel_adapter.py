@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_agora.channel_adapter import parse_args, format_channel_notification
+from agent_agora.channel_adapter import (
+    parse_args, format_channel_notification, watch_loop)
 
 
 def test_parse_args_requires_instance_id():
@@ -38,3 +39,60 @@ def test_format_channel_notification_no_sources():
     assert "(unknown)" in content
     assert meta["sources"] == ""
     assert meta["pending"] == "1"
+
+
+import asyncio
+
+
+class _Stop(BaseException):
+    """watch_loop 무한 루프를 테스트에서 탈출시키는 센티넬."""
+
+
+@pytest.mark.asyncio
+async def test_watch_loop_emits_once_per_rising_edge():
+    """pending 0->N 전이에만 emit — N 유지 중에는 재발화하지 않는다."""
+    emits: list = []
+    wait_calls = [0]
+
+    async def fake_wait_notify(iid, timeout_ms):
+        wait_calls[0] += 1
+        if wait_calls[0] == 1:
+            return {"instance_id": iid, "pending": 2, "sources": ["PM"]}
+        raise _Stop()                       # 2번째 wait_notify → 루프 종료
+
+    peek_seq = [2, 2, 0]                     # 워커가 세 번째 peek에 드레인
+    async def fake_peek(iid):
+        return peek_seq.pop(0)
+
+    async def fake_emit(content, meta):
+        emits.append((content, meta))
+
+    with pytest.raises(_Stop):
+        await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
+                         wait_timeout_ms=1000, drain_poll_s=0)
+    assert len(emits) == 1                   # rising edge 1회만
+    assert emits[0][1]["pending"] == "2"
+
+
+@pytest.mark.asyncio
+async def test_watch_loop_skips_emit_on_timeout():
+    """pending 0(timeout heartbeat)이면 emit하지 않는다."""
+    emits: list = []
+    calls = [0]
+
+    async def fake_wait_notify(iid, timeout_ms):
+        calls[0] += 1
+        if calls[0] == 1:
+            return {"instance_id": iid, "pending": 0, "sources": []}   # timeout heartbeat
+        raise _Stop()
+
+    async def fake_peek(iid):
+        return 0
+
+    async def fake_emit(content, meta):
+        emits.append((content, meta))
+
+    with pytest.raises(_Stop):
+        await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
+                         wait_timeout_ms=1000, drain_poll_s=0)
+    assert emits == []

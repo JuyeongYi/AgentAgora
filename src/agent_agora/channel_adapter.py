@@ -10,6 +10,7 @@ docs/superpowers/specs/2026-05-16-channel-adapter-design.md.
 from __future__ import annotations
 
 import argparse
+import asyncio
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -42,3 +43,31 @@ def format_channel_notification(
         "sources": ",".join(sources),
     }
     return content, meta
+
+
+async def watch_loop(
+    instance_id: str,
+    wait_notify,
+    peek_pending,
+    emit,
+    *,
+    wait_timeout_ms: int = 30000,
+    drain_poll_s: float = 2.0,
+) -> None:
+    """edge-triggered 감시 루프.
+
+    wait_notify(instance_id, timeout_ms) -> dict{pending, sources} 로 인박스
+    도착을 블로킹 감지하고, pending이 0->N으로 올라설 때만 emit(content, meta)
+    한다. emit 후에는 peek_pending(instance_id) -> int 가 0을 반환할 때까지
+    폴링하다 wait_notify로 복귀한다 — 워커가 드레인하기 전 중복 알림 방지."""
+    while True:
+        signal = await wait_notify(instance_id, wait_timeout_ms)
+        pending = signal.get("pending", 0)
+        if pending <= 0:
+            continue                          # timeout heartbeat — emit 안 함
+        content, meta = format_channel_notification(
+            instance_id, pending, signal.get("sources", []))
+        await emit(content, meta)
+        # 워커가 큐를 드레인할 때까지 재발화 보류 (edge-triggered)
+        while await peek_pending(instance_id) > 0:
+            await asyncio.sleep(drain_poll_s)
