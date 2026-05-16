@@ -265,3 +265,24 @@ async def test_aenter_raises_schema_conflict_on_immutable_error(monkeypatch):
     with pytest.raises(SchemaConflictError):
         async with _SchemaBot():
             pass
+
+
+# ── 회신 계약 — 직접 emit + 반환값 동시: 직접 emit이 유효, 반환값 무시 ────────
+
+class _EmitAndReturnBot(AgoraBot):
+    INSTANCE_ID = "t_both"
+    SUBSCRIBE_SCHEMAS = ["x"]
+
+    async def handle(self, cmd):
+        await self.emit({"echo": "direct"})
+        return {"echo": "returned"}  # _emitted=True라 이 반환값은 무시된다
+
+
+@pytest.mark.asyncio
+async def test_direct_emit_suppresses_auto_reply_when_value_also_returned():
+    bot = _EmitAndReturnBot()
+    bot._session = FakeSession()
+    await bot._dispatch({"id": "c1", "source": "w1", "payload": {}})
+    emits = bot._session.emit_calls()
+    assert len(emits) == 1                       # 직접 emit 1회만 — 자동회신 없음
+    assert emits[0]["payload"]["result"] == {"echo": "direct"}
