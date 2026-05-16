@@ -35,7 +35,7 @@ _BACKOFF_CAP_S = 30.0
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="agent-agora-channel",
+        prog="agora-channel",
         description="AgentAgora claude/channel 어댑터 — 워커 인박스 도착을 push 알림으로 전환",
     )
     parser.add_argument("--instance-id", required=True,
