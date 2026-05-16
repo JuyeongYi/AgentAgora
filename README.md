@@ -239,10 +239,20 @@ ACL 데모. [`examples/README.md`](examples/README.md) 참조.
 - **`agora.conversations_list(participant=None, status=None, limit=100)`** — 대화 목록.
 - **`agora.close_thread(conversation_id, reason="")`** — 자기 쪽 close 신호 박기.
 
-### 통신 매트릭스
+### 통신 매트릭스 — Admin HTTP 엔드포인트
 
-- **`agora.register_comm_matrix(csv_text)`** — 워커↔워커 ACL을 CSV 텍스트로 런타임
-  교체. 형식은 [`examples/README.md`](examples/README.md) 참조. 서버 전역에 적용.
+워커가 ACL을 임의로 교체할 수 있는 보안 문제로 MCP 도구 방식은 제거됐다. 런타임 교체는 운영자 전용 HTTP 엔드포인트로만 가능하다.
+
+서버 기동 시 `AGORA_ADMIN_TOKEN` 환경변수를 설정하면 `POST /admin/comm-matrix`와
+`GET /admin/comm-matrix` 엔드포인트가 활성화된다. 미설정 시 두 엔드포인트는 등록되지
+않는다(404) — 기본 비활성.
+
+- **`POST /admin/comm-matrix`** — 요청 바디에 CSV 텍스트를 담아 보내면 comm-matrix를 런타임 교체한다.
+- **`GET /admin/comm-matrix`** — 현재 적용 중인 comm-matrix를 CSV로 반환한다.
+- 두 요청 모두 `Authorization: Bearer <token>` 헤더가 필요하다 (`AGORA_ADMIN_TOKEN` 값).
+
+서버 startup 시에는 `<dir>/.agentagora/comm-matrix.csv`가 있으면 자동 로드, 없으면
+ACL 비활성(전부 허용) 상태로 시작한다. CSV 형식은 [`examples/README.md`](examples/README.md) 참조.
 
 ---
 
@@ -331,7 +341,8 @@ pytest
   `agora.register_schema`/`schemas`/`schemas_list` 도구.
 - **봇 라우팅** — `BotRegistry` + 스키마 구독 fan-out. `agora.register_bot`/
   `bots`/`bot_emit` 도구, schema-routed dispatch(`target` 생략).
-- **통신 매트릭스** — 워커↔워커 dispatch N×N ACL. `agora.register_comm_matrix` 도구.
+- **통신 매트릭스** — 워커↔워커 dispatch N×N ACL. startup 시 `comm-matrix.csv` 로드,
+  런타임 교체는 운영자 전용 `POST /admin/comm-matrix` 엔드포인트.
 
 설계 이력은 `docs/superpowers/specs/`의 각 design spec에 보존돼 있다.
 
