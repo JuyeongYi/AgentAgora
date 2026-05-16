@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from agent_agora.bot import AgoraBot
+from agent_agora.bot import AgoraBot, BotRegistrationError, SchemaConflictError
 
 
 class _FakeItem:
@@ -220,3 +220,48 @@ async def test_run_uses_bounded_wait_timeout():
         await bot.run()
     assert seen_timeouts
     assert all(t == _ReturnBot.WAIT_TIMEOUT_MS for t in seen_timeouts)
+
+
+# ── 스키마 이름 충돌 에러 명확화 ────────────────────────────────────────────
+
+class _SchemaBot(AgoraBot):
+    INSTANCE_ID = "t_schema"
+    SUBSCRIBE_SCHEMAS = ["echo_task"]
+    SCHEMAS = {
+        "echo_task": {
+            "kind": "bot-task", "purpose": "p",
+            "body": {"type": "object",
+                     "properties": {"msgtype": {"const": "echo_task"}}},
+        },
+    }
+
+    async def handle(self, cmd):
+        return None
+
+
+def test_registration_error_schema_conflict_is_typed():
+    bot = _SchemaBot()
+    err = bot._registration_error(
+        "[agora] schema 'echo_task'는 다른 body로 이미 등록됨.")
+    assert isinstance(err, SchemaConflictError)
+    assert "echo_task" in str(err)
+    assert "immutable" in str(err)
+
+
+def test_registration_error_other_failure_is_generic():
+    bot = _SchemaBot()
+    err = bot._registration_error("[agora] 봇 mode는 description이 필수입니다.")
+    assert isinstance(err, BotRegistrationError)
+    assert not isinstance(err, SchemaConflictError)
+
+
+@pytest.mark.asyncio
+async def test_aenter_raises_schema_conflict_on_immutable_error(monkeypatch):
+    session = FakeSession(responses={
+        "agora.register_bot": {
+            "error": "[agora] schema 'echo_task'는 다른 body로 이미 등록됨."},
+    })
+    _patch_transport(monkeypatch, session)
+    with pytest.raises(SchemaConflictError):
+        async with _SchemaBot():
+            pass

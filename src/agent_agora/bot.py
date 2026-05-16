@@ -54,6 +54,15 @@ def _result_json(result) -> dict:
     return {}
 
 
+class BotRegistrationError(RuntimeError):
+    """register_bot 단계 실패. AgoraBot.__aenter__에서 raise되어 봇이 기동하지 못한다."""
+
+
+class SchemaConflictError(BotRegistrationError):
+    """봇이 SCHEMAS로 선언한 스키마 이름이 이미 다른 body로 등록돼 있다.
+    스키마는 immutable이다 — 이름을 바꾸거나 기존 정의에 맞춰야 한다."""
+
+
 class AgoraBot(ABC):
     """Agora 봇 플러그인 베이스. 상속해서 `handle()`만 구현하면 된다."""
 
@@ -184,7 +193,7 @@ class AgoraBot(ABC):
             reg = _result_json(await session.call_tool(
                 "agora.register_bot", self._register_args()))
             if "error" in reg:
-                raise RuntimeError(f"register_bot 실패: {reg['error']}")
+                raise self._registration_error(reg["error"])
             # 등록 성공 뒤에 unregister 콜백을 스택에 push한다. 종료 시 스택은
             # LIFO로 풀리므로 unregister → 세션 close → 트랜스포트 close 순서가
             # 보장된다 — 즉 세션이 살아있는 동안 unregister가 실행된다.
@@ -217,6 +226,21 @@ class AgoraBot(ABC):
         if self.EMIT_SCHEMAS:
             args["emit_schemas"] = self.EMIT_SCHEMAS
         return args
+
+    def _registration_error(self, error: str) -> BotRegistrationError:
+        """register_bot 에러 메시지를 분류한다. 서버는 에러 코드 없이 메시지
+        문자열만 반환하므로(`{"error": "<msg>"}`), schema_immutable 메시지의
+        안정적 부분('이미 등록')으로 스키마 이름 충돌을 식별한다 — 서버 메시지
+        텍스트(errors.py의 ERROR_MESSAGES['schema_immutable'])에 결합돼 있다."""
+        if self.SCHEMAS and "이미 등록" in error:
+            names = ", ".join(sorted(self.SCHEMAS))
+            return SchemaConflictError(
+                f"register_bot 실패 — 스키마 이름 충돌: {error}\n"
+                f"이 봇이 SCHEMAS로 선언한 스키마({names}) 중 하나가 이미 다른 "
+                f"body로 등록돼 있습니다. 스키마는 immutable입니다 — SCHEMAS의 "
+                f"이름을 바꾸거나 body를 기존 등록본과 일치시키세요."
+            )
+        return BotRegistrationError(f"register_bot 실패: {error}")
 
     async def _unregister(self, session: ClientSession) -> None:
         with contextlib.suppress(Exception):
