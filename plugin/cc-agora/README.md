@@ -54,7 +54,7 @@ run.bat
 /cc-agora:invoke Coder1 "로그인 폼 컴포넌트 작성. props는 onSubmit 하나." --expect
 ```
 
-`--expect` 플래그는 워커 페르소나에 응답 의무를 알리는 envelope 메타다. 워커는 채널 알림으로 깨어나 `agora.wait`로 인박스를 드레인하고, task 완료 후 `type=reply` payload로 응답한다. orchestrator는 다음 wait에서 그 응답을 받는다.
+`--expect` 플래그는 워커 페르소나에 응답 의무를 알리는 envelope 메타다. 워커는 채널 알림으로 깨어나 `agora.flush`로 인박스를 드레인하고, task 완료 후 `type=reply` payload로 응답한다. orchestrator는 다음 flush에서 그 응답을 받는다.
 
 manifest 일괄 셋업:
 
@@ -82,11 +82,11 @@ manifest 일괄 셋업:
 
 ### inbox_full 에러가 떴다
 
-수신자가 `agora.wait`를 못 따라가서 받은편지함이 가득 찼다는 신호다. 다음 중 하나:
+수신자가 메시지를 따라가지 못해 받은편지함이 가득 찼다는 신호다. 다음 중 하나:
 
 - 수신자 채널 모드 워커가 채널 알림을 받지 못하고 있다 → 수신자 터미널에서 `run.bat`이 제대로 기동됐는지 확인.
 - 수신자 워커가 멈춰 있을 수 있다 → 수신자 터미널을 확인하고 필요하면 재기동.
-- `agora.wait`를 수동으로 호출해 인박스를 직접 드레인할 수 있다.
+- `agora.flush`를 수동으로 호출해 인박스를 직접 드레인할 수 있다.
 
 상세 메시지는 §5.6 표준 한국어를 따른다 (`/cc-agora:invoke`·`/cc-agora:agora-close` SKILL.md 참조).
 

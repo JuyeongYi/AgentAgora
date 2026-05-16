@@ -73,9 +73,9 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 
 3. orchestrator 터미널로 돌아가 `/cc-agora:invoke Coder1 "안녕. 자기소개 한 줄." --expect`.
 
-4. Coder1 터미널이 채널 알림으로 깨어나 `agora.wait`로 드레인, `agora.dispatch`로 reply 발신.
+4. Coder1 터미널이 채널 알림으로 깨어나 `agora.flush`로 드레인, `agora.dispatch`로 reply 발신.
 
-5. orchestrator가 다음 `agora.wait`에서 reply 수신, 사용자에 보고.
+5. orchestrator가 다음 `agora.flush`에서 reply 수신, 사용자에 보고.
 
 **기대 결과**:
 
@@ -87,7 +87,7 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 **실패 진단**:
 
 - Coder1이 응답 X → 채널 모드 미기동. `run.bat`이 `--dangerously-load-development-channels server:agora-channel`로 실행됐는지, `agora-channel` 콘솔 스크립트가 PATH에 있는지 확인.
-- `inbox_full` → Coder1이 wait를 못 따라가고 있다. Coder1 터미널에서 `agora.wait`를 직접 호출해 드레인.
+- `inbox_full` → Coder1이 메시지를 못 따라가고 있다. Coder1 터미널에서 `agora.flush`를 직접 호출해 드레인.
 - "role 'orchestrator'는 roles.json에 정의되지 않음" 경고 → `config/roles.json`이 spawn 시점에 plugin_root 하위에 있는지 확인.
 
 ## 3. manifest 일괄 spawn + 자동 등록
@@ -168,7 +168,7 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 **기대 결과**:
 
 - step 3: Coder1 터미널에 `<channel source="agora-channel">` 태그와 함께 워커 턴이 시작된다.
-- 워커가 `agora.wait`를 호출해 메시지를 드레인하고, `type=reply` payload로 응답한다.
+- 워커가 `agora.flush`를 호출해 메시지를 드레인하고, `type=reply` payload로 응답한다.
 - orchestrator 다음 wait에서 reply 수신.
 
 **실패 진단**:
