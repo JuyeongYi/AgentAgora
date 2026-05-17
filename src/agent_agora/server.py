@@ -21,6 +21,16 @@ from agent_agora.schemas import SchemaRegistry
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
 
+def _schema_conflict_payload(schema_name: str, reason: str, attempted_by: str) -> dict:
+    return {
+        "msgtype": "schema_conflict",
+        "schema_name": schema_name,
+        "reason": reason,
+        "attempted_by": attempted_by,
+        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+
+
 def _session_id_from_ctx(ctx: Context) -> str:
     try:
         request = ctx.request_context.request
@@ -97,10 +107,8 @@ def create_agora_app(
                                     registered_by=holder)
         except AgoraError as e:
             if e.code == "schema_immutable":
-                await dispatcher.system_notify(holder, {
-                    "msgtype": "schema_conflict", "schema_name": name,
-                    "reason": str(e), "attempted_by": holder,
-                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+                await dispatcher.system_notify(holder,
+                    _schema_conflict_payload(name, str(e), holder))
             return json.dumps({"error": str(e)})
         return json.dumps({"status": "ok", "name": name, "kind": kind})
 
@@ -191,11 +199,11 @@ def create_agora_app(
                     raise AgoraError("schema_kind_not_bot_task", name=name)
                 existing = schema_registry.get(name)
                 if existing is not None and existing.body != defn.get("body"):
-                    await dispatcher.system_notify(instance_id, {
-                        "msgtype": "schema_conflict", "schema_name": name,
-                        "reason": f"schema '{name}' already registered with a different body",
-                        "attempted_by": instance_id,
-                        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+                    await dispatcher.system_notify(instance_id,
+                        _schema_conflict_payload(
+                            name,
+                            f"schema '{name}' already registered with a different body",
+                            instance_id))
                     raise AgoraError("schema_immutable", name=name)
             # (2) 일괄 등록 — 모두 검증 통과 후
             for name, defn in schemas.items():
@@ -226,6 +234,7 @@ def create_agora_app(
             for s in info.subscribe_schemas:
                 schema_registry.acquire_ref(s, instance_id)
         except AgoraError as e:
+            schema_registry.release_holder(instance_id)
             return json.dumps({"error": str(e)})
         return json.dumps({
             "status": "ok", "instance_id": info.instance_id,
