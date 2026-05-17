@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import urllib.error
 import urllib.request
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8420"
