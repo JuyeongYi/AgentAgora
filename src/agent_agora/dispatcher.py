@@ -54,6 +54,8 @@ class Dispatcher:
         close_timeout_ms: int = 300_000,
         dead_session_timeout_ms: int = 1_800_000,
         gc_retention_days: int = 90,
+        file_store=None,
+        file_retention_days: int = 7,
     ) -> None:
         self._registry = registry
         self._persistence = persistence
@@ -63,8 +65,9 @@ class Dispatcher:
         self._comm_matrix = comm_matrix
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
-        # close_timeout_ms·dead_session_timeout_ms·gc_retention_days는 Sweeper로만
-        # 전달된다 — Dispatcher 자신은 쓰지 않으므로 인스턴스 속성으로 보관하지 않는다.
+        # close_timeout_ms·dead_session_timeout_ms·gc_retention_days·file_store·
+        # file_retention_days는 Sweeper로만 전달된다 — Dispatcher 자신은 쓰지 않으므로
+        # 인스턴스 속성으로 보관하지 않는다.
         self._queues: dict[str, list[Envelope]] = defaultdict(list)
         self._waiters: dict[str, list[asyncio.Future]] = defaultdict(list)
         self._closed = False
@@ -81,6 +84,8 @@ class Dispatcher:
             close_timeout_ms=close_timeout_ms,
             dead_session_timeout_ms=dead_session_timeout_ms,
             gc_retention_days=gc_retention_days,
+            file_store=file_store,
+            file_retention_days=file_retention_days,
         )
         from agent_agora.dispatch_persistence import DispatchPersistence
         self._dispatch_persistence = DispatchPersistence(persistence, write_queue)

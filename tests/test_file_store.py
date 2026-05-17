@@ -5,10 +5,16 @@ import datetime
 
 import pytest
 
+from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
+from agent_agora.conversation_store import ConversationStore
 from agent_agora.errors import AgoraError
 from agent_agora.file_store import FileStore
 from agent_agora.persistence import Persistence
+from agent_agora.registry import InstanceRegistry
 from agent_agora.schemas import FILE_SHARE_NAME, FILE_SHARE_BODY
+from agent_agora.sweeper import Sweeper
+from _helpers import make_schema_registry
 
 
 def test_file_share_schema_constant():
@@ -69,3 +75,21 @@ def test_gc_removes_old(tmp_path):
     assert removed == 1
     assert store.meta(h["file_id"]) is None
     assert store.path_of(h["file_id"]) is None
+
+
+def test_file_gc_sweep_removes_expired(tmp_path):
+    store, p = _store(tmp_path)
+    h = store.store_bytes(b"old", "old.txt", "Coder1")
+    instance_registry = InstanceRegistry()
+    bot_registry = BotRegistry()
+    schema_registry = make_schema_registry()
+    conv_store = ConversationStore(p)
+    sw = Sweeper(
+        conv_store, instance_registry, bot_registry, schema_registry, p,
+        close_timeout_ms=300_000, dead_session_timeout_ms=1_800_000,
+        gc_retention_days=90,
+        file_store=store, file_retention_days=0,
+    )
+    removed = sw.file_gc_sweep()
+    assert removed == 1
+    assert store.meta(h["file_id"]) is None

@@ -109,6 +109,10 @@ def _build_app(
         persistence.save_schema(entry.name, entry.body, kind=entry.kind,
                                 purpose=entry.purpose, registered_by=entry.registered_by)
 
+    from agent_agora.file_store import FileStore
+    from agent_agora.file_policy import load_file_policy
+    file_store = FileStore(agora_dir, persistence)
+    file_policy = load_file_policy(agora_dir / "file-policy.json")
     write_queue = AsyncWriteQueue(persistence)
     dispatcher = Dispatcher(
         registry=instance_registry,
@@ -122,11 +126,8 @@ def _build_app(
         close_timeout_ms=close_timeout_ms,
         dead_session_timeout_ms=dead_session_timeout_ms,
         gc_retention_days=gc_retention_days,
+        file_store=file_store,
     )
-    from agent_agora.file_store import FileStore
-    from agent_agora.file_policy import load_file_policy
-    file_store = FileStore(agora_dir, persistence)
-    file_policy = load_file_policy(agora_dir / "file-policy.json")
     mcp = create_agora_app(
         agora_dir=agora_dir,
         instance_registry=instance_registry,
@@ -275,6 +276,7 @@ async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
         await asyncio.sleep((next_run - now).total_seconds())
         try:
             dispatcher.sweeper.message_gc_sweep()
+            dispatcher.sweeper.file_gc_sweep()
         except Exception as e:
             print(f"[agora] message_gc error: {e}", file=sys.stderr)
 
