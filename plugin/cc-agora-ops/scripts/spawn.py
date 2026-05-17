@@ -266,11 +266,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SERVER_URL,
         help=f"MCP server URL (default: {DEFAULT_SERVER_URL}).",
     )
+    p.add_argument(
+        "--persona-file",
+        dest="persona_file",
+        default=None,
+        help="Path to a file holding the custom persona body. When given, "
+             "spawn runs in custom mode: writes .claude/CLAUDE.md, enables "
+             "cc-agora, and writes no run script.",
+    )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
+    persona_body = None
+    if args.persona_file is not None:
+        persona_body = Path(args.persona_file).read_text(encoding="utf-8")
     return do_spawn(
         instance_id=args.id,
         role=args.role,
@@ -283,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force,
         server_url=args.server_url,
         plugin_root=_plugin_root(),
+        persona_body=persona_body,
     )
 
 

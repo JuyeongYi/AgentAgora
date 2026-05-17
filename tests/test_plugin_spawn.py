@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from spawn import DEFAULT_SERVER_URL, do_spawn
+from spawn import DEFAULT_SERVER_URL, do_spawn, main
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 
@@ -188,3 +188,22 @@ def test_spawn_custom_mode_still_writes_mcp_json(tmp_path):
     mcp = json.loads((tmp_path / "Db1" / ".mcp.json").read_text(encoding="utf-8"))
     assert set(mcp["mcpServers"]) == {"agentagora", "agora-channel"}
     assert mcp["mcpServers"]["agentagora"]["headers"]["X-Agora-Role"] == "db-migrator"
+
+
+def test_main_persona_file_triggers_custom_mode(tmp_path, monkeypatch):
+    pf = tmp_path / "persona.md"
+    pf.write_text("# Custom\n\n## Mission\n\nDo the thing.\n", encoding="utf-8")
+    monkeypatch.setenv("AGORA_HOME", str(tmp_path))
+    rc = main(["Cli1", "custom-role", "desc", "--persona-file", str(pf)])
+    assert rc == 0
+    persona = (tmp_path / "Cli1" / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert persona == "# Custom\n\n## Mission\n\nDo the thing.\n"
+    assert not (tmp_path / "Cli1" / "run.bat").exists()
+
+
+def test_main_without_persona_file_stays_non_custom(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGORA_HOME", str(tmp_path))
+    rc = main(["Cli2", "coder", "desc"])
+    assert rc == 0
+    assert (tmp_path / "Cli2" / "run.bat").is_file()
+    assert not (tmp_path / "Cli2" / ".claude" / "CLAUDE.md").exists()
