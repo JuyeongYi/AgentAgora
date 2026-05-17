@@ -1,45 +1,46 @@
 ---
 description: Recommend the best cc-agora worker for a natural-language task using agora.find then propose an /invoke chaining string for manual confirmation.
+argument-hint: "<task>"
 ---
 
 # /cc-agora:agora-target
 
-자연어 task에 가장 적합한 워커 한 명을 추천한다. spec §4.3.
+Recommend the single most suitable worker for a natural-language task. spec §4.3.
 
-## 인자
+## Arguments
 
-- `"<task>"`: 자연어 작업 설명. 따옴표로 감싸 공백을 보존한다.
+- `"<task>"`: Natural-language task description. Wrap in quotes to preserve spaces.
 
-## 동작
+## Behavior
 
-1. **키워드 추출** — `<task>`에서 핵심 키워드 1~3개를 뽑는다. 예: "react 컴포넌트 작성" → "react", "component", "코딩". 키워드는 영문/한글 모두 가능하다.
-2. **1차 필터** — 가장 강한 키워드 1개를 골라 `agora.find(query=<keyword>)` 도구를 호출한다. 필요하면 다른 키워드로 한 번 더 호출해 합집합을 만든다. 후보는 instance_id/role/description 중 키워드를 포함하는 인스턴스만 추려진다(spec §4.3 step 1, `src/agent_agora/server.py:131`).
-3. **2차 필터** — 1차 결과가 0건이면 `agora.instances()`를 호출해 전체 목록을 받아 task와 매칭한다.
-4. **1순위 선택** — 후보 중 task에 가장 적합한 1명을 role/description을 보고 선택한다. 인스턴스 수가 ≤3명이면 사유를 2~3문장, 더 많으면 1문장으로 줄인다.
-5. **chaining 제안 (자동 발사 X)** — 다음 한 줄을 그대로 출력한다:
+1. **Keyword extraction** — Extract 1–3 core keywords from `<task>`. Example: "write a react component" → "react", "component", "coding". Keywords may be in any language.
+2. **First-pass filter** — Pick the strongest keyword and call `agora.find(query=<keyword>)`. If needed, call again with another keyword and union the results. Candidates are instances whose instance_id, role, or description contain the keyword (spec §4.3 step 1, `src/agent_agora/server.py:131`).
+3. **Second-pass filter** — If first pass returns 0 results, call `agora.instances()` to get the full list and match against the task.
+4. **Top-1 selection** — From the candidates, pick the one most suited to the task based on role/description. If there are ≤3 instances, give a 2–3 sentence rationale; with more, condense to 1 sentence.
+5. **Chaining proposal (do not auto-fire)** — Print exactly this one line:
 
    ```
    /cc-agora:invoke <recommended-id> "<task>"
    ```
 
-   spec §9.1대로 Claude Code가 슬래시 응답을 다음 입력으로 prefill 하는 표준 메커니즘은 없다고 전제한다. 사용자가 위 문자열을 복사·수정·확정 후 Enter를 누른다. 본 슬래시는 절대로 `agora.dispatch`를 직접 호출하지 않는다.
+   Per spec §9.1, there is no standard Claude Code mechanism to prefill the next input with a slash response. The user copies, edits, confirms, and presses Enter. This slash never calls `agora.dispatch` directly.
 
-## 출력 예시
+## Output example
 
-후보 3명일 때:
-
-```
-추천: Coder1
-사유: role=coder이며 description에 "React"가 포함돼 task와 일치한다. Coder2는 백엔드 중심이라 우선순위가 낮다.
-
-다음 명령 (사용자 확정 필요):
-/cc-agora:invoke Coder1 "React 컴포넌트로 로그인 폼 작성"
-```
-
-## 예시
+With 3 candidates:
 
 ```
-/cc-agora:agora-target "React 컴포넌트로 로그인 폼 작성"
+Recommendation: Coder1
+Rationale: role=coder and description includes "React", matching the task. Coder2 is backend-focused and ranked lower.
+
+Next command (user confirmation required):
+/cc-agora:invoke Coder1 "Write a login form as a React component"
 ```
 
-추천 워커 1명 + chaining 문자열이 출력되고, 발사는 사용자가 결정한다.
+## Example
+
+```
+/cc-agora:agora-target "Write a login form as a React component"
+```
+
+Outputs one recommended worker + chaining string. The user decides whether to fire it.

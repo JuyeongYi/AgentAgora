@@ -1,0 +1,9 @@
+{
+  "orchestrator": { "plugin": "cc-agora-orchestrator" },
+  "coder":        { "plugin": "cc-agora-coder" },
+  "reviewer":     { "plugin": "cc-agora-reviewer" },
+  "tester":       { "plugin": "cc-agora-tester" },
+  "writer":       { "plugin": "cc-agora-writer" },
+  "planner":      { "plugin": "cc-agora-planner" },
+  "general":      { "plugin": "cc-agora-general" }
+}

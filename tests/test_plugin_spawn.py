@@ -1,8 +1,7 @@
-"""Unit tests for plugin/cc-agora/scripts/spawn.py::do_spawn (채널 모드).
+"""Unit tests for plugin/cc-agora-ops/scripts/spawn.py::do_spawn (채널 모드).
 
 do_spawn을 target_dir=tmp_path로 직접 호출해 생성 파일을 격리 검증한다.
-채널 모드 워커는 CLAUDE.md + .mcp.json(2-서버) + run.bat 3파일 — Stop hook
-없음.
+채널 모드 워커는 thin CLAUDE.md + .mcp.json(2-서버) + run.bat + .claude/settings.local.json.
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ import pytest
 
 from spawn import DEFAULT_SERVER_URL, do_spawn
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 
 
 def _call(tmp_path: Path, **overrides) -> int:
@@ -22,7 +21,6 @@ def _call(tmp_path: Path, **overrides) -> int:
         instance_id="Worker1",
         role="coder",
         description="테스트용 워커.",
-        preset=None,
         target_dir=tmp_path,
         force=False,
         server_url=DEFAULT_SERVER_URL,
@@ -41,13 +39,36 @@ def test_spawn_creates_channel_mode_files(tmp_path: Path) -> None:
     assert (worker / "CLAUDE.md").is_file()
     assert (worker / ".mcp.json").is_file()
     assert (worker / "run.bat").is_file()
-    # 채널 모드 워커는 Stop hook이 없다 — .claude/ 미생성.
-    assert not (worker / ".claude").exists()
+    assert (worker / ".claude" / "settings.local.json").is_file()
 
-    claude_md = (worker / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "Coder1" in claude_md
-    assert "테스트용 워커" in claude_md
-    assert "Coder 페르소나" in claude_md
+
+def test_spawn_creates_thin_claude_md(tmp_path):
+    rc = _call(tmp_path, instance_id="Coder1", role="coder",
+               description="React 컴포넌트 담당")
+    assert rc == 0
+    md = (tmp_path / "Coder1" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Coder1" in md and "coder" in md
+    # thin — 페르소나 본문(미션 등)을 stamp하지 않는다
+    assert "## 미션" not in md
+    assert "persona" in md  # 페르소나 스킬 적용 지시
+
+
+def test_spawn_creates_settings_local_json(tmp_path):
+    rc = _call(tmp_path, instance_id="Coder1", role="coder", description="d")
+    assert rc == 0
+    s = json.loads(
+        (tmp_path / "Coder1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert "extraKnownMarketplaces" in s
+    assert "agentagora" in s["extraKnownMarketplaces"]
+    assert s["enabledPlugins"].get("cc-agora-coder@agentagora") is True
+
+
+def test_spawn_undefined_role_enables_general_persona(tmp_path):
+    rc = _call(tmp_path, instance_id="X1", role="phantom", description="d")
+    assert rc == 0
+    s = json.loads(
+        (tmp_path / "X1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert s["enabledPlugins"].get("cc-agora-general@agentagora") is True
 
 
 def test_spawn_mcp_json_two_servers(tmp_path: Path) -> None:
@@ -89,8 +110,6 @@ def test_spawn_undefined_role_falls_back_to_general(
     err = capsys.readouterr().err
     assert "phantom" in err
     assert "roles.json" in err
-    claude_md = (worker / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "General 페르소나" in claude_md
 
 
 def test_spawn_existing_dir_without_force_fails(
@@ -114,15 +133,6 @@ def test_spawn_existing_dir_with_force_overwrites(tmp_path: Path) -> None:
     refreshed = target.read_text(encoding="utf-8")
     assert "MUTATED" not in refreshed
     assert "새 설명" in refreshed
-
-
-def test_spawn_preset_override(tmp_path: Path) -> None:
-    assert _call(tmp_path, instance_id="PCoder", role="coder",
-                 preset="reviewer") == 0
-    body = (tmp_path / "PCoder" / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "PCoder (coder)" in body
-    assert "Reviewer 페르소나" in body
-    assert "Coder 페르소나" not in body
 
 
 def test_spawn_description_with_quotes_and_unicode(tmp_path: Path) -> None:

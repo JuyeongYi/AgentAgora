@@ -28,5 +28,5 @@
 ## 규약
 
 - Windows 대상 JSON(`.mcp.json`, `settings.local.json` 등) 안의 path·shell 문자열은 forward slash로 쓴다. backslash는 hook/spawn 레이어에서 escape 충돌을 일으킨다.
-- 산출물(plugin preset, README, spec, 슬래시 본문)은 한국어 우선. 코드 식별자·JSON 키·MCP 도구명은 영어.
+- 산출물(plugin preset, README, spec)은 한국어 우선. 코드 식별자·JSON 키·MCP 도구명, 그리고 스킬(SKILL.md 본문·frontmatter)·서브에이전트 정의는 영어로 작성한다.
 - 로그 페이로드에 원본 바이너리 에셋을 넣지 않는다 — 작은 파생물(요약·해시)만.

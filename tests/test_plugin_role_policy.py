@@ -1,4 +1,4 @@
-"""Unit tests for plugin/cc-agora/scripts/role_policy.py."""
+"""Unit tests for plugin/cc-agora-ops/scripts/role_policy.py."""
 from __future__ import annotations
 
 import io
@@ -10,12 +10,12 @@ import pytest
 from role_policy import (
     is_defined,
     load_roles,
-    preset_for,
+    plugin_for,
     undefined_role_warning,
     warn_undefined_role,
 )
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 ROLES_PATH = PLUGIN_ROOT / "config" / "roles.json"
 
 
@@ -24,11 +24,20 @@ def roles() -> dict:
     return load_roles(ROLES_PATH)
 
 
-def test_preset_for(roles: dict) -> None:
-    assert preset_for("coder", roles) == "coder"
-    assert preset_for("orchestrator", roles) == "orchestrator"
-    assert preset_for("reviewer", roles) == "reviewer"
-    assert preset_for("phantom", roles) is None
+def test_plugin_for_defined_role():
+    roles = load_roles(ROLES_PATH)
+    assert plugin_for("coder", roles) == "cc-agora-coder"
+
+
+def test_plugin_for_undefined_role_is_none():
+    roles = load_roles(ROLES_PATH)
+    assert plugin_for("phantom", roles) is None
+
+
+def test_all_seven_roles_map_to_persona_plugins():
+    roles = load_roles(ROLES_PATH)
+    for role in ("orchestrator", "coder", "reviewer", "tester", "writer", "planner", "general"):
+        assert plugin_for(role, roles) == f"cc-agora-{role}"
 
 
 def test_is_defined(roles: dict) -> None:
@@ -40,7 +49,7 @@ def test_undefined_role_warning_contains_name_and_guide() -> None:
     msg = undefined_role_warning("phantom")
     assert "phantom" in msg
     assert "roles.json" in msg
-    assert "preset" in msg
+    assert "plugin" in msg
 
 
 def test_warn_undefined_role_writes_to_stream() -> None:

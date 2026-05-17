@@ -1,0 +1,6 @@
+{
+  "name": "cc-agora-tester",
+  "description": "AgentAgora tester persona — writes and runs tests, covering golden-path, edge cases, and regression scenarios.",
+  "version": "0.1.0",
+  "dependencies": ["cc-agora"]
+}

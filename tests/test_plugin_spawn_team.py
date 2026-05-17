@@ -1,4 +1,4 @@
-"""Unit tests for plugin/cc-agora/scripts/spawn_team.py (spec §8.8.2/3).
+"""Unit tests for plugin/cc-agora-ops/scripts/spawn_team.py (spec §8.8.2/3).
 
 Two layers:
 
@@ -17,7 +17,7 @@ import pytest
 import spawn_team
 from spawn_team import _validate_manifest
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 
 
 def _good_entry(**overrides) -> dict:
@@ -39,8 +39,6 @@ def test_validate_manifest_valid() -> None:
     assert errors == []
     assert len(cleaned) == 3
     assert [e["id"] for e in cleaned] == ["Coder1", "Reviewer1", "Tester1"]
-    # preset key always normalized to None when absent.
-    assert all(e["preset"] is None for e in cleaned)
 
 
 def test_validate_manifest_wrong_version() -> None:

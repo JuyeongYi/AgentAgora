@@ -17,13 +17,13 @@ AgentAgora 워커(Claude Code 인스턴스)가 채널 모드로 메시지를 받
 
 ---
 
-## 권장 경로: `/cc-agora:agora-spawn`
+## 권장 경로: `/cc-agora-ops:agora-spawn`
 
-cc-agora 플러그인의 `/cc-agora:agora-spawn` 슬래시 명령이 채널 모드 워커 번들을 자동으로 생성한다. 직접 `.mcp.json`을 편집하지 않아도 된다.
+cc-agora-ops 플러그인의 `/cc-agora-ops:agora-spawn` 슬래시 명령이 채널 모드 워커 번들을 자동으로 생성한다. 직접 `.mcp.json`을 편집하지 않아도 된다.
 
 ```
 # orchestrator Claude Code 세션 안에서
-/cc-agora:agora-spawn Coder1 coder "React 컴포넌트 담당."
+/cc-agora-ops:agora-spawn Coder1 coder "React 컴포넌트 담당."
 ```
 
 생성되는 파일 3개:

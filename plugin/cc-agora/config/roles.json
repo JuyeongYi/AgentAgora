@@ -1,9 +1,0 @@
-{
-  "orchestrator": { "preset": "orchestrator" },
-  "coder":        { "preset": "coder" },
-  "reviewer":     { "preset": "reviewer" },
-  "tester":       { "preset": "tester" },
-  "writer":       { "preset": "writer" },
-  "planner":      { "preset": "planner" },
-  "general":      { "preset": "general" }
-}

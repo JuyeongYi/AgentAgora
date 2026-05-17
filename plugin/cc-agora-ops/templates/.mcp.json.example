@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agentagora": {
+      "type": "http",
+      "url": "http://127.0.0.1:8420/mcp",
+      "headers": {
+        "X-Agora-Instance-Id": "Operator1",
+        "X-Agora-Role": "orchestrator",
+        "X-Agora-Description": "operator control session"
+      }
+    }
+  }
+}
