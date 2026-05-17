@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from agent_agora.errors import AgoraError
-from agent_agora.schemas import SchemaRegistry
+from agent_agora.schemas import SchemaRegistry, SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY
 
 _BODY = {"type": "object", "properties": {"msgtype": {"const": "s"}}}
 _BODY2 = {"type": "object", "properties": {"msgtype": {"const": "s"}, "x": {"type": "string"}}}
@@ -81,3 +81,17 @@ def test_release_holder_returns_only_emptied_schemas():
     released = r.release_holder("A")
     assert released == ["s1"]  # s2 still held by B
     assert r.get("s1") is None and r.get("s2") is not None
+
+
+def test_schema_conflict_constant_has_msgtype_property():
+    props = SCHEMA_CONFLICT_BODY.get("properties", {})
+    assert "msgtype" in props
+    assert SCHEMA_CONFLICT_NAME == "schema_conflict"
+
+
+def test_schema_conflict_registers_as_permanent():
+    r = SchemaRegistry()
+    r.register(SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
+               kind="conversation", purpose="schema name conflict notice")
+    assert r.get(SCHEMA_CONFLICT_NAME) is not None
+    assert r.release_holder("anyone") == []  # permanent

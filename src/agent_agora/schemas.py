@@ -139,6 +139,20 @@ class SchemaRegistry:
         return released
 
 
+SCHEMA_CONFLICT_NAME = "schema_conflict"
+SCHEMA_CONFLICT_BODY: dict[str, Any] = {
+    "type": "object",
+    "required": ["msgtype", "schema_name", "reason", "ts"],
+    "properties": {
+        "msgtype": {"type": "string", "const": "schema_conflict"},
+        "schema_name": {"type": "string"},
+        "reason": {"type": "string"},
+        "attempted_by": {"type": "string"},
+        "ts": {"type": "string", "format": "date-time"},
+    },
+    "additionalProperties": False,
+}
+
 BUNDLED_DEFAULT_SCHEMAS = Path(__file__).with_name("default_schemas.jsonl")
 
 

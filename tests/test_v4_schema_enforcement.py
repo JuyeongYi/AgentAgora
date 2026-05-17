@@ -199,7 +199,9 @@ async def test_dispatch_msgtype_required_and_unknown_rejected(app):
 
 @pytest.mark.asyncio
 async def test_schema_persists_across_restart(tmp_path):
-    """register된 도메인 schema가 서버 재시작(_build_app 재호출) 후에도 살아있다."""
+    """재시작 후 런타임 등록 schema는 복원되지 않는다 (spec §3 재시작 동작).
+    빌트인(jsonl) schema와 schema_conflict 시스템 스키마만 매 시작 시 로드된다.
+    봇·워커는 재접속 시 스스로 재등록한다."""
     from agent_agora.__main__ import _build_app
     agora_dir = tmp_path / ".agentagora"
     agora_dir.mkdir()
@@ -208,6 +210,9 @@ async def test_schema_persists_across_restart(tmp_path):
             "properties": {"msgtype": {"const": "domain_x"}}}
     # save_schema는 동기 쓰기(autocommit)라 flush 불필요
     mcp1._agora_persistence.save_schema("domain_x", body, kind="bot-task", purpose="p")
-    # 재시작 — _build_app 재호출이 SQLite에서 schema를 복원해야 한다
+    # 재시작 — 런타임 schema는 복원 안 됨 (ref-counting 하에서 holder가 죽어 고아 ref)
     mcp2 = _build_app(agora_dir=agora_dir, port=0)
-    assert mcp2._agora_schema_registry.get("domain_x") is not None
+    assert mcp2._agora_schema_registry.get("domain_x") is None  # 복원 안 됨
+    # 빌트인 schema와 schema_conflict는 여전히 로드됨
+    from agent_agora.schemas import SCHEMA_CONFLICT_NAME
+    assert mcp2._agora_schema_registry.get(SCHEMA_CONFLICT_NAME) is not None

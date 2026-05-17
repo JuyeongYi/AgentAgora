@@ -85,22 +85,21 @@ def _build_app(
     persistence = Persistence(db_path or (agora_dir / "agora.db"))
     persistence.migrate()
 
-    # Schema 로드: (1) SQLite의 등록 schema 복원, (2) .agentagora/schemas.jsonl 로드.
-    # 둘 다 idempotent — 동일 body는 무시. 충돌 시 startup 경고 후 SQLite본 유지.
+    # Schema 로드: (1) .agentagora/schemas.jsonl 빌트인 로드, (2) schema_conflict 시스템 스키마.
+    # 런타임 등록 스키마는 복원하지 않는다 — ref-counting 하에서 holder가 죽어 고아 ref가
+    # 되므로(spec §3 재시작 동작). 봇·워커는 재접속 시 스스로 재등록한다.
+    from agent_agora.schemas import SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY
     schema_registry = SchemaRegistry()
-    for row in persistence.restore_schemas():
-        try:
-            schema_registry.register(
-                row["name"], row["body"], kind=row["kind"],
-                purpose=row["purpose"], registered_by=row["registered_by"])
-        except Exception as e:  # noqa: BLE001 — startup 복원은 best-effort
-            print(f"[agora] WARNING: schema '{row['name']}' 복원 실패: {e}", file=sys.stderr)
     schemas_file = ensure_schemas_file(agora_dir / "schemas.jsonl")
     try:
         load_schemas_into(schema_registry, schemas_file)
     except Exception as e:  # noqa: BLE001
         print(f"[agora] WARNING: {schemas_file} 로드 중 일부 schema 충돌: {e}", file=sys.stderr)
-    # jsonl로 새로 등록된 기본 schema를 SQLite에도 영속 (idempotent)
+    # schema_conflict — 시스템 스키마, permanent (registered_by 미지정)
+    schema_registry.register(
+        SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
+        kind="conversation", purpose="스키마 이름 충돌 통지")
+    # 빌트인 schema를 SQLite에도 영속 (idempotent, audit용)
     for entry in schema_registry.list_all():
         persistence.save_schema(entry.name, entry.body, kind=entry.kind,
                                 purpose=entry.purpose, registered_by=entry.registered_by)
