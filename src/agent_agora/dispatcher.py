@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
-import hashlib
 import json
 import uuid
 from collections import defaultdict
@@ -23,29 +22,7 @@ from agent_agora.errors import AgoraError
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schemas import SchemaRegistry
-
-
-def _fmt_payload(payload: Any) -> str:
-    try:
-        return json.dumps(payload, ensure_ascii=False, indent=2)
-    except (TypeError, ValueError):
-        return repr(payload)
-
-
-_COLOR_PALETTE = (
-    "\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m",
-    "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m",
-)
-_RESET = "\033[0m"
-
-
-def _color_for(instance_id: str) -> str:
-    h = hashlib.md5(instance_id.encode("utf-8")).digest()[0]
-    return _COLOR_PALETTE[h % len(_COLOR_PALETTE)]
-
-
-def _colored(instance_id: str) -> str:
-    return f"{_color_for(instance_id)}{instance_id}{_RESET}"
+from agent_agora.dispatch_console import _colored, _fmt_payload
 
 
 def _now_iso() -> str:
