@@ -345,3 +345,96 @@ async def test_broadcast_partial_filter_through_tool(cm_app):
         _FakeCtx("sess-Coder1"), payload=tany(m=1)))
     assert res["status"] == "ok"
     assert sorted(res["denied"]) == ["Reviewer1", "Tester1"]
+
+
+_W_INST1 = "Inst1,Coder1,Reviewer1,Tester1\n0,1,5,1\n1,0,0,0\n1,0,0,0\n1,0,0,0"
+
+
+@pytest.mark.asyncio
+async def test_flush_priority_orders_by_edge_weight(tmp_path):
+    """flush sort=priority — 큰 weight 엣지의 메시지가 먼저."""
+    cm = CommMatrix()
+    cm.load_csv(_W_INST1)  # Coder1->Inst1 weight 1, Reviewer1->Inst1 weight 5
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        await d.dispatch(source="Coder1", target="Inst1", payload=tany(s="w1"))
+        await d.dispatch(source="Reviewer1", target="Inst1", payload=tany(s="w5"))
+        drained = await d.flush("Inst1", sort="priority")
+        assert [c["payload"]["s"] for c in drained] == ["w5", "w1"]
+
+
+@pytest.mark.asyncio
+async def test_flush_edge_weight_beats_message_priority(tmp_path):
+    """weight가 1차 키 — 큰 weight low가 작은 weight high보다 먼저."""
+    cm = CommMatrix()
+    cm.load_csv(_W_INST1)
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        await d.dispatch(source="Coder1", target="Inst1",
+                         payload=tany(s="w1-high"), priority="high")
+        await d.dispatch(source="Reviewer1", target="Inst1",
+                         payload=tany(s="w5-low"), priority="low")
+        drained = await d.flush("Inst1", sort="priority")
+        assert [c["payload"]["s"] for c in drained] == ["w5-low", "w1-high"]
+
+
+@pytest.mark.asyncio
+async def test_flush_same_weight_orders_by_message_priority(tmp_path):
+    """같은 weight 엣지 내에서는 메시지 priority가 2차 키."""
+    cm = CommMatrix()
+    # Coder1->Inst1, Reviewer1->Inst1 둘 다 weight 5
+    cm.load_csv("Inst1,Coder1,Reviewer1,Tester1\n0,5,5,1\n1,0,0,0\n1,0,0,0\n1,0,0,0")
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        await d.dispatch(source="Coder1", target="Inst1",
+                         payload=tany(s="low"), priority="low")
+        await d.dispatch(source="Reviewer1", target="Inst1",
+                         payload=tany(s="high"), priority="high")
+        drained = await d.flush("Inst1", sort="priority")
+        assert [c["payload"]["s"] for c in drained] == ["high", "low"]
+
+
+@pytest.mark.asyncio
+async def test_flush_default_sort_is_priority(tmp_path):
+    """flush() sort 미지정 기본값이 priority — weight 큰 메시지 먼저."""
+    cm = CommMatrix()
+    cm.load_csv(_W_INST1)
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        await d.dispatch(source="Coder1", target="Inst1", payload=tany(s="w1"))
+        await d.dispatch(source="Reviewer1", target="Inst1", payload=tany(s="w5"))
+        drained = await d.flush("Inst1")  # sort 미지정 → 기본 priority
+        assert [c["payload"]["s"] for c in drained] == ["w5", "w1"]
+
+
+@pytest.mark.asyncio
+async def test_flush_fifo_ignores_weight(tmp_path):
+    """sort=fifo escape hatch — weight 무시, created_at 순."""
+    cm = CommMatrix()
+    cm.load_csv(_W_INST1)
+    registry, persistence, queue = await _make_dispatcher(tmp_path, cm)
+    async with queue:
+        d = Dispatcher(registry, persistence, queue,
+                       schema_registry=make_schema_registry(),
+                       bot_registry=BotRegistry(), comm_matrix=cm,
+                       default_timeout_ms=200)
+        await d.dispatch(source="Coder1", target="Inst1", payload=tany(s="first"))
+        await d.dispatch(source="Reviewer1", target="Inst1", payload=tany(s="second"))
+        drained = await d.flush("Inst1", sort="fifo")
+        assert [c["payload"]["s"] for c in drained] == ["first", "second"]
