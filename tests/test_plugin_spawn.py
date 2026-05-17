@@ -14,7 +14,7 @@ import pytest
 
 from spawn import DEFAULT_SERVER_URL, do_spawn
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 
 
 def _call(tmp_path: Path, **overrides) -> int:

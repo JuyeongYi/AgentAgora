@@ -15,7 +15,7 @@ from role_policy import (
     warn_undefined_role,
 )
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 ROLES_PATH = PLUGIN_ROOT / "config" / "roles.json"
 
 

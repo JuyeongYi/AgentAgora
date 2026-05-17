@@ -17,7 +17,7 @@ import pytest
 import spawn_team
 from spawn_team import _validate_manifest
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 
 
 def _good_entry(**overrides) -> dict:

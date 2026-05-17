@@ -6,12 +6,14 @@ from pathlib import Path
 
 import pytest
 
-# Make plugin/cc-agora/scripts/ importable for test_plugin_* modules.
-# spawn.py / spawn_team.py use ``from role_policy import ...`` (flat layout, not a
-# package), so the scripts dir must be on sys.path before they can be imported.
-_PLUGIN_SCRIPTS = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora" / "scripts"
-if _PLUGIN_SCRIPTS.is_dir() and str(_PLUGIN_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_PLUGIN_SCRIPTS))
+# Make plugin script dirs importable for test_plugin_* modules.
+# payload.py lives in cc-agora; spawn.py / spawn_team.py / role_policy.py / comm_matrix.py
+# live in cc-agora-ops. Both dirs use a flat layout (no package), so each must be on
+# sys.path before its modules can be imported.
+for _rel in ("cc-agora/scripts", "cc-agora-ops/scripts"):
+    _d = Path(__file__).resolve().parent.parent / "plugin" / _rel
+    if _d.is_dir() and str(_d) not in sys.path:
+        sys.path.insert(0, str(_d))
 
 _TESTS_DIR = Path(__file__).resolve().parent
 if str(_TESTS_DIR) not in sys.path:
