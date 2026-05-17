@@ -112,6 +112,26 @@ def _render_thin_claude_md(*, instance_id: str, role: str, description: str) -> 
     )
 
 
+def _render_custom_claude_md(*, instance_id: str, role: str, description: str) -> str:
+    return (
+        f"# {instance_id} ({role})\n"
+        f"\n"
+        f"이 인스턴스는 **{instance_id}** 워커이다. 역할: **{role}**. 책임: {description}.\n"
+        f"\n"
+        f"## 페르소나\n"
+        f"\n"
+        f"역할 페르소나는 `.claude/CLAUDE.md`에 있다 — Claude Code가 프로젝트 "
+        f"메모리로 자동 로드한다.\n"
+        f"\n"
+        f"## 통신\n"
+        f"\n"
+        f"채널 모드 메시징은 `agora-protocol` 스킬을 따른다 — 채널 알림으로 깨어나 "
+        f"`agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. "
+        f"등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/"
+        f"`agora.unregister`를 호출하지 않는다.\n"
+    )
+
+
 def _render_settings_local(*, persona_plugin: str, marketplace_path: str) -> str:
     settings = {
         "extraKnownMarketplaces": {
@@ -131,23 +151,32 @@ def do_spawn(
     force: bool,
     server_url: str,
     plugin_root: Path,
+    persona_body: str | None = None,
     stderr=sys.stderr,
     stdout=sys.stdout,
     env: dict[str, str] | None = None,
 ) -> int:
     """채널 모드 워커 디렉토리를 ``target_dir/<instance_id>/``에 만든다.
 
+    ``persona_body``가 주어지면 커스텀 모드 — roles.json 조회를 건너뛰고
+    페르소나를 ``.claude/CLAUDE.md``에 쓰며 ``cc-agora``만 활성화한다. 실행
+    스크립트는 쓰지 않는다(agora-run-script 담당).
+
     0=성공, 1=실패. 실패는 한국어로 stderr에 보고한다.
     """
     _ = env  # 향후 확장·테스트 패리티용
-    roles = load_roles(plugin_root / "config" / "roles.json")
+    custom = persona_body is not None
 
-    defined = is_defined(role, roles)
-    persona_plugin = plugin_for(role, roles) if defined else None
-    if persona_plugin is None:
-        persona_plugin = "cc-agora-general"
-    if not defined:
-        warn_undefined_role(role, stream=stderr)
+    if custom:
+        persona_plugin = "cc-agora"
+    else:
+        roles = load_roles(plugin_root / "config" / "roles.json")
+        defined = is_defined(role, roles)
+        persona_plugin = plugin_for(role, roles) if defined else None
+        if persona_plugin is None:
+            persona_plugin = "cc-agora-general"
+        if not defined:
+            warn_undefined_role(role, stream=stderr)
 
     worker_dir = target_dir / instance_id
     if worker_dir.exists() and not force:
@@ -159,12 +188,21 @@ def do_spawn(
         return 1
     worker_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. thin CLAUDE.md
-    _write_text(
-        worker_dir / "CLAUDE.md",
-        _render_thin_claude_md(
-            instance_id=instance_id, role=role, description=description),
-    )
+    # 1. CLAUDE.md (루트 thin)
+    if custom:
+        _write_text(
+            worker_dir / "CLAUDE.md",
+            _render_custom_claude_md(
+                instance_id=instance_id, role=role, description=description),
+        )
+        # 1b. .claude/CLAUDE.md — 커스텀 페르소나 (Claude Code가 자동 로드)
+        _write_text(worker_dir / ".claude" / "CLAUDE.md", persona_body)
+    else:
+        _write_text(
+            worker_dir / "CLAUDE.md",
+            _render_thin_claude_md(
+                instance_id=instance_id, role=role, description=description),
+        )
 
     # 2. .mcp.json — HTTP 서버 + agora-channel stdio 어댑터 (불변)
     mcp_template = _read_template(plugin_root, "templates", "mcp.json.template")
@@ -175,10 +213,11 @@ def do_spawn(
             instance_id=instance_id, role=role, description=description),
     )
 
-    # 3. run.bat — 채널 모드 기동 (불변)
-    _write_text(worker_dir / "run.bat", _RUN_BAT)
+    # 3. run.bat — 비커스텀 모드만. 커스텀 모드 실행 스크립트는 agora-run-script.
+    if not custom:
+        _write_text(worker_dir / "run.bat", _RUN_BAT)
 
-    # 4. .claude/settings.local.json — 워커별 페르소나 플러그인 활성화
+    # 4. .claude/settings.local.json — 페르소나 플러그인(커스텀이면 cc-agora) 활성화
     marketplace_path = plugin_root.parent.parent.as_posix()
     _write_text(
         worker_dir / ".claude" / "settings.local.json",
@@ -186,12 +225,20 @@ def do_spawn(
             persona_plugin=persona_plugin, marketplace_path=marketplace_path),
     )
 
-    print(
-        f"[cc-agora] '{instance_id}/' 생성 완료 "
-        f"(role={role}, persona={persona_plugin}, 채널 모드). "
-        f"시작: cd {instance_id} && run.bat",
-        file=stdout,
-    )
+    if custom:
+        print(
+            f"[cc-agora] '{instance_id}/' 생성 완료 "
+            f"(role={role}, 커스텀 페르소나, 채널 모드). "
+            f"실행 스크립트는 agora-run-script로 생성하라.",
+            file=stdout,
+        )
+    else:
+        print(
+            f"[cc-agora] '{instance_id}/' 생성 완료 "
+            f"(role={role}, persona={persona_plugin}, 채널 모드). "
+            f"시작: cd {instance_id} && run.bat",
+            file=stdout,
+        )
     return 0
 
 

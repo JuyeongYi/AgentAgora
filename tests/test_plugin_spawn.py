@@ -141,3 +141,50 @@ def test_spawn_description_with_quotes_and_unicode(tmp_path: Path) -> None:
                  description=desc) == 0
     mcp = json.loads((tmp_path / "Quoted1" / ".mcp.json").read_text(encoding="utf-8"))
     assert mcp["mcpServers"]["agentagora"]["headers"]["X-Agora-Description"] == desc
+
+
+_PERSONA = "# DB Migrator persona\n\n## Mission\n\nMigrate schemas safely.\n"
+
+
+def test_spawn_custom_mode_writes_claude_persona(tmp_path):
+    rc = _call(tmp_path, instance_id="Db1", role="db-migrator",
+               persona_body=_PERSONA)
+    assert rc == 0
+    persona = (tmp_path / "Db1" / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert persona == _PERSONA
+
+
+def test_spawn_custom_mode_enables_cc_agora_not_persona_plugin(tmp_path):
+    rc = _call(tmp_path, instance_id="Db1", role="db-migrator",
+               persona_body=_PERSONA)
+    assert rc == 0
+    s = json.loads(
+        (tmp_path / "Db1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert s["enabledPlugins"].get("cc-agora@agentagora") is True
+    # 페르소나 플러그인(cc-agora-<role>)은 켜지 않는다
+    assert not any(k.startswith("cc-agora-") for k in s["enabledPlugins"])
+
+
+def test_spawn_custom_mode_writes_no_run_script(tmp_path):
+    rc = _call(tmp_path, instance_id="Db1", role="db-migrator",
+               persona_body=_PERSONA)
+    assert rc == 0
+    assert not (tmp_path / "Db1" / "run.bat").exists()
+
+
+def test_spawn_custom_mode_root_claude_points_to_persona(tmp_path):
+    rc = _call(tmp_path, instance_id="Db1", role="db-migrator",
+               description="DB 마이그레이션 담당", persona_body=_PERSONA)
+    assert rc == 0
+    md = (tmp_path / "Db1" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Db1" in md
+    assert ".claude/CLAUDE.md" in md
+
+
+def test_spawn_custom_mode_still_writes_mcp_json(tmp_path):
+    rc = _call(tmp_path, instance_id="Db1", role="db-migrator",
+               persona_body=_PERSONA)
+    assert rc == 0
+    mcp = json.loads((tmp_path / "Db1" / ".mcp.json").read_text(encoding="utf-8"))
+    assert set(mcp["mcpServers"]) == {"agentagora", "agora-channel"}
+    assert mcp["mcpServers"]["agentagora"]["headers"]["X-Agora-Role"] == "db-migrator"
