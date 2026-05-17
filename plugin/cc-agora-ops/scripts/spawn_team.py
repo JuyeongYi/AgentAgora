@@ -83,19 +83,12 @@ def _validate_manifest(data: object) -> tuple[list[dict], list[str]]:
                 f"[cc-agora] manifest 항목 {idx} 검증 실패: description은 비어있지 않은 문자열."
             )
             continue
-        preset = entry.get("preset")
-        if preset is not None and (not isinstance(preset, str) or not preset):
-            errors.append(
-                f"[cc-agora] manifest 항목 {idx} 검증 실패: preset은 문자열이어야 합니다."
-            )
-            continue
         seen_ids.add(instance_id)
         cleaned.append(
             {
                 "id": instance_id,
                 "role": role,
                 "description": description,
-                "preset": preset,
             }
         )
     return cleaned, errors

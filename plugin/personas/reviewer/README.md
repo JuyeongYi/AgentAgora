@@ -10,6 +10,9 @@ AgentAgora reviewer 역할 페르소나 플러그인이다. 이 플러그인은 
 
 ```json
 {
-  "enabledPlugins": ["cc-agora", "cc-agora-reviewer"]
+  "enabledPlugins": {
+    "cc-agora@agentagora": true,
+    "cc-agora-reviewer@agentagora": true
+  }
 }
 ```

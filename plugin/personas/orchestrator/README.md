@@ -10,6 +10,9 @@ AgentAgora orchestrator 역할 페르소나 플러그인이다. 이 플러그인
 
 ```json
 {
-  "enabledPlugins": ["cc-agora", "cc-agora-orchestrator"]
+  "enabledPlugins": {
+    "cc-agora@agentagora": true,
+    "cc-agora-orchestrator@agentagora": true
+  }
 }
 ```

@@ -10,6 +10,9 @@ AgentAgora coder 역할 페르소나 플러그인이다. 이 플러그인은 워
 
 ```json
 {
-  "enabledPlugins": ["cc-agora", "cc-agora-coder"]
+  "enabledPlugins": {
+    "cc-agora@agentagora": true,
+    "cc-agora-coder@agentagora": true
+  }
 }
 ```
