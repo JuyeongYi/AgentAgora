@@ -1045,6 +1045,8 @@ class Dispatcher:
             if seen < cutoff:
                 self._registry.unregister_session(info.session_id)
                 removed.append(info.instance_id)
+        for iid in removed:
+            self._schema_registry.release_holder(iid)
         return removed
 
     def dead_bot_sweep(self, now: datetime.datetime | None = None) -> list[str]:
@@ -1062,6 +1064,8 @@ class Dispatcher:
             if datetime.datetime.fromisoformat(marker) < cutoff:
                 self._bot_registry.unregister_session(bot.session_id)
                 removed.append(bot.instance_id)
+        for iid in removed:
+            self._schema_registry.release_holder(iid)
         return removed
 
     def message_gc_sweep(self, now: datetime.datetime | None = None) -> int:
