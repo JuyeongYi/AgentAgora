@@ -25,6 +25,8 @@ class Sweeper:
         close_timeout_ms: int,
         dead_session_timeout_ms: int,
         gc_retention_days: int,
+        file_store=None,
+        file_retention_days: int = 7,
     ) -> None:
         self._conv = conversation_store
         self._instance_registry = instance_registry
@@ -34,6 +36,8 @@ class Sweeper:
         self._close_timeout_ms = close_timeout_ms
         self._dead_session_timeout_ms = dead_session_timeout_ms
         self._gc_retention_days = gc_retention_days
+        self._file_store = file_store
+        self._file_retention_days = file_retention_days
 
     def close_ttl_sweep(self, now: datetime.datetime | None = None) -> list[str]:
         """Auto-transition half_closed conversations to closed after timeout.
@@ -95,6 +99,15 @@ class Sweeper:
         for iid in removed:
             self._schema_registry.release_holder(iid)
         return removed
+
+    def file_gc_sweep(self, now: datetime.datetime | None = None) -> int:
+        """보관 기간을 지난 공유 파일을 스토어·메타에서 삭제. 삭제 수 반환."""
+        if self._file_store is None:
+            return 0
+        if now is None:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff = now - datetime.timedelta(days=self._file_retention_days)
+        return self._file_store.gc(cutoff.isoformat())
 
     def message_gc_sweep(self, now: datetime.datetime | None = None) -> int:
         """Delete messages of closed conversations older than gc_retention_days.

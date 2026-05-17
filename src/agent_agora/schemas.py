@@ -153,6 +153,23 @@ SCHEMA_CONFLICT_BODY: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+FILE_SHARE_NAME = "file_share"
+FILE_SHARE_BODY: dict[str, Any] = {
+    "type": "object",
+    "required": ["msgtype", "file_id", "name", "size", "sha256", "from", "ts"],
+    "properties": {
+        "msgtype": {"type": "string", "const": "file_share"},
+        "file_id": {"type": "string"},
+        "name": {"type": "string"},
+        "size": {"type": "integer"},
+        "sha256": {"type": "string"},
+        "from": {"type": "string"},
+        "ts": {"type": "string", "format": "date-time"},
+        "note": {"type": "string"},
+    },
+    "additionalProperties": False,
+}
+
 BUNDLED_DEFAULT_SCHEMAS = Path(__file__).with_name("default_schemas.jsonl")
 
 

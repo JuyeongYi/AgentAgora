@@ -53,6 +53,25 @@ def make_admin_route(comm_matrix: CommMatrix, token: str) -> Route:
     return Route("/admin/comm-matrix", endpoint, methods=["GET", "POST"])
 
 
+def make_file_policy_route(file_policy, token: str) -> Route:
+    """파일 권한 정책 admin 라우트. POST=교체(JSON 바디), GET=조회."""
+
+    async def endpoint(request: Request) -> JSONResponse:
+        if not _authorized(request, token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if request.method == "GET":
+            return JSONResponse({"active": file_policy.active,
+                                 "policy": file_policy.snapshot()})
+        body = (await request.body()).decode("utf-8")
+        try:
+            file_policy.load_json(body)
+        except AgoraError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({"status": "ok", "active": file_policy.active})
+
+    return Route("/admin/file-policy", endpoint, methods=["GET", "POST"])
+
+
 def maybe_register(
     app: Starlette, comm_matrix: CommMatrix, token: str | None,
 ) -> bool:

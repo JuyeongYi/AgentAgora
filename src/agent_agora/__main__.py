@@ -29,6 +29,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dead-session-timeout-ms", type=int, default=1800000)
     parser.add_argument("--gc-retention-days", type=int, default=90)
     parser.add_argument("--gc-hour", type=int, default=3)
+    parser.add_argument("--file-retention-days", type=int, default=7,
+                        help="공유 파일 보관 기간(일). 기본 7.")
     timeout_group = parser.add_mutually_exclusive_group()
     timeout_group.add_argument("--default-wait-timeout-ms", type=int, default=60000)
     timeout_group.add_argument("--no-timeout", action="store_true")
@@ -61,6 +63,7 @@ def _build_app(
     close_timeout_ms: int = 300_000,
     dead_session_timeout_ms: int = 1_800_000,
     gc_retention_days: int = 90,
+    file_retention_days: int = 7,
 ):
     """Construct FastMCP app + supporting state. Used by CLI and tests.
 
@@ -88,7 +91,8 @@ def _build_app(
     # Schema 로드: (1) .agentagora/schemas.jsonl 빌트인 로드, (2) schema_conflict 시스템 스키마.
     # 런타임 등록 스키마는 복원하지 않는다 — ref-counting 하에서 holder가 죽어 고아 ref가
     # 되므로(spec §3 재시작 동작). 봇·워커는 재접속 시 스스로 재등록한다.
-    from agent_agora.schemas import SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY
+    from agent_agora.schemas import (SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
+                                     FILE_SHARE_NAME, FILE_SHARE_BODY)
     schema_registry = SchemaRegistry()
     schemas_file = ensure_schemas_file(agora_dir / "schemas.jsonl")
     try:
@@ -99,11 +103,19 @@ def _build_app(
     schema_registry.register(
         SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
         kind="conversation", purpose="스키마 이름 충돌 통지")
+    # file_share — 파일 공유 핸들 통지, permanent
+    schema_registry.register(
+        FILE_SHARE_NAME, FILE_SHARE_BODY,
+        kind="conversation", purpose="파일 공유 핸들 통지")
     # 빌트인 schema를 SQLite에도 영속 (idempotent, audit용)
     for entry in schema_registry.list_all():
         persistence.save_schema(entry.name, entry.body, kind=entry.kind,
                                 purpose=entry.purpose, registered_by=entry.registered_by)
 
+    from agent_agora.file_store import FileStore
+    from agent_agora.file_policy import load_file_policy
+    file_store = FileStore(agora_dir, persistence)
+    file_policy = load_file_policy(agora_dir / "file-policy.json")
     write_queue = AsyncWriteQueue(persistence)
     dispatcher = Dispatcher(
         registry=instance_registry,
@@ -117,6 +129,8 @@ def _build_app(
         close_timeout_ms=close_timeout_ms,
         dead_session_timeout_ms=dead_session_timeout_ms,
         gc_retention_days=gc_retention_days,
+        file_store=file_store,
+        file_retention_days=file_retention_days,
     )
     mcp = create_agora_app(
         agora_dir=agora_dir,
@@ -127,6 +141,8 @@ def _build_app(
         persistence=persistence,
         dispatcher=dispatcher,
         port=port,
+        file_store=file_store,
+        file_policy=file_policy,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
@@ -135,6 +151,8 @@ def _build_app(
     mcp._agora_dispatcher = dispatcher  # type: ignore[attr-defined]
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]
+    mcp._agora_file_store = file_store  # type: ignore[attr-defined]
+    mcp._agora_file_policy = file_policy  # type: ignore[attr-defined]
     return mcp
 
 
@@ -166,6 +184,7 @@ async def run_server(args: argparse.Namespace) -> None:
         close_timeout_ms=args.close_timeout_ms,
         dead_session_timeout_ms=args.dead_session_timeout_ms,
         gc_retention_days=args.gc_retention_days,
+        file_retention_days=args.file_retention_days,
     )
     instance_registry = mcp._agora_instance_registry  # type: ignore[attr-defined]
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
@@ -190,12 +209,17 @@ async def run_server(args: argparse.Namespace) -> None:
 
         starlette_app = mcp.streamable_http_app()
         starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
-        from agent_agora.admin_routes import maybe_register
+        from agent_agora.admin_routes import maybe_register, make_file_policy_route
+        _admin_token = os.environ.get("AGORA_ADMIN_TOKEN")
         if maybe_register(
             starlette_app, mcp._agora_comm_matrix,  # type: ignore[attr-defined]
-            os.environ.get("AGORA_ADMIN_TOKEN"),
+            _admin_token,
         ):
             print("  Admin    : POST/GET /admin/comm-matrix (AGORA_ADMIN_TOKEN set)")
+        if _admin_token:
+            starlette_app.router.routes.append(
+                make_file_policy_route(mcp._agora_file_policy, _admin_token))  # type: ignore[attr-defined]
+            print("  Admin    : POST/GET /admin/file-policy (AGORA_ADMIN_TOKEN set)")
         from agent_agora.dashboard_routes import register as register_dashboard
         register_dashboard(
             starlette_app,
@@ -205,6 +229,10 @@ async def run_server(args: argparse.Namespace) -> None:
             comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
         )
         print("  Dashboard: GET /dashboard")
+        from agent_agora.file_routes import register as register_files
+        register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
+                       file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]
+        print("  Files    : POST /files, GET /files/<id>")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
@@ -253,6 +281,7 @@ async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
         await asyncio.sleep((next_run - now).total_seconds())
         try:
             dispatcher.sweeper.message_gc_sweep()
+            dispatcher.sweeper.file_gc_sweep()
         except Exception as e:
             print(f"[agora] message_gc error: {e}", file=sys.stderr)
 

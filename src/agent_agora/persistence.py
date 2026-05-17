@@ -82,6 +82,17 @@ CREATE TABLE IF NOT EXISTS bot_subscriptions (
   PRIMARY KEY (instance_id, schema_name, kind)
 );
 CREATE INDEX IF NOT EXISTS idx_bot_sub_schema ON bot_subscriptions(schema_name);
+
+CREATE TABLE IF NOT EXISTS files (
+  file_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  content_type TEXT,
+  registered_by TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_files_created ON files(created_at);
 """
 
 
@@ -203,6 +214,30 @@ class Persistence:
             "SELECT source FROM messages WHERE command_id=? LIMIT 1", (cmd_id,)
         ).fetchone()
         return row[0] if row else None
+
+    _FILE_COLS = ("file_id", "name", "size", "sha256", "content_type",
+                  "registered_by", "created_at")
+
+    def save_file(self, file_id, name, size, sha256, content_type,
+                  registered_by, created_at) -> None:
+        self._conn.execute(
+            "INSERT INTO files (file_id,name,size,sha256,content_type,"
+            "registered_by,created_at) VALUES (?,?,?,?,?,?,?)",
+            (file_id, name, size, sha256, content_type, registered_by, created_at))
+
+    def get_file(self, file_id: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT file_id,name,size,sha256,content_type,registered_by,created_at "
+            "FROM files WHERE file_id=?", (file_id,)).fetchone()
+        return dict(zip(self._FILE_COLS, row)) if row is not None else None
+
+    def files_before(self, cutoff_iso: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT file_id FROM files WHERE created_at < ?", (cutoff_iso,)).fetchall()
+        return [r[0] for r in rows]
+
+    def delete_file(self, file_id: str) -> None:
+        self._conn.execute("DELETE FROM files WHERE file_id=?", (file_id,))
 
 
 @dataclass
