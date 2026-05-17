@@ -39,3 +39,8 @@ def test_persona_plugins_have_persona_skill():
         text = sk.read_text(encoding="utf-8")
         assert text.startswith("---")
         assert "user-invocable: false" in text
+
+
+def test_cc_agora_ops_depends_on_cc_agora():
+    pj = _load(REPO / "plugin" / "cc-agora-ops" / ".claude-plugin" / "plugin.json")
+    assert pj["dependencies"] == ["cc-agora"]
