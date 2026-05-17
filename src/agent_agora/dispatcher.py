@@ -83,6 +83,8 @@ class Dispatcher:
             dead_session_timeout_ms=dead_session_timeout_ms,
             gc_retention_days=gc_retention_days,
         )
+        from agent_agora.dispatch_persistence import DispatchPersistence
+        self._dispatch_persistence = DispatchPersistence(persistence, write_queue)
 
     @property
     def default_timeout_ms(self) -> int:
@@ -277,7 +279,7 @@ class Dispatcher:
                     state["status"] = "half_closed"
                 self._conv.maybe_close(conv_id, state)
 
-            await self._persist_dispatch_txn(
+            await self._dispatch_persistence.persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
                 env=primary_env, cc_envs=cc_envs + sub_envs + obs_envs,
                 skipped_full=skipped_full,
@@ -432,7 +434,7 @@ class Dispatcher:
                 state["closed_at"] = _now_iso()
                 state["closed_by"] = list(state["participants"].keys())
 
-            await self._persist_dispatch_txn(
+            await self._dispatch_persistence.persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
                 env=None, cc_envs=envs, skipped_full=skipped_full,
                 payload_bytes=payload_bytes, priority_rank=priority_rank,
@@ -534,7 +536,7 @@ class Dispatcher:
                     continue
                 _enqueue(bot_id, "cc")
 
-            await self._persist_dispatch_txn(
+            await self._dispatch_persistence.persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
                 env=None, cc_envs=envs, skipped_full=skipped_full,
                 payload_bytes=payload_bytes, priority_rank=priority_rank,
@@ -551,68 +553,6 @@ class Dispatcher:
             "conversation_id_substituted": substituted,
             "dispatched_to": delivered, "skipped_full": skipped_full,
         }
-
-    async def _persist_dispatch_txn(
-        self,
-        state: dict,
-        conv_id: str,
-        is_new_conv: bool,
-        env: Envelope | None,
-        cc_envs: list[Envelope],
-        skipped_full: list[str],
-        payload_bytes: bytes,
-        priority_rank: int,
-        is_broadcast: bool = False,
-    ) -> None:
-        stmts: list[tuple[str, tuple]] = []
-        if is_new_conv:
-            stmts.append((
-                "INSERT OR IGNORE INTO conversations "
-                "(conversation_id, status, started_at, last_message_at, kind) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (conv_id, state["status"], state["started_at"], state["last_message_at"], state["kind"]),
-            ))
-        # participants — INSERT OR IGNORE all currently known
-        for iid, info in state["participants"].items():
-            stmts.append((
-                "INSERT OR IGNORE INTO conversation_participants "
-                "(conversation_id, instance_id, role, joined_at, delivered) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (conv_id, iid, info["role"], state["last_message_at"], 1 if info["delivered"] else 0),
-            ))
-        # messages
-        all_envs: list[Envelope] = []
-        if env is not None:
-            all_envs.append(env)
-        all_envs.extend(cc_envs)
-        payload_json = payload_bytes.decode("utf-8")
-        for e in all_envs:
-            stmts.append((
-                "INSERT INTO messages "
-                "(command_id, target, conversation_id, source, in_reply_to, created_at, "
-                "expect_result, reply_to, cc, delivered_as, dispatch_kind, closing, "
-                "priority, priority_rank, deadline_ts, payload) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    e.id, e.target, e.conversation_id, e.source, e.in_reply_to, e.created_at,
-                    1 if e.expect_result else 0, e.reply_to,
-                    json.dumps(e.cc) if e.cc else None,
-                    e.delivered_as, e.dispatch_kind, 1 if e.closing else 0,
-                    e.priority, priority_rank, e.deadline_ts, payload_json,
-                ),
-            ))
-        # update conversation last_message_at + count + status
-        stmts.append((
-            "UPDATE conversations SET last_message_at=?, message_count=message_count+1, "
-            "status=?, closed_at=?, closed_by=?, kind=? WHERE conversation_id=?",
-            (
-                state["last_message_at"], state["status"],
-                state.get("closed_at"),
-                json.dumps(state["closed_by"]),
-                state["kind"], conv_id,
-            ),
-        ))
-        await self._write_queue.submit_transaction(stmts)
 
     def _touch_last_seen(self, instance_id: str) -> None:
         """instance_id가 봇이면 BotRegistry, 워커면 InstanceRegistry의 last_seen을 갱신한다."""
@@ -859,17 +799,7 @@ class Dispatcher:
             self._conv.set_conv_of(row["command_id"], row["conversation_id"])
         # mark orphan (closed) in-flight messages
         now = _now_iso()
-        self._persistence.conn.execute(
-            """
-            UPDATE messages
-            SET drained_at = ?, drop_reason = 'server_restart'
-            WHERE drained_at IS NULL
-              AND conversation_id IN (
-                SELECT conversation_id FROM conversations WHERE status = 'closed'
-              )
-            """,
-            (now,),
-        )
+        self._dispatch_persistence.mark_orphan_closed_inflight(now)
         # restore _in_flight
         pending = self._persistence.restore_in_flight_pending()
         for source, m in pending.items():
@@ -880,14 +810,7 @@ class Dispatcher:
         마킹한다. restore_from_persistence와 달리 _queues에 싣지 않는다.
         대화·메시지 행 자체는 audit용으로 남는다."""
         now = _now_iso()
-        self._persistence.conn.execute(
-            """
-            UPDATE messages
-            SET drained_at = ?, drop_reason = 'server_restart'
-            WHERE drained_at IS NULL
-            """,
-            (now,),
-        )
+        self._dispatch_persistence.drop_inflight(now)
 
     # ------------------------------------------------------------------------
 
