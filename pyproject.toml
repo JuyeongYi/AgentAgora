@@ -24,7 +24,7 @@ agora-channel = "agent_agora.channel_adapter:cli"
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_agora = ["default_schemas.jsonl"]
+agent_agora = ["default_schemas.jsonl", "*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
