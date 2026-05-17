@@ -16,8 +16,12 @@ This skill *authors* the CSV. To *apply* it, use
 
 ## Arguments
 
-- `<out-path>` (optional) — where to write the CSV. Default `comm-matrix.csv`
-  in the current directory. On Windows, write the path with forward slashes.
+- `<out-path>` (optional) — where to write the CSV. Default
+  `$CWD/.agentagora/comm-matrix.csv` — i.e. `comm-matrix.csv` inside the
+  `.agentagora/` directory under the current working directory. Run the skill
+  from the AgentAgora server's working directory and the CSV lands in the very
+  `.agentagora/` the server loads on startup. On Windows, write the path with
+  forward slashes.
 
 ## Behavior
 
@@ -44,10 +48,10 @@ This skill *authors* the CSV. To *apply* it, use
 
 4. Show the operator the rendered CSV, then write it to `<out-path>`.
 
-5. Tell the operator how to apply it — either
-   `/cc-agora-ops:agora-comm-matrix <out-path>` (runtime replace, needs
-   `AGORA_ADMIN_TOKEN`), or place it at `<server-dir>/.agentagora/comm-matrix.csv`
-   to be loaded on the next server start.
+5. Tell the operator how to apply it. With the default `<out-path>` the CSV is
+   already at the server's startup-load location (`.agentagora/comm-matrix.csv`),
+   so a server restart picks it up. For a no-restart runtime replace, run
+   `/cc-agora-ops:agora-comm-matrix <out-path>` (needs `AGORA_ADMIN_TOKEN`).
 
 ## CSV format
 
