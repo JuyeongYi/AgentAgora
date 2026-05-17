@@ -57,7 +57,7 @@ async def test_dispatch_rejects_schema_violation(setup):
 async def test_dispatch_accepts_valid_worker_freeform(setup):
     _, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=wf("안녕"))
-    drained = await dispatcher.wait("Inst2", timeout_ms=200)
+    drained = await dispatcher.flush("Inst2")
     assert drained[0]["payload"]["message"] == "안녕"
 
 
@@ -77,7 +77,7 @@ async def test_close_thread_uses_closing_schema(setup):
                               conversation_id=conv)
     res = await dispatcher.close_thread("Inst1", conv, reason="끝")
     assert res["conversation_id"] == conv
-    drained = await dispatcher.wait("Inst2", timeout_ms=200)
+    drained = await dispatcher.flush("Inst2")
     closing_msgs = [d for d in drained if d["payload"].get("msgtype") == "closing"]
     assert len(closing_msgs) == 1
     assert closing_msgs[0]["payload"]["reason"] == "끝"
@@ -121,7 +121,7 @@ async def app(tmp_path):
 async def test_register_schema_and_schemas_list(app):
     mcp, *_ = app
     res = json.loads(await _tool(mcp, "agora.register_schema")(
-        name="deploy_run", kind="bot-task", purpose="배포 실행",
+        FakeCtx("sess-anon"), name="deploy_run", kind="bot-task", purpose="배포 실행",
         body={"type": "object", "required": ["msgtype"],
               "properties": {"msgtype": {"const": "deploy_run"}}}))
     assert res["status"] == "ok"
@@ -135,7 +135,7 @@ async def test_register_schema_and_schemas_list(app):
 async def test_register_schema_missing_msgtype_rejected(app):
     mcp, *_ = app
     res = json.loads(await _tool(mcp, "agora.register_schema")(
-        name="bad", kind="bot-task", purpose="p",
+        FakeCtx("sess-anon"), name="bad", kind="bot-task", purpose="p",
         body={"type": "object", "properties": {"x": {"type": "string"}}}))
     assert "msgtype property가 없습니다" in res["error"]
 
@@ -145,9 +145,10 @@ async def test_register_schema_immutable(app):
     mcp, *_ = app
     body = {"type": "object", "required": ["msgtype"],
             "properties": {"msgtype": {"const": "t"}}}
-    await _tool(mcp, "agora.register_schema")(name="t", kind="bot-task", purpose="v1", body=body)
+    await _tool(mcp, "agora.register_schema")(
+        FakeCtx("sess-anon"), name="t", kind="bot-task", purpose="v1", body=body)
     res = json.loads(await _tool(mcp, "agora.register_schema")(
-        name="t", kind="bot-task", purpose="v2",
+        FakeCtx("sess-anon"), name="t", kind="bot-task", purpose="v2",
         body=dict(body, required=["msgtype", "x"])))
     assert "이미 등록됨" in res["error"]
 
@@ -199,7 +200,9 @@ async def test_dispatch_msgtype_required_and_unknown_rejected(app):
 
 @pytest.mark.asyncio
 async def test_schema_persists_across_restart(tmp_path):
-    """register된 도메인 schema가 서버 재시작(_build_app 재호출) 후에도 살아있다."""
+    """재시작 후 런타임 등록 schema는 복원되지 않는다 (spec §3 재시작 동작).
+    빌트인(jsonl) schema와 schema_conflict 시스템 스키마만 매 시작 시 로드된다.
+    봇·워커는 재접속 시 스스로 재등록한다."""
     from agent_agora.__main__ import _build_app
     agora_dir = tmp_path / ".agentagora"
     agora_dir.mkdir()
@@ -208,6 +211,61 @@ async def test_schema_persists_across_restart(tmp_path):
             "properties": {"msgtype": {"const": "domain_x"}}}
     # save_schema는 동기 쓰기(autocommit)라 flush 불필요
     mcp1._agora_persistence.save_schema("domain_x", body, kind="bot-task", purpose="p")
-    # 재시작 — _build_app 재호출이 SQLite에서 schema를 복원해야 한다
+    # 재시작 — 런타임 schema는 복원 안 됨 (ref-counting 하에서 holder가 죽어 고아 ref)
     mcp2 = _build_app(agora_dir=agora_dir, port=0)
-    assert mcp2._agora_schema_registry.get("domain_x") is not None
+    assert mcp2._agora_schema_registry.get("domain_x") is None  # 복원 안 됨
+    # 빌트인 schema와 schema_conflict는 여전히 로드됨
+    from agent_agora.schemas import SCHEMA_CONFLICT_NAME
+    assert mcp2._agora_schema_registry.get(SCHEMA_CONFLICT_NAME) is not None
+
+
+@pytest.fixture
+async def schema_app(tmp_path):
+    instance_registry = InstanceRegistry()
+    for name in ("Inst1", "Inst2"):
+        instance_registry.register(f"sess-{name}", name)
+    bot_registry = BotRegistry()
+    schema_registry = make_schema_registry()
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    async with queue:
+        comm_matrix = CommMatrix()
+        dispatcher = Dispatcher(
+            instance_registry, persistence, queue,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, default_timeout_ms=300)
+        mcp = create_agora_app(
+            agora_dir=tmp_path, instance_registry=instance_registry,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, persistence=persistence,
+            dispatcher=dispatcher, port=0)
+        yield mcp, dispatcher, schema_registry
+
+
+@pytest.mark.asyncio
+async def test_register_schema_holds_ref_for_caller(schema_app):
+    """register_schema는 호출자 instance_id를 holder로 ref를 잡는다."""
+    mcp, dispatcher, schema_registry = schema_app
+    body = {"type": "object", "properties": {"msgtype": {"const": "custom_a"}}}
+    r = json.loads(await _tool(mcp, "agora.register_schema")(
+        FakeCtx("sess-Inst1"), name="custom_a", body=body,
+        kind="bot-task", purpose="p"))
+    assert r["status"] == "ok"
+    assert schema_registry.refs_of("custom_a") == {"Inst1"}
+
+
+@pytest.mark.asyncio
+async def test_register_schema_conflict_dispatches_notice(schema_app):
+    """같은 이름 다른 body → schema_immutable 동기 에러 + schema_conflict 통지."""
+    mcp, dispatcher, schema_registry = schema_app
+    b1 = {"type": "object", "properties": {"msgtype": {"const": "custom_b"}}}
+    b2 = {"type": "object", "properties": {"msgtype": {"const": "custom_b"},
+                                           "x": {"type": "string"}}}
+    await _tool(mcp, "agora.register_schema")(
+        FakeCtx("sess-Inst1"), name="custom_b", body=b1, kind="bot-task", purpose="p")
+    r = json.loads(await _tool(mcp, "agora.register_schema")(
+        FakeCtx("sess-Inst2"), name="custom_b", body=b2, kind="bot-task", purpose="p"))
+    assert "error" in r and "이미 등록됨" in r["error"]
+    drained = await dispatcher.flush("Inst2")
+    assert any(d["payload"]["msgtype"] == "schema_conflict" for d in drained)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     timeout_group = parser.add_mutually_exclusive_group()
     timeout_group.add_argument("--default-wait-timeout-ms", type=int, default=60000)
     timeout_group.add_argument("--no-timeout", action="store_true")
+    parser.add_argument(
+        "--restore",
+        action="store_true",
+        help="재시작 시 이전 미배달 메시지를 인박스로 복구한다 "
+             "(크래시 내구성). 미지정 시 클린 스타트 — 미배달 메시지는 drop된다.",
+    )
     return parser.parse_args(argv)
 
 
@@ -78,22 +85,26 @@ def _build_app(
     persistence = Persistence(db_path or (agora_dir / "agora.db"))
     persistence.migrate()
 
-    # Schema 로드: (1) SQLite의 등록 schema 복원, (2) .agentagora/schemas.jsonl 로드.
-    # 둘 다 idempotent — 동일 body는 무시. 충돌 시 startup 경고 후 SQLite본 유지.
+    # Schema 로드: (1) .agentagora/schemas.jsonl 빌트인 로드, (2) schema_conflict 시스템 스키마.
+    # 런타임 등록 스키마는 복원하지 않는다 — ref-counting 하에서 holder가 죽어 고아 ref가
+    # 되므로(spec §3 재시작 동작). 봇·워커는 재접속 시 스스로 재등록한다.
+    from agent_agora.schemas import (SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
+                                     FILE_SHARE_NAME, FILE_SHARE_BODY)
     schema_registry = SchemaRegistry()
-    for row in persistence.restore_schemas():
-        try:
-            schema_registry.register(
-                row["name"], row["body"], kind=row["kind"],
-                purpose=row["purpose"], registered_by=row["registered_by"])
-        except Exception as e:  # noqa: BLE001 — startup 복원은 best-effort
-            print(f"[agora] WARNING: schema '{row['name']}' 복원 실패: {e}", file=sys.stderr)
     schemas_file = ensure_schemas_file(agora_dir / "schemas.jsonl")
     try:
         load_schemas_into(schema_registry, schemas_file)
     except Exception as e:  # noqa: BLE001
         print(f"[agora] WARNING: {schemas_file} 로드 중 일부 schema 충돌: {e}", file=sys.stderr)
-    # jsonl로 새로 등록된 기본 schema를 SQLite에도 영속 (idempotent)
+    # schema_conflict — 시스템 스키마, permanent (registered_by 미지정)
+    schema_registry.register(
+        SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
+        kind="conversation", purpose="스키마 이름 충돌 통지")
+    # file_share — 파일 공유 핸들 통지, permanent
+    schema_registry.register(
+        FILE_SHARE_NAME, FILE_SHARE_BODY,
+        kind="conversation", purpose="파일 공유 핸들 통지")
+    # 빌트인 schema를 SQLite에도 영속 (idempotent, audit용)
     for entry in schema_registry.list_all():
         persistence.save_schema(entry.name, entry.body, kind=entry.kind,
                                 purpose=entry.purpose, registered_by=entry.registered_by)
@@ -112,6 +123,8 @@ def _build_app(
         dead_session_timeout_ms=dead_session_timeout_ms,
         gc_retention_days=gc_retention_days,
     )
+    from agent_agora.file_store import FileStore
+    file_store = FileStore(agora_dir, persistence)
     mcp = create_agora_app(
         agora_dir=agora_dir,
         instance_registry=instance_registry,
@@ -121,6 +134,7 @@ def _build_app(
         persistence=persistence,
         dispatcher=dispatcher,
         port=port,
+        file_store=file_store,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
@@ -129,6 +143,7 @@ def _build_app(
     mcp._agora_dispatcher = dispatcher  # type: ignore[attr-defined]
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]
+    mcp._agora_file_store = file_store  # type: ignore[attr-defined]
     return mcp
 
 
@@ -173,7 +188,10 @@ async def run_server(args: argparse.Namespace) -> None:
     print(f"  Cert     : {cert_path if cert_path else '(none -- HTTP mode, localhost only)'}")
 
     async with write_queue:
-        dispatcher.restore_from_persistence()
+        if args.restore:
+            dispatcher.restore_from_persistence()
+        else:
+            dispatcher.drop_inflight_on_restart()
 
         # M2 background tasks
         sweep_task = asyncio.create_task(_sweep_loop_60s(dispatcher))
@@ -181,6 +199,21 @@ async def run_server(args: argparse.Namespace) -> None:
 
         starlette_app = mcp.streamable_http_app()
         starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
+        from agent_agora.admin_routes import maybe_register
+        if maybe_register(
+            starlette_app, mcp._agora_comm_matrix,  # type: ignore[attr-defined]
+            os.environ.get("AGORA_ADMIN_TOKEN"),
+        ):
+            print("  Admin    : POST/GET /admin/comm-matrix (AGORA_ADMIN_TOKEN set)")
+        from agent_agora.dashboard_routes import register as register_dashboard
+        register_dashboard(
+            starlette_app,
+            dispatcher=dispatcher,
+            instance_registry=instance_registry,
+            bot_registry=mcp._agora_bot_registry,  # type: ignore[attr-defined]
+            comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
+        )
+        print("  Dashboard: GET /dashboard")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
@@ -211,9 +244,9 @@ async def _sweep_loop_60s(dispatcher) -> None:
     while True:
         await asyncio.sleep(60)
         try:
-            dispatcher.close_ttl_sweep()
-            dispatcher.dead_session_sweep()
-            dispatcher.dead_bot_sweep()
+            dispatcher.sweeper.close_ttl_sweep()
+            dispatcher.sweeper.dead_session_sweep()
+            dispatcher.sweeper.dead_bot_sweep()
         except Exception as e:
             print(f"[agora] sweep error: {e}", file=sys.stderr)
 
@@ -228,7 +261,7 @@ async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
             next_run += _dt.timedelta(days=1)
         await asyncio.sleep((next_run - now).total_seconds())
         try:
-            dispatcher.message_gc_sweep()
+            dispatcher.sweeper.message_gc_sweep()
         except Exception as e:
             print(f"[agora] message_gc error: {e}", file=sys.stderr)
 

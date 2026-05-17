@@ -1,13 +1,7 @@
-"""Unit tests for plugin/cc-agora/scripts/spawn.py::do_spawn (spec §8.8).
+"""Unit tests for plugin/cc-agora-ops/scripts/spawn.py::do_spawn (채널 모드).
 
-Each test calls ``do_spawn`` directly with target_dir=tmp_path so created files
-are isolated and the test stays deterministic. We assert on the four-file
-layout, mcp.json validity + headers, and stderr behaviour for undefined roles.
-
-WHY pass sys.stderr/sys.stdout explicitly: ``do_spawn``'s default arguments
-``stderr=sys.stderr``/``stdout=sys.stdout`` bind at import time, *before*
-pytest's ``capsys`` swaps the real ``sys.stderr``. Passing them at call time
-forces the freshly rebound stream so captured output is non-empty.
+do_spawn을 target_dir=tmp_path로 직접 호출해 생성 파일을 격리 검증한다.
+채널 모드 워커는 thin CLAUDE.md + .mcp.json(2-서버) + run.bat + .claude/settings.local.json.
 """
 from __future__ import annotations
 
@@ -17,25 +11,19 @@ from pathlib import Path
 
 import pytest
 
-from spawn import DEFAULT_SERVER_URL, DEFAULT_WAIT_TIMEOUT_MS, do_spawn
+from spawn import DEFAULT_SERVER_URL, do_spawn
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 
 
-def _call(
-    tmp_path: Path,
-    **overrides,
-) -> int:
-    """Common ``do_spawn`` invocation. Override keyword arguments as needed."""
+def _call(tmp_path: Path, **overrides) -> int:
     kwargs = dict(
         instance_id="Worker1",
         role="coder",
         description="테스트용 워커.",
-        preset=None,
         target_dir=tmp_path,
         force=False,
         server_url=DEFAULT_SERVER_URL,
-        wait_timeout_ms=DEFAULT_WAIT_TIMEOUT_MS,
         plugin_root=PLUGIN_ROOT,
         stderr=sys.stderr,
         stdout=sys.stdout,
@@ -44,36 +32,73 @@ def _call(
     return do_spawn(**kwargs)
 
 
-def test_spawn_defined_role_creates_three_files(tmp_path: Path) -> None:
+def test_spawn_creates_channel_mode_files(tmp_path: Path) -> None:
     rc = _call(tmp_path, instance_id="Coder1", role="coder")
     assert rc == 0
     worker = tmp_path / "Coder1"
     assert (worker / "CLAUDE.md").is_file()
     assert (worker / ".mcp.json").is_file()
+    assert (worker / "run.bat").is_file()
     assert (worker / ".claude" / "settings.local.json").is_file()
-    # type:"prompt" Stop hook — no separate stop-hook.py file.
-    assert not (worker / ".claude" / "stop-hook.py").exists()
 
-    claude_md = (worker / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "Coder1" in claude_md
-    assert "coder" in claude_md
-    assert "테스트용 워커" in claude_md
-    # Coder preset header is the body that gets appended after the auto header.
-    assert "Coder 페르소나" in claude_md
 
-    mcp = json.loads((worker / ".mcp.json").read_text(encoding="utf-8"))
-    headers = mcp["mcpServers"]["agentagora"]["headers"]
-    assert headers["X-Agora-Instance-Id"] == "Coder1"
+def test_spawn_creates_thin_claude_md(tmp_path):
+    rc = _call(tmp_path, instance_id="Coder1", role="coder",
+               description="React 컴포넌트 담당")
+    assert rc == 0
+    md = (tmp_path / "Coder1" / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Coder1" in md and "coder" in md
+    # thin — 페르소나 본문(미션 등)을 stamp하지 않는다
+    assert "## 미션" not in md
+    assert "persona" in md  # 페르소나 스킬 적용 지시
+
+
+def test_spawn_creates_settings_local_json(tmp_path):
+    rc = _call(tmp_path, instance_id="Coder1", role="coder", description="d")
+    assert rc == 0
+    s = json.loads(
+        (tmp_path / "Coder1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert "extraKnownMarketplaces" in s
+    assert "agentagora" in s["extraKnownMarketplaces"]
+    assert s["enabledPlugins"].get("cc-agora-coder@agentagora") is True
+
+
+def test_spawn_undefined_role_enables_general_persona(tmp_path):
+    rc = _call(tmp_path, instance_id="X1", role="phantom", description="d")
+    assert rc == 0
+    s = json.loads(
+        (tmp_path / "X1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert s["enabledPlugins"].get("cc-agora-general@agentagora") is True
+
+
+def test_spawn_mcp_json_two_servers(tmp_path: Path) -> None:
+    assert _call(tmp_path, instance_id="W2", role="coder") == 0
+    mcp = json.loads((tmp_path / "W2" / ".mcp.json").read_text(encoding="utf-8"))
+    servers = mcp["mcpServers"]
+    assert set(servers) == {"agentagora", "agora-channel"}
+    headers = servers["agentagora"]["headers"]
+    assert set(headers) == {
+        "X-Agora-Instance-Id", "X-Agora-Role", "X-Agora-Description"}
+    assert headers["X-Agora-Instance-Id"] == "W2"
     assert headers["X-Agora-Role"] == "coder"
-    assert headers["X-Agora-Description"] == "테스트용 워커."
-    assert headers["X-Agora-Wait-Mode"] == "auto"
-    assert headers["X-Agora-Wait-Timeout-Ms"] == "0"
-    # Five header keys total for a defined role (id, role, desc, wait-mode,
-    # wait-timeout-ms).
-    assert len(headers) == 5
+    ch = servers["agora-channel"]
+    assert ch["type"] == "stdio"
+    assert ch["command"] == "agora-channel"
+    assert ch["args"] == [
+        "--instance-id", "W2", "--broker", DEFAULT_SERVER_URL]
 
 
-def test_spawn_undefined_role_omits_hook_files(
+def test_spawn_run_bat_launches_channel_mode(tmp_path: Path) -> None:
+    assert _call(tmp_path, instance_id="W3", role="coder") == 0
+    run_bat = (tmp_path / "W3" / "run.bat").read_text(encoding="utf-8")
+    assert "claude" in run_bat
+    assert "--dangerously-load-development-channels" in run_bat
+    assert "server:agora-channel" in run_bat
+    assert "@echo off" in run_bat
+    assert "%*" in run_bat
+
+
+def test_spawn_undefined_role_falls_back_to_general(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rc = _call(tmp_path, instance_id="Ghost1", role="phantom")
@@ -81,29 +106,17 @@ def test_spawn_undefined_role_omits_hook_files(
     worker = tmp_path / "Ghost1"
     assert (worker / "CLAUDE.md").is_file()
     assert (worker / ".mcp.json").is_file()
-    assert not (worker / ".claude").exists()
-
-    captured = capsys.readouterr()
-    assert "phantom" in captured.err
-    assert "roles.json" in captured.err
-
-    mcp = json.loads((worker / ".mcp.json").read_text(encoding="utf-8"))
-    headers = mcp["mcpServers"]["agentagora"]["headers"]
-    assert "X-Agora-Wait-Mode" not in headers
-    # Undefined role still has the four other headers; sentinel line must be
-    # dropped entirely (no empty key, no trailing comma corruption).
-    assert len(headers) == 4
-    assert headers["X-Agora-Instance-Id"] == "Ghost1"
-    # CLAUDE.md falls back to general preset for undefined role.
-    claude_md = (worker / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "General 페르소나" in claude_md
+    assert (worker / "run.bat").is_file()
+    err = capsys.readouterr().err
+    assert "phantom" in err
+    assert "roles.json" in err
 
 
 def test_spawn_existing_dir_without_force_fails(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert _call(tmp_path, instance_id="Dup1", role="coder") == 0
-    capsys.readouterr()  # drain success message
+    capsys.readouterr()
     rc = _call(tmp_path, instance_id="Dup1", role="coder")
     assert rc == 1
     err = capsys.readouterr().err
@@ -113,69 +126,18 @@ def test_spawn_existing_dir_without_force_fails(
 
 def test_spawn_existing_dir_with_force_overwrites(tmp_path: Path) -> None:
     assert _call(tmp_path, instance_id="OverW", role="coder") == 0
-    # Mutate CLAUDE.md to detect overwrite.
     target = tmp_path / "OverW" / "CLAUDE.md"
     target.write_text("MUTATED", encoding="utf-8")
-    assert (
-        _call(tmp_path, instance_id="OverW", role="coder", force=True, description="새 설명")
-        == 0
-    )
+    assert _call(tmp_path, instance_id="OverW", role="coder",
+                 force=True, description="새 설명") == 0
     refreshed = target.read_text(encoding="utf-8")
     assert "MUTATED" not in refreshed
     assert "새 설명" in refreshed
 
 
-def test_spawn_preset_override(tmp_path: Path) -> None:
-    rc = _call(tmp_path, instance_id="PCoder", role="coder", preset="reviewer")
-    assert rc == 0
-    body = (tmp_path / "PCoder" / "CLAUDE.md").read_text(encoding="utf-8")
-    # Role stays 'coder' in header, but the persona body is reviewer's.
-    assert "PCoder (coder)" in body
-    assert "Reviewer 페르소나" in body
-    assert "Coder 페르소나" not in body
-
-
-def test_spawn_orchestrator_no_hook_files(tmp_path: Path) -> None:
-    rc = _call(tmp_path, instance_id="Orch1", role="orchestrator")
-    assert rc == 0
-    worker = tmp_path / "Orch1"
-    assert (worker / "CLAUDE.md").is_file()
-    assert (worker / ".mcp.json").is_file()
-    # orchestrator hook=none → no settings.local.json / stop-hook.py.
-    assert not (worker / ".claude").exists()
-
-    mcp = json.loads((worker / ".mcp.json").read_text(encoding="utf-8"))
-    headers = mcp["mcpServers"]["agentagora"]["headers"]
-    assert headers["X-Agora-Wait-Mode"] == "manual"
-
-
-def test_spawn_renders_valid_mcp_json_both_branches(tmp_path: Path) -> None:
-    # defined-role branch
-    assert _call(tmp_path, instance_id="ValidA", role="coder") == 0
-    mcp_a = json.loads((tmp_path / "ValidA" / ".mcp.json").read_text(encoding="utf-8"))
-    assert set(mcp_a["mcpServers"]["agentagora"]["headers"].keys()) == {
-        "X-Agora-Instance-Id",
-        "X-Agora-Role",
-        "X-Agora-Description",
-        "X-Agora-Wait-Mode",
-        "X-Agora-Wait-Timeout-Ms",
-    }
-    # undefined-role branch
-    assert _call(tmp_path, instance_id="ValidB", role="ghost-role") == 0
-    mcp_b = json.loads((tmp_path / "ValidB" / ".mcp.json").read_text(encoding="utf-8"))
-    assert set(mcp_b["mcpServers"]["agentagora"]["headers"].keys()) == {
-        "X-Agora-Instance-Id",
-        "X-Agora-Role",
-        "X-Agora-Description",
-        "X-Agora-Wait-Timeout-Ms",
-    }
-
-
 def test_spawn_description_with_quotes_and_unicode(tmp_path: Path) -> None:
     desc = 'React "로그인" 폼 + 한글 — backslash \\ included'
-    rc = _call(tmp_path, instance_id="Quoted1", role="coder", description=desc)
-    assert rc == 0
-    raw = (tmp_path / "Quoted1" / ".mcp.json").read_text(encoding="utf-8")
-    mcp = json.loads(raw)
-    # Description survives JSON encoding round-trip exactly.
+    assert _call(tmp_path, instance_id="Quoted1", role="coder",
+                 description=desc) == 0
+    mcp = json.loads((tmp_path / "Quoted1" / ".mcp.json").read_text(encoding="utf-8"))
     assert mcp["mcpServers"]["agentagora"]["headers"]["X-Agora-Description"] == desc

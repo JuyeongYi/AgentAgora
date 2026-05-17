@@ -1,0 +1,58 @@
+{
+  "name": "agent-agora",
+  "owner": {
+    "name": "JooyoungLee",
+    "email": "jooyounglee93@gmail.com"
+  },
+  "metadata": {
+    "description": "AgentAgora — 다중 에이전트 메시지 라우팅 MCP 서버를 위한 Claude Code 플러그인 모음",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "cc-agora",
+      "source": "./cc-agora",
+      "description": "AgentAgora communication core — worker-to-worker messaging slashes (invoke, broadcast, target, close) and the agora-protocol operating rules."
+    },
+    {
+      "name": "cc-agora-ops",
+      "source": "./cc-agora-ops",
+      "description": "AgentAgora operator tooling — spawn workers, spawn teams from a manifest, manage the communication matrix, and launch a local server."
+    },
+    {
+      "name": "cc-agora-coder",
+      "source": "./personas/coder",
+      "description": "AgentAgora coder persona — a council member that turns tasks into minimal, reviewable code changes."
+    },
+    {
+      "name": "cc-agora-general",
+      "source": "./personas/general",
+      "description": "AgentAgora general persona — generalist fallback worker that handles tasks directly or forwards to a specialist."
+    },
+    {
+      "name": "cc-agora-orchestrator",
+      "source": "./personas/orchestrator",
+      "description": "AgentAgora orchestrator persona — team work distribution PM that delegates user requests to the right workers."
+    },
+    {
+      "name": "cc-agora-planner",
+      "source": "./personas/planner",
+      "description": "AgentAgora planner persona — breaks goals into ordered tasks with dependencies, acceptance criteria, and worker assignments."
+    },
+    {
+      "name": "cc-agora-reviewer",
+      "source": "./personas/reviewer",
+      "description": "AgentAgora reviewer persona — reviews diffs and flags issues in correctness, readability, and test coverage."
+    },
+    {
+      "name": "cc-agora-tester",
+      "source": "./personas/tester",
+      "description": "AgentAgora tester persona — writes and runs tests, covering golden-path, edge cases, and regression scenarios."
+    },
+    {
+      "name": "cc-agora-writer",
+      "source": "./personas/writer",
+      "description": "AgentAgora writer persona — produces docs and prose with concrete examples, avoiding generic filler."
+    }
+  ]
+}

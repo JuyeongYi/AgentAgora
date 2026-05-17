@@ -1,6 +1,7 @@
 # src/agent_agora/server.py
 from __future__ import annotations
 
+import datetime
 import json
 import time
 from pathlib import Path
@@ -8,7 +9,6 @@ from typing import Any, Literal
 
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
-from mcp.types import ToolExecution
 
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
@@ -20,20 +20,25 @@ from agent_agora.schemas import SchemaRegistry
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
-_WAIT_TOOL_NAME = "agora.wait"
+
+def _resolve_caller(session_id: str, instance_registry, bot_registry) -> str:
+    """session_id를 워커/봇 registry에서 instance_id로 해석. 미등록 시 session_id 반환."""
+    for reg in (instance_registry, bot_registry):
+        try:
+            return reg.resolve_session(session_id).instance_id
+        except NotRegisteredError:
+            continue
+    return session_id
 
 
-def _header_int(ctx: Context, header_name: str) -> int | None:
-    try:
-        v = ctx.request_context.request.headers.get(header_name)
-    except (AttributeError, ValueError, LookupError):
-        return None
-    if v is None:
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
+def _schema_conflict_payload(schema_name: str, reason: str, attempted_by: str) -> dict:
+    return {
+        "msgtype": "schema_conflict",
+        "schema_name": schema_name,
+        "reason": reason,
+        "attempted_by": attempted_by,
+        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
 
 
 def _session_id_from_ctx(ctx: Context) -> str:
@@ -64,6 +69,7 @@ def create_agora_app(
     persistence: Persistence,
     dispatcher: Dispatcher,
     port: int,
+    file_store: Any = None,
 ) -> FastMCP:
     """FastMCP 앱을 생성한다 (v3: messaging-only)."""
 
@@ -72,6 +78,7 @@ def create_agora_app(
         host="127.0.0.1",
         port=port,
     )
+    mcp._agora_file_store = file_store  # type: ignore[attr-defined]
 
     start_time = time.time()
 
@@ -85,29 +92,37 @@ def create_agora_app(
 
     @mcp.tool(name="agora.register_schema")
     async def agora_register_schema(
+        ctx: Context,
         name: str,
         body: dict,
         kind: Literal["conversation", "bot-task"],
         purpose: str,
     ) -> str:
         """Register a schema. Immutable — 동일 이름 다른 body는 거부.
-        body에 msgtype property 필수 (결정 20)."""
+        body에 msgtype property 필수 (결정 20). 호출자가 ref holder가 된다."""
         try:
-            schema_registry.register(name, body, kind=kind, purpose=purpose)
-            persistence.save_schema(name, body, kind=kind, purpose=purpose)
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        # 호출자 instance_id 해석 — 워커/봇 모두 허용, 미등록이면 session_id를 holder로.
+        try:
+            holder = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError:
+            try:
+                holder = bot_registry.resolve_session(session_id).instance_id
+            except NotRegisteredError:
+                holder = session_id
+        try:
+            schema_registry.register(name, body, kind=kind, purpose=purpose,
+                                     registered_by=holder)
+            persistence.save_schema(name, body, kind=kind, purpose=purpose,
+                                    registered_by=holder)
         except AgoraError as e:
+            if e.code == "schema_immutable":
+                await dispatcher.system_notify(holder,
+                    _schema_conflict_payload(name, str(e), holder))
             return json.dumps({"error": str(e)})
         return json.dumps({"status": "ok", "name": name, "kind": kind})
-
-    @mcp.tool(name="agora.register_comm_matrix")
-    async def agora_register_comm_matrix(csv_text: str) -> str:
-        """Replace the worker↔worker comm-matrix ACL from CSV text at runtime.
-        CSV: 헤더 1줄(N from) + 데이터 N줄, 셀 0/1. shape 불일치 시 거부."""
-        try:
-            comm_matrix.load_csv(csv_text)
-        except AgoraError as e:
-            return json.dumps({"error": str(e)})
-        return json.dumps({"status": "ok", "active": comm_matrix.active})
 
     @mcp.tool(name="agora.schemas")
     async def agora_schemas() -> str:
@@ -178,6 +193,12 @@ def create_agora_app(
         subscribe = list(subscribe_schemas or [])
         emit = list(emit_schemas or [])
         schemas = schemas or {}
+        # 봇 재등록이면 옛 스키마 ref를 먼저 해제 (새 inline/subscribe로 재획득).
+        try:
+            prior = bot_registry.resolve_instance_id(instance_id)
+            schema_registry.release_holder(prior.instance_id)
+        except NotRegisteredError:
+            pass
         try:
             if not description:
                 raise AgoraError("description_required")
@@ -190,6 +211,11 @@ def create_agora_app(
                     raise AgoraError("schema_kind_not_bot_task", name=name)
                 existing = schema_registry.get(name)
                 if existing is not None and existing.body != defn.get("body"):
+                    await dispatcher.system_notify(instance_id,
+                        _schema_conflict_payload(
+                            name,
+                            f"schema '{name}' already registered with a different body",
+                            instance_id))
                     raise AgoraError("schema_immutable", name=name)
             # (2) 일괄 등록 — 모두 검증 통과 후
             for name, defn in schemas.items():
@@ -216,7 +242,11 @@ def create_agora_app(
             persistence.save_bot_subscriptions(
                 instance_id, subscribe=list(info.subscribe_schemas),
                 emit=list(info.emit_schemas))
+            # 구독 schema에 subscriber ref 획득
+            for s in info.subscribe_schemas:
+                schema_registry.acquire_ref(s, instance_id)
         except AgoraError as e:
+            schema_registry.release_holder(instance_id)
             return json.dumps({"error": str(e)})
         return json.dumps({
             "status": "ok", "instance_id": info.instance_id,
@@ -232,6 +262,13 @@ def create_agora_app(
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
+        # 해제 전에 holder id를 잡아 스키마 ref를 해제한다.
+        for reg in (instance_registry, bot_registry):
+            try:
+                holder = reg.resolve_session(session_id).instance_id
+                schema_registry.release_holder(holder)
+            except NotRegisteredError:
+                pass
         instance_registry.unregister_session(session_id)
         bot_registry.unregister_session(session_id)
         return json.dumps({"status": "ok"})
@@ -442,27 +479,23 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
-    @mcp.tool(name=_WAIT_TOOL_NAME)
-    async def agora_wait(
+    @mcp.tool(name="agora.flush")
+    async def agora_flush(
         ctx: Context,
-        timeout_ms: int | None = None,
         from_sources: list[str] | None = None,
-        sort: Literal["fifo", "priority"] = "fifo",
+        sort: Literal["fifo", "priority"] = "priority",
         by_conversation: str | None = None,
     ) -> str:
-        """Wait for commands targeted at this instance.
+        """Drain all commands currently queued for this instance and return immediately (non-blocking).
 
-        timeout_ms resolution order (first non-None wins):
-            1. Explicit argument
-            2. X-Agora-Wait-Timeout-Ms header
-            3. Server CLI default
+        Returns whatever is in the inbox right now — does not wait for new messages.
+        Call this after receiving a channel notification to drain your inbox.
 
-        Values: positive = wait at most N ms then return empty; 0 = unbounded.
-
-        sort='fifo' returns by (created_at asc, command_id asc). 'priority' uses
-        (priority_rank asc, created_at asc, command_id asc) — high before normal before low.
+        Default sort='priority': the inbox is ordered by comm-matrix edge weight
+        (descending), then message priority (high>normal>low), then created_at.
+        sort='fifo' falls back to (created_at asc, command_id asc).
         from_sources / by_conversation: AND-combined filters; unmatched envelopes stay queued.
-        The caller MUST be registered before waiting.
+        The caller MUST be registered before calling flush.
         """
         try:
             session_id = _session_id_from_ctx(ctx)
@@ -476,13 +509,9 @@ def create_agora_app(
             except NotRegisteredError as e:
                 return json.dumps({"error": str(e)})
 
-        if timeout_ms is None:
-            timeout_ms = _header_int(ctx, "x-agora-wait-timeout-ms")
-
         try:
-            commands = await dispatcher.wait(
+            commands = await dispatcher.flush(
                 instance_id=who,
-                timeout_ms=timeout_ms,
                 from_sources=from_sources,
                 sort=sort,
                 by_conversation=by_conversation,
@@ -493,23 +522,55 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
-    # --- MCP execution.taskSupport hint on agora.wait ---
-    _original_list_tools = mcp.list_tools
+    @mcp.tool(name="agora.wait_notify")
+    async def agora_wait_notify(instance_id: str, timeout_ms: int | None = None) -> str:
+        """Non-destructive long-poll — block until instance_id has inbound,
+        then return {instance_id, pending, sources} without draining the queue.
+        For the agora-channel adapter. instance_id need not be registered."""
+        try:
+            result = await dispatcher.wait_notify(
+                instance_id=instance_id, timeout_ms=timeout_ms)
+            return json.dumps(result, ensure_ascii=False)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
 
-    async def _list_tools_with_wait_execution():
-        tools = await _original_list_tools()
-        return [
-            tool.model_copy(update={"execution": ToolExecution(taskSupport="optional")})
-            if tool.name == _WAIT_TOOL_NAME
-            else tool
-            for tool in tools
-        ]
+    if file_store is not None:
+        @mcp.tool(name="agora.share_file")
+        async def agora_share_file(ctx: Context, path: str) -> str:
+            """Share a local file through the store. Returns a handle to dispatch
+            in a file_share message."""
+            try:
+                session_id = _session_id_from_ctx(ctx)
+            except RuntimeError as e:
+                return json.dumps({"error": f"Session context unavailable: {e}"})
+            caller = _resolve_caller(session_id, instance_registry, bot_registry)
+            import os.path
+            name = os.path.basename(path)
+            try:
+                handle = file_store.store_path(Path(path), name, caller)
+            except (AgoraError, OSError) as e:
+                return json.dumps({"error": str(e)})
+            return json.dumps({"status": "ok", "handle": handle}, ensure_ascii=False)
 
-    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]
-    mcp._mcp_server.list_tools()(_list_tools_with_wait_execution)
-
-    assert any(t.name == _WAIT_TOOL_NAME for t in mcp._tool_manager.list_tools()), (
-        f"Internal error: list_tools wrapper expects '{_WAIT_TOOL_NAME}' but no such tool registered"
-    )
+        @mcp.tool(name="agora.fetch_file")
+        async def agora_fetch_file(ctx: Context, file_id: str, dest_path: str) -> str:
+            """Fetch a shared file from the store into dest_path."""
+            try:
+                session_id = _session_id_from_ctx(ctx)
+            except RuntimeError as e:
+                return json.dumps({"error": f"Session context unavailable: {e}"})
+            caller = _resolve_caller(session_id, instance_registry, bot_registry)
+            meta = file_store.meta(file_id)
+            if meta is None:
+                return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
+            src = file_store.path_of(file_id)
+            if src is None:
+                return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
+            import shutil as _shutil
+            try:
+                _shutil.copyfile(src, dest_path)
+            except OSError as e:
+                return json.dumps({"error": f"fetch failed: {e}"})
+            return json.dumps({"status": "ok", "name": meta["name"], "size": meta["size"]})
 
     return mcp

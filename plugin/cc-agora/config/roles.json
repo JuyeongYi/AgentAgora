@@ -1,9 +1,0 @@
-{
-  "orchestrator": { "hook": "none",           "preset": "orchestrator" },
-  "coder":        { "hook": "stop-auto-wait", "preset": "coder" },
-  "reviewer":     { "hook": "stop-auto-wait", "preset": "reviewer" },
-  "tester":       { "hook": "stop-auto-wait", "preset": "tester" },
-  "writer":       { "hook": "stop-auto-wait", "preset": "writer" },
-  "planner":      { "hook": "stop-auto-wait", "preset": "planner" },
-  "general":      { "hook": "stop-auto-wait", "preset": "general" }
-}

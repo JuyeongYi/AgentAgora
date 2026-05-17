@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
-import hashlib
 import json
 import uuid
 from collections import defaultdict
@@ -23,29 +22,7 @@ from agent_agora.errors import AgoraError
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schemas import SchemaRegistry
-
-
-def _fmt_payload(payload: Any) -> str:
-    try:
-        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    except (TypeError, ValueError):
-        return repr(payload)
-
-
-_COLOR_PALETTE = (
-    "\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m",
-    "\033[91m", "\033[92m", "\033[93m", "\033[94m", "\033[95m", "\033[96m",
-)
-_RESET = "\033[0m"
-
-
-def _color_for(instance_id: str) -> str:
-    h = hashlib.md5(instance_id.encode("utf-8")).digest()[0]
-    return _COLOR_PALETTE[h % len(_COLOR_PALETTE)]
-
-
-def _colored(instance_id: str) -> str:
-    return f"{_color_for(instance_id)}{instance_id}{_RESET}"
+from agent_agora.dispatch_console import _colored, _fmt_payload
 
 
 def _now_iso() -> str:
@@ -86,22 +63,27 @@ class Dispatcher:
         self._comm_matrix = comm_matrix
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
-        self._close_timeout_ms = close_timeout_ms
-        self._dead_session_timeout_ms = dead_session_timeout_ms
-        self._gc_retention_days = gc_retention_days
+        # close_timeout_ms·dead_session_timeout_ms·gc_retention_days는 Sweeper로만
+        # 전달된다 — Dispatcher 자신은 쓰지 않으므로 인스턴스 속성으로 보관하지 않는다.
         self._queues: dict[str, list[Envelope]] = defaultdict(list)
         self._waiters: dict[str, list[asyncio.Future]] = defaultdict(list)
         self._closed = False
         self._lock = asyncio.Lock()
         # v3 state
-        self._conversation_of: dict[str, str] = {}
-        # _conversations: conv_id -> {status, kind, participants{role,delivered}, closed_by[], started_at, last_message_at, message_count}
-        self._conversations: dict[str, dict[str, Any]] = {}
+        from agent_agora.conversation_store import ConversationStore
+        self._conv = ConversationStore(persistence)
         # _in_flight[source][cmd_id] = set of primary replyers still pending
         self._in_flight: dict[str, dict[str, set[str]]] = {}
         self._last_dispatch_to: dict[str, str] = {}
-        # cmd_id -> source (bot_emit in_reply_to 라우팅용)
-        self._message_source: dict[str, str] = {}
+        from agent_agora.sweeper import Sweeper
+        self.sweeper = Sweeper(
+            self._conv, registry, bot_registry, schema_registry, persistence,
+            close_timeout_ms=close_timeout_ms,
+            dead_session_timeout_ms=dead_session_timeout_ms,
+            gc_retention_days=gc_retention_days,
+        )
+        from agent_agora.dispatch_persistence import DispatchPersistence
+        self._dispatch_persistence = DispatchPersistence(persistence, write_queue)
 
     @property
     def default_timeout_ms(self) -> int:
@@ -112,65 +94,6 @@ class Dispatcher:
         for f in waiters:
             if not f.done():
                 f.set_result(None)
-
-    def _resolve_conversation_id(
-        self,
-        conversation_id: str | None,
-        in_reply_to: str | None,
-    ) -> tuple[str, bool, bool]:
-        """Returns (conv_id, is_new, substituted)."""
-        if conversation_id is not None:
-            existing = self._conversations.get(conversation_id)
-            if existing is not None and existing["status"] == "closed":
-                return str(uuid.uuid4()), True, True
-            if existing is None:
-                # We may want to create a new entry with this caller-provided id
-                return conversation_id, True, False
-            return conversation_id, False, False
-        if in_reply_to is not None:
-            inherited = self._conversation_of.get(in_reply_to)
-            if inherited is None:
-                inherited = self._persistence.lookup_conversation_for(in_reply_to)
-            if inherited is not None:
-                existing = self._conversations.get(inherited)
-                if existing is None or existing["status"] != "closed":
-                    return inherited, inherited not in self._conversations, False
-        return str(uuid.uuid4()), True, False
-
-    def _new_conversation_state(self, kind: str) -> dict[str, Any]:
-        now = _now_iso()
-        return {
-            "status": "open",
-            "kind": kind,
-            "participants": {},  # instance_id -> {"role": "primary"|"cc", "delivered": bool}
-            "closed_by": [],
-            "started_at": now,
-            "last_message_at": now,
-            "message_count": 0,
-            "closed_at": None,
-        }
-
-    def _add_participant(self, state: dict, instance_id: str, role: str, delivered: bool = True) -> bool:
-        """Returns True if newly added."""
-        if instance_id in state["participants"]:
-            return False
-        state["participants"][instance_id] = {"role": role, "delivered": delivered}
-        return True
-
-    def _maybe_close(self, conv_id: str, state: dict) -> bool:
-        """Check if all primary delivered participants have sent closing. Returns True if just closed."""
-        if state["status"] == "closed":
-            return False
-        primaries = {
-            iid for iid, info in state["participants"].items()
-            if info["role"] == "primary" and info["delivered"]
-        }
-        closed_by = set(state["closed_by"])
-        if primaries and primaries <= closed_by:
-            state["status"] = "closed"
-            state["closed_at"] = _now_iso()
-            return True
-        return False
 
     def _validate_payload(self, payload: Any) -> str:
         """payload의 msgtype을 검증하고 schema validate. msgtype 문자열을 반환.
@@ -241,7 +164,7 @@ class Dispatcher:
 
         cmd_id = str(uuid.uuid4())
         now = _now_iso()
-        conv_id, is_new_conv, substituted = self._resolve_conversation_id(conversation_id, in_reply_to)
+        conv_id, is_new_conv, substituted = self._conv.resolve_conversation_id(conversation_id, in_reply_to)
 
         async with self._lock:
             if self._closed:
@@ -257,21 +180,20 @@ class Dispatcher:
                 else:
                     cc_deliver.append(c)
 
-            if is_new_conv or conv_id not in self._conversations:
-                self._conversations[conv_id] = self._new_conversation_state(kind="direct")
-            state = self._conversations[conv_id]
-            self._add_participant(state, source, role="primary", delivered=True)
+            if is_new_conv or not self._conv.has(conv_id):
+                self._conv.put(conv_id, self._conv.new_state(kind="direct"))
+            state = self._conv.get(conv_id)
+            self._conv.add_participant(state, source, role="primary", delivered=True)
             if target is not None:
-                self._add_participant(state, target, role="primary", delivered=True)
+                self._conv.add_participant(state, target, role="primary", delivered=True)
             for c in cc_deliver:
-                self._add_participant(state, c, role="cc", delivered=True)
+                self._conv.add_participant(state, c, role="cc", delivered=True)
             for c in skipped_full:
-                self._add_participant(state, c, role="cc", delivered=False)
+                self._conv.add_participant(state, c, role="cc", delivered=False)
             state["last_message_at"] = now
             state["message_count"] += 1
 
-            self._conversation_of[cmd_id] = conv_id
-            self._message_source[cmd_id] = source
+            self._conv.record_command(cmd_id, conv_id, source)
 
             def _make(tid: str, das: str, *, er: bool, cl: bool) -> Envelope:
                 return make_envelope(
@@ -318,7 +240,7 @@ class Dispatcher:
                 e = _make(bot_id, "subscribed", er=False, cl=False)
                 sub_envs.append(e)
                 self._queues[bot_id].append(e)
-                self._add_participant(state, bot_id, role="cc", delivered=True)
+                self._conv.add_participant(state, bot_id, role="cc", delivered=True)
                 self._last_dispatch_to[bot_id] = now
                 self._wake(bot_id)
 
@@ -333,13 +255,13 @@ class Dispatcher:
                 e = _make(bot_id, "cc", er=False, cl=False)
                 obs_envs.append(e)
                 self._queues[bot_id].append(e)
-                self._add_participant(state, bot_id, role="cc", delivered=True)
+                self._conv.add_participant(state, bot_id, role="cc", delivered=True)
                 self._last_dispatch_to[bot_id] = now
                 self._wake(bot_id)
 
             # reply correlation: decrement in_flight for original source
             if in_reply_to is not None:
-                original_conv = self._conversation_of.get(in_reply_to)
+                original_conv = self._conv.conv_id_of(in_reply_to)
                 if original_conv is not None:
                     for _original_sender, pending_map in self._in_flight.items():
                         s = pending_map.get(in_reply_to)
@@ -354,9 +276,9 @@ class Dispatcher:
                     state["closed_by"].append(source)
                 if state["status"] == "open":
                     state["status"] = "half_closed"
-                self._maybe_close(conv_id, state)
+                self._conv.maybe_close(conv_id, state)
 
-            await self._persist_dispatch_txn(
+            await self._dispatch_persistence.persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
                 env=primary_env, cc_envs=cc_envs + sub_envs + obs_envs,
                 skipped_full=skipped_full,
@@ -424,7 +346,7 @@ class Dispatcher:
         observer_bots = sorted(self._bot_registry.observers())
         cmd_id = str(uuid.uuid4())
         now = _now_iso()
-        conv_id, is_new_conv, substituted = self._resolve_conversation_id(conversation_id, in_reply_to)
+        conv_id, is_new_conv, substituted = self._conv.resolve_conversation_id(conversation_id, in_reply_to)
 
         async with self._lock:
             if self._closed:
@@ -438,15 +360,15 @@ class Dispatcher:
                 else:
                     deliverable.append(t)
 
-            if is_new_conv or conv_id not in self._conversations:
-                self._conversations[conv_id] = self._new_conversation_state(kind="broadcast")
-            state = self._conversations[conv_id]
+            if is_new_conv or not self._conv.has(conv_id):
+                self._conv.put(conv_id, self._conv.new_state(kind="broadcast"))
+            state = self._conv.get(conv_id)
             state["kind"] = "broadcast"
-            self._add_participant(state, source, role="primary", delivered=True)
+            self._conv.add_participant(state, source, role="primary", delivered=True)
             for t in deliverable:
-                self._add_participant(state, t, role="primary", delivered=True)
+                self._conv.add_participant(state, t, role="primary", delivered=True)
             for t in skipped_full:
-                self._add_participant(state, t, role="primary", delivered=False)
+                self._conv.add_participant(state, t, role="primary", delivered=False)
             state["last_message_at"] = now
             state["message_count"] += 1
 
@@ -462,7 +384,7 @@ class Dispatcher:
                 )
                 envs.append(env)
                 self._queues[t].append(env)
-                self._conversation_of[cmd_id] = conv_id
+                self._conv.set_conv_of(cmd_id, conv_id)
                 self._last_dispatch_to[t] = now
                 self._wake(t)
                 if expect_result:
@@ -504,14 +426,14 @@ class Dispatcher:
                 self._queues[bot_id].append(o_env)
                 self._last_dispatch_to[bot_id] = now
                 self._wake(bot_id)
-            self._message_source[cmd_id] = source
+            self._conv.record_command(cmd_id, conv_id, source)
             # closing → if broadcast announcement, close immediately
             if closing:
                 state["status"] = "closed"
                 state["closed_at"] = _now_iso()
                 state["closed_by"] = list(state["participants"].keys())
 
-            await self._persist_dispatch_txn(
+            await self._dispatch_persistence.persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
                 env=None, cc_envs=envs, skipped_full=skipped_full,
                 payload_bytes=payload_bytes, priority_rank=priority_rank,
@@ -555,7 +477,7 @@ class Dispatcher:
 
         reply_target: str | None = None
         if in_reply_to is not None:
-            reply_target = self._message_source.get(in_reply_to)
+            reply_target = self._conv.source_of(in_reply_to)
             if reply_target is None:
                 reply_target = self._persistence.lookup_source_for(in_reply_to)
         subscriber_bots: list[str] = []
@@ -565,19 +487,18 @@ class Dispatcher:
 
         cmd_id = str(uuid.uuid4())
         now = _now_iso()
-        conv_id, is_new_conv, substituted = self._resolve_conversation_id(None, in_reply_to)
+        conv_id, is_new_conv, substituted = self._conv.resolve_conversation_id(None, in_reply_to)
 
         async with self._lock:
             if self._closed:
                 raise DispatcherClosed("Dispatcher is closed")
-            if is_new_conv or conv_id not in self._conversations:
-                self._conversations[conv_id] = self._new_conversation_state(kind="direct")
-            state = self._conversations[conv_id]
-            self._add_participant(state, source, role="cc", delivered=True)
+            if is_new_conv or not self._conv.has(conv_id):
+                self._conv.put(conv_id, self._conv.new_state(kind="direct"))
+            state = self._conv.get(conv_id)
+            self._conv.add_participant(state, source, role="cc", delivered=True)
             state["last_message_at"] = now
             state["message_count"] += 1
-            self._conversation_of[cmd_id] = conv_id
-            self._message_source[cmd_id] = source
+            self._conv.record_command(cmd_id, conv_id, source)
 
             envs: list[Envelope] = []
             delivered: list[dict[str, str]] = []
@@ -597,7 +518,7 @@ class Dispatcher:
                 )
                 envs.append(e)
                 self._queues[tid].append(e)
-                self._add_participant(
+                self._conv.add_participant(
                     state, tid, role="primary" if das == "primary" else "cc", delivered=True)
                 self._last_dispatch_to[tid] = now
                 self._wake(tid)
@@ -614,7 +535,7 @@ class Dispatcher:
                     continue
                 _enqueue(bot_id, "cc")
 
-            await self._persist_dispatch_txn(
+            await self._dispatch_persistence.persist_dispatch_txn(
                 state=state, conv_id=conv_id, is_new_conv=is_new_conv,
                 env=None, cc_envs=envs, skipped_full=skipped_full,
                 payload_bytes=payload_bytes, priority_rank=priority_rank,
@@ -632,68 +553,6 @@ class Dispatcher:
             "dispatched_to": delivered, "skipped_full": skipped_full,
         }
 
-    async def _persist_dispatch_txn(
-        self,
-        state: dict,
-        conv_id: str,
-        is_new_conv: bool,
-        env: Envelope | None,
-        cc_envs: list[Envelope],
-        skipped_full: list[str],
-        payload_bytes: bytes,
-        priority_rank: int,
-        is_broadcast: bool = False,
-    ) -> None:
-        stmts: list[tuple[str, tuple]] = []
-        if is_new_conv:
-            stmts.append((
-                "INSERT OR IGNORE INTO conversations "
-                "(conversation_id, status, started_at, last_message_at, kind) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (conv_id, state["status"], state["started_at"], state["last_message_at"], state["kind"]),
-            ))
-        # participants — INSERT OR IGNORE all currently known
-        for iid, info in state["participants"].items():
-            stmts.append((
-                "INSERT OR IGNORE INTO conversation_participants "
-                "(conversation_id, instance_id, role, joined_at, delivered) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (conv_id, iid, info["role"], state["last_message_at"], 1 if info["delivered"] else 0),
-            ))
-        # messages
-        all_envs: list[Envelope] = []
-        if env is not None:
-            all_envs.append(env)
-        all_envs.extend(cc_envs)
-        payload_json = payload_bytes.decode("utf-8")
-        for e in all_envs:
-            stmts.append((
-                "INSERT INTO messages "
-                "(command_id, target, conversation_id, source, in_reply_to, created_at, "
-                "expect_result, reply_to, cc, delivered_as, dispatch_kind, closing, "
-                "priority, priority_rank, deadline_ts, payload) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    e.id, e.target, e.conversation_id, e.source, e.in_reply_to, e.created_at,
-                    1 if e.expect_result else 0, e.reply_to,
-                    json.dumps(e.cc) if e.cc else None,
-                    e.delivered_as, e.dispatch_kind, 1 if e.closing else 0,
-                    e.priority, priority_rank, e.deadline_ts, payload_json,
-                ),
-            ))
-        # update conversation last_message_at + count + status
-        stmts.append((
-            "UPDATE conversations SET last_message_at=?, message_count=message_count+1, "
-            "status=?, closed_at=?, closed_by=?, kind=? WHERE conversation_id=?",
-            (
-                state["last_message_at"], state["status"],
-                state.get("closed_at"),
-                json.dumps(state["closed_by"]),
-                state["kind"], conv_id,
-            ),
-        ))
-        await self._write_queue.submit_transaction(stmts)
-
     def _touch_last_seen(self, instance_id: str) -> None:
         """instance_id가 봇이면 BotRegistry, 워커면 InstanceRegistry의 last_seen을 갱신한다."""
         if self._bot_registry.is_bot(instance_id):
@@ -701,21 +560,19 @@ class Dispatcher:
         else:
             self._registry.touch_last_seen(instance_id)
 
-    async def wait(
+    async def flush(
         self,
         instance_id: str,
-        timeout_ms: int | None = None,
         from_sources: list[str] | None = None,
-        sort: Literal["fifo", "priority"] = "fifo",
+        sort: Literal["fifo", "priority"] = "priority",
         by_conversation: str | None = None,
     ) -> list[dict[str, Any]]:
+        """현재 큐에 있는 메시지를 즉시 드레인하고 반환한다 (논블로킹)."""
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
         # 봇 instance_id는 bot_registry에서, 워커는 worker registry에서 검증 (결정 22)
         if not self._bot_registry.is_bot(instance_id):
             self._registry.resolve_instance_id(instance_id)
-        effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
-        loop = asyncio.get_running_loop()
 
         def _matches(env: Envelope) -> bool:
             if from_sources is not None and env.source not in set(from_sources):
@@ -741,30 +598,15 @@ class Dispatcher:
             if self._closed:
                 raise DispatcherClosed("Dispatcher is closed")
             drained = _drain_matching()
-            if not drained:
-                fut: asyncio.Future = loop.create_future()
-                self._waiters[instance_id].append(fut)
-            else:
-                fut = None  # type: ignore
 
-        if not drained and fut is not None:
-            try:
-                if effective <= 0:
-                    await fut
-                else:
-                    await asyncio.wait_for(fut, timeout=effective / 1000.0)
-            except asyncio.TimeoutError:
-                async with self._lock:
-                    if fut in self._waiters.get(instance_id, []):
-                        self._waiters[instance_id].remove(fut)
-                self._touch_last_seen(instance_id)
-                return []
-            async with self._lock:
-                drained = _drain_matching()
-
-        # sort
+        # sort — priority: 엣지 weight 1차, 메시지 priority 2차, created_at 3차
         if sort == "priority":
-            drained.sort(key=lambda e: (_PRIORITY_RANK[e.priority], e.created_at, e.id))
+            drained.sort(key=lambda e: (
+                -self._comm_matrix.weight_of(e.source, instance_id),
+                _PRIORITY_RANK[e.priority],
+                e.created_at,
+                e.id,
+            ))
         else:
             drained.sort(key=lambda e: (e.created_at, e.id))
 
@@ -793,6 +635,64 @@ class Dispatcher:
                 pass
 
         return results
+
+    async def wait_notify(
+        self, instance_id: str, timeout_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Non-destructive long-poll. Block until instance_id's queue is
+        non-empty (or timeout), then return {instance_id, pending, sources}
+        WITHOUT draining. Used by the channel adapter to detect inbound.
+        Advisory like peek — instance_id need not be registered (an empty
+        queue just blocks, absorbing the worker/adapter startup race)."""
+        if self._closed:
+            raise DispatcherClosed("Dispatcher is closed")
+        effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
+        loop = asyncio.get_running_loop()
+
+        async with self._lock:
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
+            fut: asyncio.Future | None = None
+            if not self._queues.get(instance_id):
+                fut = loop.create_future()
+                self._waiters[instance_id].append(fut)
+
+        if fut is not None:
+            try:
+                if effective <= 0:
+                    await fut
+                else:
+                    await asyncio.wait_for(fut, timeout=effective / 1000.0)
+            except asyncio.TimeoutError:
+                async with self._lock:
+                    if fut in self._waiters.get(instance_id, []):
+                        self._waiters[instance_id].remove(fut)
+
+        self._touch_last_seen(instance_id)
+        async with self._lock:
+            queue = self._queues.get(instance_id, [])
+            return {
+                "instance_id": instance_id,
+                "pending": len(queue),
+                "sources": sorted({e.source for e in queue}),
+            }
+
+    async def system_notify(self, target: str, payload: dict[str, Any]) -> None:
+        """시스템 발신 알림을 target 인박스에 넣고 깨운다. comm-matrix·conversation·
+        in_flight 머신을 우회한다 — schema 충돌 통지 등 운영 이벤트용. 영속화 안 함."""
+        if self._closed:
+            raise DispatcherClosed("Dispatcher is closed")
+        now = _now_iso()
+        env = make_envelope(
+            cmd_id=str(uuid.uuid4()), source="agora-system", target=target,
+            payload=payload, created_at=now, conversation_id=str(uuid.uuid4()),
+            expect_result=False, delivered_as="primary", dispatch_kind="direct",
+        )
+        async with self._lock:
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
+            self._queues[target].append(env)
+            self._wake(target)
 
     def in_flight_count(self, instance_id: str) -> int:
         """Number of expect_result=True messages sent TO instance_id that have not been replied."""
@@ -833,24 +733,7 @@ class Dispatcher:
         return out
 
     def conversation_status(self, conv_id: str) -> dict:
-        state = self._conversations.get(conv_id)
-        if state is None:
-            return {"error": "unknown_conversation"}
-        participants = [
-            {"instance_id": iid, "role": info["role"]}
-            for iid, info in state["participants"].items()
-        ]
-        return {
-            "conversation_id": conv_id,
-            "kind": state["kind"],
-            "status": state["status"],
-            "participants": participants,
-            "started_at": state["started_at"],
-            "last_message_at": state["last_message_at"],
-            "closed_at": state.get("closed_at"),
-            "closed_by": list(state["closed_by"]),
-            "message_count": state["message_count"],
-        }
+        return self._conv.status(conv_id)
 
     def conversations_list(
         self,
@@ -858,29 +741,10 @@ class Dispatcher:
         status: str | None = None,
         limit: int = 100,
     ) -> list[dict]:
-        limit = min(max(1, limit), 1000)
-        items: list[tuple[str, dict]] = []
-        for conv_id, state in self._conversations.items():
-            if participant is not None and participant not in state["participants"]:
-                continue
-            if status is not None and state["status"] != status:
-                continue
-            items.append((conv_id, state))
-        items.sort(key=lambda kv: kv[1]["last_message_at"], reverse=True)
-        return [
-            {
-                "conversation_id": cid,
-                "kind": s["kind"],
-                "status": s["status"],
-                "started_at": s["started_at"],
-                "last_message_at": s["last_message_at"],
-                "message_count": s["message_count"],
-            }
-            for cid, s in items[:limit]
-        ]
+        return self._conv.list_conversations(participant, status, limit)
 
     async def close_thread(self, caller: str, conv_id: str, reason: str = "") -> dict:
-        state = self._conversations.get(conv_id)
+        state = self._conv.get(conv_id)
         if state is None:
             return {"error": "unknown_conversation"}
         if caller not in state["participants"]:
@@ -911,7 +775,7 @@ class Dispatcher:
                 state["closed_by"].append(caller)
             if state["status"] == "open":
                 state["status"] = "half_closed"
-            self._maybe_close(conv_id, state)
+            self._conv.maybe_close(conv_id, state)
         return {"status": state["status"], "conversation_id": conv_id}
 
     def restore_from_persistence(self) -> None:
@@ -931,116 +795,21 @@ class Dispatcher:
                 priority=row["priority"], deadline_ts=row["deadline_ts"],
             )
             self._queues[row["target"]].append(env)
-            self._conversation_of[row["command_id"]] = row["conversation_id"]
+            self._conv.set_conv_of(row["command_id"], row["conversation_id"])
         # mark orphan (closed) in-flight messages
         now = _now_iso()
-        self._persistence.conn.execute(
-            """
-            UPDATE messages
-            SET drained_at = ?, drop_reason = 'server_restart'
-            WHERE drained_at IS NULL
-              AND conversation_id IN (
-                SELECT conversation_id FROM conversations WHERE status = 'closed'
-              )
-            """,
-            (now,),
-        )
+        self._dispatch_persistence.mark_orphan_closed_inflight(now)
         # restore _in_flight
         pending = self._persistence.restore_in_flight_pending()
         for source, m in pending.items():
             self._in_flight.setdefault(source, {}).update(m)
 
-    # ------------------------- M2: background sweeps -------------------------
-
-    def close_ttl_sweep(self, now: datetime.datetime | None = None) -> list[str]:
-        """Auto-transition half_closed conversations to closed after timeout.
-        Returns list of conv_ids newly closed. SQLite + in-memory both updated."""
-        if now is None:
-            now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now - datetime.timedelta(milliseconds=self._close_timeout_ms)
-        cutoff_iso = cutoff.isoformat()
-        closed_ids: list[str] = []
-        for conv_id, state in list(self._conversations.items()):
-            if state["status"] != "half_closed":
-                continue
-            if state["last_message_at"] < cutoff_iso:
-                state["status"] = "closed"
-                state["closed_at"] = now.isoformat()
-                closed_ids.append(conv_id)
-        if closed_ids:
-            # SQLite update (synchronous — sweep runs in background task, not hot path)
-            self._persistence.conn.execute(
-                "UPDATE conversations SET status='closed', closed_at=? "
-                "WHERE status='half_closed' AND last_message_at < ?",
-                (now.isoformat(), cutoff_iso),
-            )
-        return closed_ids
-
-    def dead_session_sweep(self, now: datetime.datetime | None = None) -> list[str]:
-        """Unregister instances whose last_seen_at exceeded dead_session_timeout.
-        In-flight queues are preserved (a re-registered instance will see them)."""
-        if now is None:
-            now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now - datetime.timedelta(milliseconds=self._dead_session_timeout_ms)
-        removed: list[str] = []
-        for info in self._registry.list_instances():
-            if info.last_seen_at is None:
-                continue
-            seen = datetime.datetime.fromisoformat(info.last_seen_at)
-            if seen < cutoff:
-                self._registry.unregister_session(info.session_id)
-                removed.append(info.instance_id)
-        return removed
-
-    def dead_bot_sweep(self, now: datetime.datetime | None = None) -> list[str]:
-        """Unregister bots whose last_seen_at (or registered_at, if the bot has
-        never returned from a wait) exceeded dead_session_timeout. Detaches the
-        bot's schema subscriptions so routing immediately stops targeting it.
-        Returns swept bot instance_ids. Queued messages are left untouched —
-        identical to dead_session_sweep for workers."""
-        if now is None:
-            now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now - datetime.timedelta(milliseconds=self._dead_session_timeout_ms)
-        removed: list[str] = []
-        for bot in self._bot_registry.list_bots():
-            marker = bot.last_seen_at or bot.registered_at
-            if datetime.datetime.fromisoformat(marker) < cutoff:
-                self._bot_registry.unregister_session(bot.session_id)
-                removed.append(bot.instance_id)
-        return removed
-
-    def message_gc_sweep(self, now: datetime.datetime | None = None) -> int:
-        """Delete messages of closed conversations older than gc_retention_days.
-        Conversations meta is preserved; in-memory caches (Inst4 우려4) are evicted.
-        Returns deleted message row count."""
-        if now is None:
-            now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now - datetime.timedelta(days=self._gc_retention_days)
-        cutoff_iso = cutoff.isoformat()
-        # candidates for eviction
-        rows = self._persistence.conn.execute(
-            "SELECT conversation_id FROM conversations "
-            "WHERE status='closed' AND closed_at < ?",
-            (cutoff_iso,),
-        ).fetchall()
-        victim_ids = [r[0] for r in rows]
-        if not victim_ids:
-            return 0
-        # delete messages
-        qmarks = ",".join("?" * len(victim_ids))
-        cur = self._persistence.conn.execute(
-            f"DELETE FROM messages WHERE conversation_id IN ({qmarks})",
-            tuple(victim_ids),
-        )
-        deleted = cur.rowcount
-        # in-memory cache eviction
-        for conv_id in victim_ids:
-            self._conversations.pop(conv_id, None)
-        stale_cmds = [cid for cid, conv in self._conversation_of.items() if conv in victim_ids]
-        for cid in stale_cmds:
-            self._conversation_of.pop(cid, None)
-            self._message_source.pop(cid, None)
-        return deleted
+    def drop_inflight_on_restart(self) -> None:
+        """클린 스타트 — 이전 실행의 미배달(undrained) 메시지를 전부 drop
+        마킹한다. restore_from_persistence와 달리 _queues에 싣지 않는다.
+        대화·메시지 행 자체는 audit용으로 남는다."""
+        now = _now_iso()
+        self._dispatch_persistence.drop_inflight(now)
 
     # ------------------------------------------------------------------------
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from agent_agora.bot_registry import BotRegistry
@@ -33,11 +31,8 @@ async def test_a_dispatches_b_receives(runtime):
     inst_reg.register(session_id="sA", instance_id="A", role="orch")
     inst_reg.register(session_id="sB", instance_id="B", role="worker")
 
-    wait_task = asyncio.create_task(disp.wait(instance_id="B", timeout_ms=1000))
-    await asyncio.sleep(0.05)
     await disp.dispatch(source="A", target="B", payload=tany(task="run-tests"))
-
-    commands = await wait_task
+    commands = await disp.flush(instance_id="B")
     assert len(commands) == 1
     assert commands[0]["payload"] == tany(task="run-tests")
     assert commands[0]["source"] == "A"
@@ -52,12 +47,12 @@ async def test_broadcast_fans_out(runtime):
     inst_reg.register(session_id="sC", instance_id="C", role="worker")
 
     await disp.broadcast(source="A", payload=tany(ping=1))
-    b = await disp.wait(instance_id="B", timeout_ms=200)
-    c = await disp.wait(instance_id="C", timeout_ms=200)
+    b = await disp.flush(instance_id="B")
+    c = await disp.flush(instance_id="C")
     assert len(b) == 1 and b[0]["payload"] == tany(ping=1)
     assert len(c) == 1 and c[0]["payload"] == tany(ping=1)
 
-    a = await disp.wait(instance_id="A", timeout_ms=100)
+    a = await disp.flush(instance_id="A")
     assert a == []
 
 
@@ -71,13 +66,13 @@ async def test_result_writeback_via_second_dispatch(runtime):
         source="A", target="B", payload=tany(task="echo", value=42), expect_result=True,
     )
     cmd_id = result["command_id"]
-    cmds = await disp.wait(instance_id="B", timeout_ms=500)
+    cmds = await disp.flush(instance_id="B")
     assert len(cmds) == 1
     assert cmds[0]["expect_result"] is True
     assert cmds[0]["id"] == cmd_id
 
     await disp.dispatch(source="B", target="A", payload=tany(result_for=cmd_id, value=42))
-    a_cmds = await disp.wait(instance_id="A", timeout_ms=500)
+    a_cmds = await disp.flush(instance_id="A")
     assert len(a_cmds) == 1
     assert a_cmds[0]["payload"]["result_for"] == cmd_id
 
@@ -109,6 +104,6 @@ async def test_dispatch_queues_when_no_waiter_then_drains_on_first_wait(runtime)
     inst_reg.register(session_id="sB", instance_id="B", role="worker")
     await disp.dispatch(source="A", target="B", payload=tany(x=1))
     await disp.dispatch(source="A", target="B", payload=tany(x=2))
-    cmds = await disp.wait(instance_id="B", timeout_ms=100)
+    cmds = await disp.flush(instance_id="B")
     assert len(cmds) == 2
     assert [c["payload"]["x"] for c in cmds] == [1, 2]

@@ -43,7 +43,7 @@ async def test_stale_bot_is_swept_and_subscriptions_detached(setup):
     reg_at = datetime.datetime.fromisoformat(
         bot_registry.resolve_instance_id("bot_a").registered_at)
     future = reg_at + datetime.timedelta(milliseconds=TIMEOUT_MS + 1000)
-    swept = dispatcher.dead_bot_sweep(now=future)
+    swept = dispatcher.sweeper.dead_bot_sweep(now=future)
     assert swept == ["bot_a"]
     assert bot_registry.is_bot("bot_a") is False
     assert bot_registry.subscribers_of("pytest_run") == set()
@@ -56,7 +56,7 @@ async def test_healthy_bot_is_preserved(setup):
                           bot_mode="handler", subscribe_schemas=["pytest_run"])
     reg_at = datetime.datetime.fromisoformat(
         bot_registry.resolve_instance_id("bot_a").registered_at)
-    swept = dispatcher.dead_bot_sweep(now=reg_at + datetime.timedelta(seconds=1))
+    swept = dispatcher.sweeper.dead_bot_sweep(now=reg_at + datetime.timedelta(seconds=1))
     assert swept == []
     assert bot_registry.is_bot("bot_a") is True
 
@@ -71,7 +71,7 @@ async def test_never_waited_bot_uses_registered_at_fallback(setup):
     reg_at = datetime.datetime.fromisoformat(info.registered_at)
     future = reg_at + datetime.timedelta(milliseconds=TIMEOUT_MS + 1000)
     # last_seen_at=None이어도 crash 없이 registered_at으로 판정
-    swept = dispatcher.dead_bot_sweep(now=future)
+    swept = dispatcher.sweeper.dead_bot_sweep(now=future)
     assert swept == ["bot_a"]
 
 
@@ -88,6 +88,6 @@ async def test_recent_last_seen_overrides_old_registered_at(setup):
     bot_registry._by_instance["bot_a"] = updated
     bot_registry._by_session[updated.session_id] = updated
     # registered_at(2시간 전)만 보면 스윕될 시점 — last_seen(1분 전)이 우선
-    swept = dispatcher.dead_bot_sweep(now=base)
+    swept = dispatcher.sweeper.dead_bot_sweep(now=base)
     assert swept == []
     assert bot_registry.is_bot("bot_a") is True

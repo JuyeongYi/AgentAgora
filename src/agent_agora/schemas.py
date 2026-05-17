@@ -39,6 +39,8 @@ class SchemaRegistry:
     def __init__(self) -> None:
         self._entries: dict[str, SchemaEntry] = {}
         self._validators: dict[str, Draft202012Validator] = {}
+        self._refs: dict[str, set[str]] = {}      # name -> holder ids (ref-counted)
+        self._permanent: set[str] = set()         # 해제 불가 스키마 이름
         self._lock = threading.Lock()
 
     def register(
@@ -67,9 +69,12 @@ class SchemaRegistry:
         with self._lock:
             existing = self._entries.get(name)
             if existing is not None:
-                if existing.body == body:
-                    return existing
-                raise AgoraError("schema_immutable", name=name)
+                if existing.body != body:
+                    raise AgoraError("schema_immutable", name=name)
+                # same body — idempotent. ref-counted 스키마면 holder 추가.
+                if registered_by is not None and name not in self._permanent:
+                    self._refs.setdefault(name, set()).add(registered_by)
+                return existing
             validator = Draft202012Validator(body)
             entry = SchemaEntry(
                 name=name, body=body, kind=kind, purpose=purpose,
@@ -78,6 +83,10 @@ class SchemaRegistry:
             )
             self._entries[name] = entry
             self._validators[name] = validator
+            if registered_by is None:
+                self._permanent.add(name)
+            else:
+                self._refs[name] = {registered_by}
             return entry
 
     def get(self, name: str) -> SchemaEntry | None:
@@ -102,6 +111,64 @@ class SchemaRegistry:
         with self._lock:
             return list(self._entries.values())
 
+    def refs_of(self, name: str) -> set[str]:
+        """name의 현재 ref holder 집합 (조회용). permanent/미존재면 빈 집합."""
+        with self._lock:
+            return set(self._refs.get(name, set()))
+
+    def acquire_ref(self, name: str, holder: str) -> None:
+        """구독자 ref 획득. name이 미존재거나 permanent면 no-op."""
+        with self._lock:
+            if name not in self._entries or name in self._permanent:
+                return
+            self._refs.setdefault(name, set()).add(holder)
+
+    def release_holder(self, holder: str) -> list[str]:
+        """holder의 모든 ref를 해제한다. refset이 빈 non-permanent 스키마를
+        등록 해제하고, 해제된 스키마 이름 리스트를 반환한다."""
+        released: list[str] = []
+        with self._lock:
+            for name in list(self._refs.keys()):
+                refs = self._refs[name]
+                refs.discard(holder)
+                if not refs:
+                    self._entries.pop(name, None)
+                    self._validators.pop(name, None)
+                    self._refs.pop(name, None)
+                    released.append(name)
+        return released
+
+
+SCHEMA_CONFLICT_NAME = "schema_conflict"
+SCHEMA_CONFLICT_BODY: dict[str, Any] = {
+    "type": "object",
+    "required": ["msgtype", "schema_name", "reason", "ts"],
+    "properties": {
+        "msgtype": {"type": "string", "const": "schema_conflict"},
+        "schema_name": {"type": "string"},
+        "reason": {"type": "string"},
+        "attempted_by": {"type": "string"},
+        "ts": {"type": "string", "format": "date-time"},
+    },
+    "additionalProperties": False,
+}
+
+FILE_SHARE_NAME = "file_share"
+FILE_SHARE_BODY: dict[str, Any] = {
+    "type": "object",
+    "required": ["msgtype", "file_id", "name", "size", "sha256", "from", "ts"],
+    "properties": {
+        "msgtype": {"type": "string", "const": "file_share"},
+        "file_id": {"type": "string"},
+        "name": {"type": "string"},
+        "size": {"type": "integer"},
+        "sha256": {"type": "string"},
+        "from": {"type": "string"},
+        "ts": {"type": "string", "format": "date-time"},
+        "note": {"type": "string"},
+    },
+    "additionalProperties": False,
+}
 
 BUNDLED_DEFAULT_SCHEMAS = Path(__file__).with_name("default_schemas.jsonl")
 

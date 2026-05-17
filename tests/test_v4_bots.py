@@ -9,6 +9,30 @@ from agent_agora.persistence import Persistence, AsyncWriteQueue
 from _helpers import make_schema_registry
 
 
+@pytest.fixture
+async def bot_app(tmp_path):
+    instance_registry = InstanceRegistry()
+    for name in ("Inst1", "Inst2"):
+        instance_registry.register(f"sess-{name}", name)
+    bot_registry = BotRegistry()
+    schema_registry = make_schema_registry()
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    async with queue:
+        comm_matrix = CommMatrix()
+        dispatcher = Dispatcher(
+            instance_registry, persistence, queue,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, default_timeout_ms=300)
+        mcp = create_agora_app(
+            agora_dir=tmp_path, instance_registry=instance_registry,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, persistence=persistence,
+            dispatcher=dispatcher, port=0)
+        yield mcp, dispatcher, schema_registry
+
+
 class FakeCtx:
     """_session_id_from_ctx가 읽는 ctx.request_context.request.headers를 흉내낸다."""
     def __init__(self, session_id):
@@ -181,7 +205,7 @@ async def test_worker_dispatch_to_bot_then_bot_emit_chain(app):
     disp = json.loads(await _tool(mcp, "agora.dispatch")(
         FakeCtx("ws1"), payload={"msgtype": "ping_task", "v": 1}))
     assert disp["status"] == "ok"
-    got = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs1"), timeout_ms=200))
+    got = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bs1")))
     assert len(got["commands"]) == 1
     cmd_id = got["commands"][0]["id"]
     # bot emits a result back to the original caller
@@ -190,7 +214,7 @@ async def test_worker_dispatch_to_bot_then_bot_emit_chain(app):
         payload={"msgtype": "bot_reply", "from": "bot_p",
                  "ts": "2026-01-01T00:00:00Z", "result": {"pong": 1}},
         in_reply_to=cmd_id)
-    reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
+    reply = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("ws1")))
     assert reply["commands"][0]["payload"]["result"] == {"pong": 1}
 
 
@@ -227,8 +251,8 @@ async def test_multi_bot_subscription_fan_out(app):
     instance_registry.register("ws1", "worker_x")
     await _tool(mcp, "agora.dispatch")(
         FakeCtx("ws1"), payload={"msgtype": "pytest_run", "scenario": "s"})
-    a = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs1"), timeout_ms=200))
-    b = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bs2"), timeout_ms=200))
+    a = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bs1")))
+    b = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bs2")))
     assert len(a["commands"]) == 1 and len(b["commands"]) == 1
 
 
@@ -242,7 +266,7 @@ async def test_observer_receives_all_messages(app):
     await _tool(mcp, "agora.dispatch")(FakeCtx("ws1"), target="worker_y",
         payload={"msgtype": "worker_freeform", "type": "task",
                  "from": "worker_x", "ts": "2026-01-01T00:00:00Z", "message": "hi"})
-    obs = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("bo1"), timeout_ms=200))
+    obs = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("bo1")))
     assert len(obs["commands"]) == 1
     assert obs["commands"][0]["delivered_as"] == "cc"
 
@@ -294,7 +318,7 @@ async def test_bot_error_emit_reaches_caller(app):
                  "ts": "2026-01-01T00:00:00Z",
                  "error_code": "boom", "error_message": "handler failed"},
         in_reply_to=cmd_id)
-    reply = json.loads(await _tool(mcp, "agora.wait")(FakeCtx("ws1"), timeout_ms=200))
+    reply = json.loads(await _tool(mcp, "agora.flush")(FakeCtx("ws1")))
     assert reply["commands"][0]["payload"]["error_code"] == "boom"
 
 
@@ -326,3 +350,29 @@ async def test_bot_emit_rejects_unknown_msgtype(app):
     res = json.loads(await _tool(mcp, "agora.bot_emit")(
         FakeCtx("bs1"), payload={"msgtype": "ghost_unregistered_xyz"}))
     assert "registry에 없습니다" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_bot_inline_schema_holds_ref(bot_app):
+    """register_bot 인라인 schemas= → 봇이 holder ref 보유."""
+    mcp, dispatcher, schema_registry = bot_app
+    body = {"type": "object", "properties": {"msgtype": {"const": "echo_task"}}}
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("sess-bot1"), instance_id="bot1", description="d",
+        bot_mode="handler", subscribe_schemas=["echo_task"],
+        schemas={"echo_task": {"kind": "bot-task", "purpose": "p", "body": body}})
+    assert "bot1" in schema_registry.refs_of("echo_task")
+
+
+@pytest.mark.asyncio
+async def test_unregister_releases_schema_ref(bot_app):
+    """봇 unregister → 그 봇이 마지막 holder면 스키마 해제."""
+    mcp, dispatcher, schema_registry = bot_app
+    body = {"type": "object", "properties": {"msgtype": {"const": "echo2"}}}
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("sess-bot1"), instance_id="bot1", description="d",
+        bot_mode="handler", subscribe_schemas=["echo2"],
+        schemas={"echo2": {"kind": "bot-task", "purpose": "p", "body": body}})
+    assert schema_registry.get("echo2") is not None
+    await _tool(mcp, "agora.unregister")(FakeCtx("sess-bot1"))
+    assert schema_registry.get("echo2") is None

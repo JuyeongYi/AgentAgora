@@ -49,8 +49,8 @@ async def test_dispatch_fans_out_to_subscribing_bots(setup):
         session_id="bs1", instance_id="bot_a", description="d",
         bot_mode="handler", subscribe_schemas=["pytest_run"])
     res = await dispatcher.dispatch(source="Inst1", target="Inst2", payload=payload)
-    inst2 = await dispatcher.wait("Inst2", timeout_ms=200)
-    bot_a = await dispatcher.wait("bot_a", timeout_ms=200)
+    inst2 = await dispatcher.flush("Inst2", )
+    bot_a = await dispatcher.flush("bot_a", )
     assert inst2[0]["delivered_as"] == "primary"
     assert bot_a[0]["delivered_as"] == "subscribed"
     delivered = {d["instance_id"]: d["as"] for d in res["dispatched_to"]}
@@ -65,7 +65,7 @@ async def test_dispatch_target_omitted_routes_to_bots(setup):
         session_id="bs1", instance_id="bot_a", description="d",
         bot_mode="handler", subscribe_schemas=["pytest_run"])
     res = await dispatcher.dispatch(source="Inst1", target=None, payload=payload)
-    bot_a = await dispatcher.wait("bot_a", timeout_ms=200)
+    bot_a = await dispatcher.flush("bot_a", )
     assert len(bot_a) == 1 and bot_a[0]["delivered_as"] == "subscribed"
     assert all(d["as"] == "subscribed" for d in res["dispatched_to"])
     assert res["target_inbox_depth_after"] == {}
@@ -98,7 +98,7 @@ async def test_dispatch_observer_receives_cc(setup):
     dispatcher._bot_registry.register(
         session_id="bo1", instance_id="bot_obs", description="d", bot_mode="observer")
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=wf("관찰"))
-    obs = await dispatcher.wait("bot_obs", timeout_ms=200)
+    obs = await dispatcher.flush("bot_obs", )
     assert len(obs) == 1 and obs[0]["delivered_as"] == "cc"
 
 
@@ -106,7 +106,7 @@ async def test_dispatch_observer_receives_cc(setup):
 async def test_dispatch_to_worker_still_works_unchanged(setup):
     registry, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(m="hi"))
-    drained = await dispatcher.wait("Inst2", timeout_ms=200)
+    drained = await dispatcher.flush("Inst2", )
     assert len(drained) == 1 and drained[0]["delivered_as"] == "primary"
 
 
@@ -118,9 +118,9 @@ async def test_broadcast_fans_out_to_subscribing_bots(setup):
         session_id="bs1", instance_id="bot_a", description="d",
         bot_mode="handler", subscribe_schemas=["pytest_run"])
     res = await dispatcher.broadcast(source="Inst1", payload=payload)
-    bot_a = await dispatcher.wait("bot_a", timeout_ms=200)
+    bot_a = await dispatcher.flush("bot_a", )
     assert len(bot_a) == 1 and bot_a[0]["delivered_as"] == "subscribed"
-    inst2 = await dispatcher.wait("Inst2", timeout_ms=200)
+    inst2 = await dispatcher.flush("Inst2", )
     assert inst2[0]["delivered_as"] == "primary"
     delivered = {d["instance_id"]: d["as"] for d in res["dispatched_to"]}
     assert delivered["bot_a"] == "subscribed"
@@ -132,7 +132,7 @@ async def test_broadcast_observer_receives_cc(setup):
     dispatcher._bot_registry.register(
         session_id="bo1", instance_id="bot_obs", description="d", bot_mode="observer")
     await dispatcher.broadcast(source="Inst1", payload=wf("공지"))
-    obs = await dispatcher.wait("bot_obs", timeout_ms=200)
+    obs = await dispatcher.flush("bot_obs", )
     assert len(obs) == 1 and obs[0]["delivered_as"] == "cc"
 
 
@@ -151,7 +151,7 @@ async def test_bot_emit_in_reply_to_routes_to_original_source(setup):
     res = await dispatcher.dispatch(source="Inst1", target=None, payload=payload)
     cmd_id = res["command_id"]
     await dispatcher.bot_emit(source="bot_a", payload=_bot_reply(), in_reply_to=cmd_id)
-    inst1 = await dispatcher.wait("Inst1", timeout_ms=200)
+    inst1 = await dispatcher.flush("Inst1", )
     assert len(inst1) == 1
     assert inst1[0]["payload"]["msgtype"] == "bot_reply"
     assert inst1[0]["in_reply_to"] == cmd_id
@@ -168,7 +168,7 @@ async def test_bot_emit_without_in_reply_to_fans_out_to_subscribers(setup):
         session_id="bs1", instance_id="bot_metric", description="d",
         bot_mode="handler", subscribe_schemas=["metric_log"])
     await dispatcher.bot_emit(source="bot_src", payload={"msgtype": "metric_log", "v": 1})
-    got = await dispatcher.wait("bot_metric", timeout_ms=200)
+    got = await dispatcher.flush("bot_metric", )
     assert len(got) == 1 and got[0]["delivered_as"] == "subscribed"
 
 
@@ -197,7 +197,7 @@ async def test_bot_can_wait_even_though_not_in_instance_registry(setup):
         bot_mode="handler", subscribe_schemas=["pytest_run"])
     await dispatcher.dispatch(source="Inst1", target=None, payload=payload)
     # bot_a is NOT in InstanceRegistry — wait must still resolve it via BotRegistry
-    got = await dispatcher.wait("bot_a", timeout_ms=200)
+    got = await dispatcher.flush("bot_a")
     assert len(got) == 1
 
 
@@ -206,4 +206,4 @@ async def test_wait_unknown_id_still_raises(setup):
     registry, dispatcher = setup
     from agent_agora.registry import NotRegisteredError
     with pytest.raises(NotRegisteredError):
-        await dispatcher.wait("ghost_nobody", timeout_ms=50)
+        await dispatcher.flush("ghost_nobody")

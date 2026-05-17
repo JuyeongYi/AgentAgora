@@ -194,32 +194,39 @@ async def test_lifecycle_unregisters_even_on_exception(monkeypatch):
     assert "agora.unregister" in [n for n, _ in session.calls]
 
 
-# ── run() — bounded wait heartbeat ──────────────────────────────────────────
+# ── run() — wait_notify + flush heartbeat ───────────────────────────────────
 
 class _StopLoop(Exception):
     pass
 
 
 @pytest.mark.asyncio
-async def test_run_uses_bounded_wait_timeout():
-    """run()의 wait 루프는 WAIT_TIMEOUT_MS로 bounded 호출해야 한다 (무한 wait 금지)."""
-    seen_timeouts: list = []
+async def test_run_uses_wait_notify_then_flush():
+    """run()은 agora.wait_notify(WAIT_TIMEOUT_MS) 호출 뒤 agora.flush를 호출해야 한다."""
+    seen_notify_timeouts: list = []
+    seen_flush_calls: list = []
 
-    class _WaitSession(FakeSession):
+    class _WaitNotifySession(FakeSession):
         async def call_tool(self, name, args):
-            if name == "agora.wait":
-                seen_timeouts.append(args.get("timeout_ms"))
-                if len(seen_timeouts) >= 2:
+            if name == "agora.wait_notify":
+                seen_notify_timeouts.append(args.get("timeout_ms"))
+                if len(seen_notify_timeouts) >= 2:
                     raise _StopLoop()  # 루프 탈출
+                return _FakeResult({"status": "ok"})
+            if name == "agora.flush":
+                seen_flush_calls.append(args)
                 return _FakeResult({"commands": []})
             return await super().call_tool(name, args)
 
     bot = _ReturnBot()
-    bot._session = _WaitSession()
+    bot._session = _WaitNotifySession()
     with pytest.raises(_StopLoop):
         await bot.run()
-    assert seen_timeouts
-    assert all(t == _ReturnBot.WAIT_TIMEOUT_MS for t in seen_timeouts)
+    # wait_notify는 WAIT_TIMEOUT_MS로 호출돼야 한다
+    assert seen_notify_timeouts
+    assert all(t == _ReturnBot.WAIT_TIMEOUT_MS for t in seen_notify_timeouts)
+    # flush는 각 wait_notify 성공 뒤 호출돼야 한다 (루프 탈출 전까지)
+    assert len(seen_flush_calls) >= 1
 
 
 # ── 스키마 이름 충돌 에러 명확화 ────────────────────────────────────────────

@@ -1,4 +1,4 @@
-"""Unit tests for plugin/cc-agora/scripts/role_policy.py (spec §8.8.1)."""
+"""Unit tests for plugin/cc-agora-ops/scripts/role_policy.py."""
 from __future__ import annotations
 
 import io
@@ -8,16 +8,14 @@ from pathlib import Path
 import pytest
 
 from role_policy import (
-    hook_for,
     is_defined,
     load_roles,
-    preset_for,
+    plugin_for,
     undefined_role_warning,
-    wait_mode_for,
     warn_undefined_role,
 )
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
 ROLES_PATH = PLUGIN_ROOT / "config" / "roles.json"
 
 
@@ -26,27 +24,20 @@ def roles() -> dict:
     return load_roles(ROLES_PATH)
 
 
-def test_hook_for_defined(roles: dict) -> None:
-    assert hook_for("orchestrator", roles) == "none"
-    assert hook_for("coder", roles) == "stop-auto-wait"
-    assert hook_for("reviewer", roles) == "stop-auto-wait"
+def test_plugin_for_defined_role():
+    roles = load_roles(ROLES_PATH)
+    assert plugin_for("coder", roles) == "cc-agora-coder"
 
 
-def test_hook_for_undefined(roles: dict) -> None:
-    assert hook_for("phantom", roles) is None
+def test_plugin_for_undefined_role_is_none():
+    roles = load_roles(ROLES_PATH)
+    assert plugin_for("phantom", roles) is None
 
 
-def test_wait_mode_derive(roles: dict) -> None:
-    assert wait_mode_for("coder", roles) == "auto"
-    assert wait_mode_for("orchestrator", roles) == "manual"
-    assert wait_mode_for("phantom", roles) is None
-
-
-def test_preset_for(roles: dict) -> None:
-    assert preset_for("coder", roles) == "coder"
-    assert preset_for("orchestrator", roles) == "orchestrator"
-    assert preset_for("reviewer", roles) == "reviewer"
-    assert preset_for("phantom", roles) is None
+def test_all_seven_roles_map_to_persona_plugins():
+    roles = load_roles(ROLES_PATH)
+    for role in ("orchestrator", "coder", "reviewer", "tester", "writer", "planner", "general"):
+        assert plugin_for(role, roles) == f"cc-agora-{role}"
 
 
 def test_is_defined(roles: dict) -> None:
@@ -58,11 +49,7 @@ def test_undefined_role_warning_contains_name_and_guide() -> None:
     msg = undefined_role_warning("phantom")
     assert "phantom" in msg
     assert "roles.json" in msg
-    assert "hook" in msg
-    # Editing guidance must include both the JSON snippet shape and the
-    # settings.local.json follow-up to be actionable.
-    assert "stop-auto-wait" in msg
-    assert "settings.local.json" in msg
+    assert "plugin" in msg
 
 
 def test_warn_undefined_role_writes_to_stream() -> None:

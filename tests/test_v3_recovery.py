@@ -39,7 +39,7 @@ async def test_restart_recovery_restores_inflight_messages(tmp_path):
     async with q2:
         d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         d2.restore_from_persistence()
-        msgs = await d2.wait("Inst2", timeout_ms=200)
+        msgs = await d2.flush("Inst2")
     pers2.close()
     assert len(msgs) == 1
     assert msgs[0]["payload"] == tany(keep=True)
@@ -83,7 +83,7 @@ async def test_restart_recovery_drops_closed_conversation_messages_with_drop_rea
     async with q2:
         d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         d2.restore_from_persistence()
-        msgs = await d2.wait("Inst2", timeout_ms=100)
+        msgs = await d2.flush("Inst2")
     # orphan must NOT be in restored queue
     assert all(m.get("id") != "cmd-orphan" for m in msgs)
     # drop_reason marking persisted
@@ -126,3 +126,35 @@ def test_async_write_queue_documented_unbounded(tmp_path):
     # asyncio.Queue exposes maxsize: 0 means unbounded
     assert q._queue.maxsize == 0
     pers.close()
+
+
+@pytest.mark.asyncio
+async def test_dead_bot_sweep_releases_schema_refs(tmp_path):
+    """dead_bot_sweep — 스윕된 봇이 마지막 holder인 스키마가 해제된다."""
+    import datetime
+    from agent_agora.schemas import SchemaRegistry
+    from agent_agora.bot_registry import BotRegistry
+    from agent_agora.registry import InstanceRegistry
+    from agent_agora.persistence import Persistence, AsyncWriteQueue
+    from agent_agora.comm_matrix import CommMatrix
+    from agent_agora.dispatcher import Dispatcher
+
+    schema_registry = SchemaRegistry()
+    body = {"type": "object", "properties": {"msgtype": {"const": "x"}}}
+    schema_registry.register("x", body, kind="bot-task", purpose="p",
+                             registered_by="bot1")
+    bot_registry = BotRegistry()
+    bot_registry.register("sess-bot1", "bot1", "d", "handler",
+                          subscribe_schemas=("x",))
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    async with queue:
+        d = Dispatcher(InstanceRegistry(), persistence, queue,
+                       schema_registry=schema_registry, bot_registry=bot_registry,
+                       comm_matrix=CommMatrix(),
+                       dead_session_timeout_ms=0)
+        # registered_at이 즉시 cutoff 이전이 되도록 timeout 0
+        removed = d.sweeper.dead_bot_sweep()
+        assert "bot1" in removed
+        assert schema_registry.get("x") is None
