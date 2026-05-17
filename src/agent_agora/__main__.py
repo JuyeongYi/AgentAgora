@@ -29,6 +29,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dead-session-timeout-ms", type=int, default=1800000)
     parser.add_argument("--gc-retention-days", type=int, default=90)
     parser.add_argument("--gc-hour", type=int, default=3)
+    parser.add_argument("--file-retention-days", type=int, default=7,
+                        help="공유 파일 보관 기간(일). 기본 7.")
     timeout_group = parser.add_mutually_exclusive_group()
     timeout_group.add_argument("--default-wait-timeout-ms", type=int, default=60000)
     timeout_group.add_argument("--no-timeout", action="store_true")
@@ -61,6 +63,7 @@ def _build_app(
     close_timeout_ms: int = 300_000,
     dead_session_timeout_ms: int = 1_800_000,
     gc_retention_days: int = 90,
+    file_retention_days: int = 7,
 ):
     """Construct FastMCP app + supporting state. Used by CLI and tests.
 
@@ -127,6 +130,7 @@ def _build_app(
         dead_session_timeout_ms=dead_session_timeout_ms,
         gc_retention_days=gc_retention_days,
         file_store=file_store,
+        file_retention_days=file_retention_days,
     )
     mcp = create_agora_app(
         agora_dir=agora_dir,
@@ -180,6 +184,7 @@ async def run_server(args: argparse.Namespace) -> None:
         close_timeout_ms=args.close_timeout_ms,
         dead_session_timeout_ms=args.dead_session_timeout_ms,
         gc_retention_days=args.gc_retention_days,
+        file_retention_days=args.file_retention_days,
     )
     instance_registry = mcp._agora_instance_registry  # type: ignore[attr-defined]
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import datetime
 import json
+import os.path
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -546,7 +548,6 @@ def create_agora_app(
             except RuntimeError as e:
                 return json.dumps({"error": f"Session context unavailable: {e}"})
             caller = _resolve_caller(session_id, instance_registry, bot_registry)
-            import os.path
             name = os.path.basename(path)
             if file_policy is not None and not file_policy.can_upload(caller, name):
                 return json.dumps({"error": str(AgoraError(
@@ -574,9 +575,8 @@ def create_agora_app(
             src = file_store.path_of(file_id)
             if src is None:
                 return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
-            import shutil as _shutil
             try:
-                _shutil.copyfile(src, dest_path)
+                shutil.copyfile(src, dest_path)
             except OSError as e:
                 return json.dumps({"error": f"fetch failed: {e}"})
             return json.dumps({"status": "ok", "name": meta["name"], "size": meta["size"]})

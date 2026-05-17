@@ -35,7 +35,9 @@ def register(app: Starlette, *, file_store, file_policy) -> None:
         worker = request.headers.get("X-Agora-Instance-Id", "")
         meta = file_store.meta(file_id)
         if meta is None:
-            return JSONResponse({"error": "unknown_file"}, status_code=404)
+            return JSONResponse(
+                {"error": str(AgoraError("unknown_file", file_id=file_id))},
+                status_code=404)
         if not file_policy.can_download(worker, meta["name"]):
             return JSONResponse(
                 {"error": str(AgoraError("file_download_denied", worker=worker,
@@ -43,7 +45,9 @@ def register(app: Starlette, *, file_store, file_policy) -> None:
                 status_code=403)
         path = file_store.path_of(file_id)
         if path is None:
-            return JSONResponse({"error": "unknown_file"}, status_code=404)
+            return JSONResponse(
+                {"error": str(AgoraError("unknown_file", file_id=file_id))},
+                status_code=404)
         return Response(path.read_bytes(), media_type=meta["content_type"]
                         or "application/octet-stream")
 

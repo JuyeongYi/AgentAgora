@@ -47,3 +47,15 @@ def test_upload_denied_403(tmp_path):
                     headers={"X-Agora-Instance-Id": "Coder1",
                              "X-Agora-File-Name": "evil.exe"})
     assert r.status_code == 403
+
+
+def test_download_denied_403(tmp_path):
+    client, store, policy = _client(tmp_path)
+    # store a file directly (bypasses policy)
+    handle = store.store_bytes(b"secret data", "secret.bin", "Uploader")
+    file_id = handle["file_id"]
+    # load a policy where Reviewer1 can only read *.md, not *.bin
+    policy.load_json(_json.dumps({"workers": {"Reviewer1": {"r": ["*.md"], "w": []}}}))
+    r = client.get(f"/files/{file_id}",
+                   headers={"X-Agora-Instance-Id": "Reviewer1"})
+    assert r.status_code == 403
