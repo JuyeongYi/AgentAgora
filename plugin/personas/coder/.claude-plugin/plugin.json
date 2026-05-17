@@ -1,0 +1,6 @@
+{
+  "name": "cc-agora-coder",
+  "description": "AgentAgora coder persona — a council member that turns tasks into minimal, reviewable code changes.",
+  "version": "0.1.0",
+  "dependencies": ["cc-agora"]
+}
