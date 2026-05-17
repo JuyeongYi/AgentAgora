@@ -420,7 +420,7 @@ def create_agora_app(
     async def agora_flush(
         ctx: Context,
         from_sources: list[str] | None = None,
-        sort: Literal["fifo", "priority"] = "fifo",
+        sort: Literal["fifo", "priority"] = "priority",
         by_conversation: str | None = None,
     ) -> str:
         """Drain all commands currently queued for this instance and return immediately (non-blocking).
@@ -428,8 +428,9 @@ def create_agora_app(
         Returns whatever is in the inbox right now — does not wait for new messages.
         Call this after receiving a channel notification to drain your inbox.
 
-        sort='fifo' returns by (created_at asc, command_id asc). 'priority' uses
-        (priority_rank asc, created_at asc, command_id asc) — high before normal before low.
+        Default sort='priority': the inbox is ordered by comm-matrix edge weight
+        (descending), then message priority (high>normal>low), then created_at.
+        sort='fifo' falls back to (created_at asc, command_id asc).
         from_sources / by_conversation: AND-combined filters; unmatched envelopes stay queued.
         The caller MUST be registered before calling flush.
         """

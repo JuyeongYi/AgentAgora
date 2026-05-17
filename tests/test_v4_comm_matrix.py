@@ -438,3 +438,17 @@ async def test_flush_fifo_ignores_weight(tmp_path):
         await d.dispatch(source="Reviewer1", target="Inst1", payload=tany(s="second"))
         drained = await d.flush("Inst1", sort="fifo")
         assert [c["payload"]["s"] for c in drained] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_flush_tool_default_sort_is_priority(cm_app):
+    """agora.flush 도구의 sort 기본값이 priority — weight 큰 메시지 먼저."""
+    mcp, _, comm_matrix = cm_app
+    comm_matrix.load_csv(
+        "Inst1,Coder1,Reviewer1,Tester1\n0,1,5,1\n1,0,0,0\n1,0,0,0\n1,0,0,0")
+    await _tool(mcp, "agora.dispatch")(
+        _FakeCtx("sess-Coder1"), payload=tany(s="w1"), target="Inst1")
+    await _tool(mcp, "agora.dispatch")(
+        _FakeCtx("sess-Reviewer1"), payload=tany(s="w5"), target="Inst1")
+    res = json.loads(await _tool(mcp, "agora.flush")(_FakeCtx("sess-Inst1")))
+    assert [c["payload"]["s"] for c in res["commands"]] == ["w5", "w1"]
