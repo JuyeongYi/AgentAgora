@@ -63,9 +63,8 @@ class Dispatcher:
         self._comm_matrix = comm_matrix
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
-        self._close_timeout_ms = close_timeout_ms
-        self._dead_session_timeout_ms = dead_session_timeout_ms
-        self._gc_retention_days = gc_retention_days
+        # close_timeout_ms·dead_session_timeout_ms·gc_retention_days는 Sweeper로만
+        # 전달된다 — Dispatcher 자신은 쓰지 않으므로 인스턴스 속성으로 보관하지 않는다.
         self._queues: dict[str, list[Envelope]] = defaultdict(list)
         self._waiters: dict[str, list[asyncio.Future]] = defaultdict(list)
         self._closed = False
