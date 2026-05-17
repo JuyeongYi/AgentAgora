@@ -155,6 +155,6 @@ async def test_dead_bot_sweep_releases_schema_refs(tmp_path):
                        comm_matrix=CommMatrix(),
                        dead_session_timeout_ms=0)
         # registered_at이 즉시 cutoff 이전이 되도록 timeout 0
-        removed = d.dead_bot_sweep()
+        removed = d.sweeper.dead_bot_sweep()
         assert "bot1" in removed
         assert schema_registry.get("x") is None

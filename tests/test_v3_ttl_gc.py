@@ -50,7 +50,7 @@ async def test_close_ttl_sweep_transitions_half_closed_to_closed_after_timeout(s
         dispatcher.conversation_status(conv)["last_message_at"]
     )
     future = last + datetime.timedelta(milliseconds=300_001)
-    closed_ids = dispatcher.close_ttl_sweep(now=future)
+    closed_ids = dispatcher.sweeper.close_ttl_sweep(now=future)
     assert conv in closed_ids
     assert dispatcher.conversation_status(conv)["status"] == "closed"
 
@@ -69,7 +69,7 @@ async def test_close_ttl_sweep_resets_on_new_message_within_window(setup):
     )
     # sweep slightly past first close but before reset+timeout
     future = last + datetime.timedelta(milliseconds=100_000)
-    closed_ids = dispatcher.close_ttl_sweep(now=future)
+    closed_ids = dispatcher.sweeper.close_ttl_sweep(now=future)
     assert conv not in closed_ids
     assert dispatcher.conversation_status(conv)["status"] == "half_closed"
 
@@ -81,7 +81,7 @@ async def test_close_ttl_sweep_ignores_open_conversations(setup):
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(x=1),
                                conversation_id=conv)
     future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
-    closed_ids = dispatcher.close_ttl_sweep(now=future)
+    closed_ids = dispatcher.sweeper.close_ttl_sweep(now=future)
     assert conv not in closed_ids
     assert dispatcher.conversation_status(conv)["status"] == "open"
 
@@ -96,7 +96,7 @@ async def test_dead_session_sweep_unregisters_idle_instance(setup):
     info = registry.resolve_instance_id("Inst3")
     last_seen = datetime.datetime.fromisoformat(info.last_seen_at)
     future = last_seen + datetime.timedelta(milliseconds=1_800_001)
-    removed = dispatcher.dead_session_sweep(now=future)
+    removed = dispatcher.sweeper.dead_session_sweep(now=future)
     assert "Inst3" in removed
     from agent_agora.registry import NotRegisteredError
     with pytest.raises(NotRegisteredError):
@@ -108,7 +108,7 @@ async def test_dead_session_sweep_skips_recent_instances(setup):
     registry, _, dispatcher = setup
     registry.touch_last_seen("Inst3")
     # sweep right now — well within timeout
-    removed = dispatcher.dead_session_sweep(now=datetime.datetime.now(datetime.timezone.utc))
+    removed = dispatcher.sweeper.dead_session_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     assert "Inst3" not in removed
     # Inst3 still registered
     info = registry.resolve_instance_id("Inst3")
@@ -135,7 +135,7 @@ async def test_message_gc_sweep_deletes_old_closed_messages_preserves_meta(setup
     )
     # also age in-memory state for cache eviction
     dispatcher._conv._conversations[conv]["closed_at"] = past
-    deleted = dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
+    deleted = dispatcher.sweeper.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     assert deleted >= 2
     msgs_left = persistence.conn.execute(
         "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv,)
@@ -166,7 +166,7 @@ async def test_message_gc_sweep_evicts_in_memory_cache(setup):
         (past, conv),
     )
     dispatcher._conv._conversations[conv]["closed_at"] = past
-    dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
+    dispatcher.sweeper.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     # Inst4 우려4 — cache eviction
     assert conv not in dispatcher._conv._conversations
     assert cmd_id not in dispatcher._conv._conversation_of
@@ -181,6 +181,6 @@ async def test_message_gc_sweep_skips_recently_closed(setup):
     await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(m=2),
                                conversation_id=conv, closing=True)
     # closed_at is now — well within 90d
-    deleted = dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
+    deleted = dispatcher.sweeper.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     assert deleted == 0
     assert conv in dispatcher._conv._conversations
