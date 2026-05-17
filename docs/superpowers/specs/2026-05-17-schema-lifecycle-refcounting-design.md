@@ -133,12 +133,16 @@ self._permanent: set[str] = set()           # 해제 불가 스키마 이름
   마쳤고, 해제 후 그 msgtype 신규 dispatch는 `unknown_msgtype`로 정상 거부된다.
 - `registered_by` 필드를 holder 집합으로 대체 — 최초 등록자 정보로 유지.
 
-## 10. 플랜 분할 (독립 머지 가능)
+## 10. 구현 — 단일 플랜
 
-- **Plan 1 — `SchemaRegistry` ref-counting + `schema_conflict` 빌트인.** `_refs`·
-  `_permanent`·`register(holder=)`·`acquire_ref`·`release_holder`·`_unregister`,
-  `default_schemas.jsonl`에 `schema_conflict` 추가 + startup permanent 재등록. 와이어링
-  전이라 `release_holder` 호출처가 없어 관측 동작은 불변 — 단독 머지 가능.
-- **Plan 2 — 와이어링 + `system_notify`.** `Dispatcher.system_notify`, server.py의
-  `register_schema`·`register_bot`·`unregister` 핸들러에 holder 전달 + 충돌 통지,
-  `dead_session_sweep`·`dead_bot_sweep`에 `release_holder`. Plan 1의 API에 의존.
+ref-counting은 응집도 높은 작은 기능이다. `SchemaRegistry` ref API와 그 유일한
+소비자(server 와이어링)를 별도 플랜으로 나누면, 와이어링 전 플랜은 `release_holder`
+호출처가 없어 관측 동작이 전혀 없는 no-op이 된다 — 독립 가치가 없는 분할이다.
+한 플랜으로 구현하며, 태스크를 다음 순서로 둔다:
+
+1. `SchemaRegistry` ref-counting API (`_refs`·`_permanent`·`register(holder=)`·
+   `acquire_ref`·`release_holder`·`_unregister`).
+2. `schema_conflict` 빌트인 — `default_schemas.jsonl` 추가 + startup permanent 재등록.
+3. `Dispatcher.system_notify`.
+4. server 와이어링 — `register_schema`·`register_bot`·`unregister` 핸들러, 충돌 통지.
+5. sweep 와이어링 — `dead_session_sweep`·`dead_bot_sweep`에 `release_holder`.
