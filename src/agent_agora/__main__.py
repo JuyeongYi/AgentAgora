@@ -196,6 +196,15 @@ async def run_server(args: argparse.Namespace) -> None:
             os.environ.get("AGORA_ADMIN_TOKEN"),
         ):
             print("  Admin    : POST/GET /admin/comm-matrix (AGORA_ADMIN_TOKEN set)")
+        from agent_agora.dashboard_routes import register as register_dashboard
+        register_dashboard(
+            starlette_app,
+            dispatcher=dispatcher,
+            instance_registry=instance_registry,
+            bot_registry=mcp._agora_bot_registry,  # type: ignore[attr-defined]
+            comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
+        )
+        print("  Dashboard: GET /dashboard")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
