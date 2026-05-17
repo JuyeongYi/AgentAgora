@@ -1,7 +1,7 @@
-"""Role policy loader for cc-agora plugin.
+"""Role policy loader for cc-agora-ops plugin.
 
-Single source of truth: ``config/roles.json``. A role maps to a CLAUDE.md
-preset. Hook policy / wait_mode were removed when the plugin moved to channel
+Single source of truth: ``config/roles.json``. A role maps to a persona plugin
+name. Hook policy / wait_mode were removed when the plugin moved to channel
 mode — channel-mode workers have no Stop hook.
 """
 from __future__ import annotations
@@ -25,21 +25,21 @@ def is_defined(role: str, roles: dict[str, dict[str, str]]) -> bool:
     return role in roles
 
 
-def preset_for(role: str, roles: dict[str, dict[str, str]]) -> str | None:
-    """Return the preset name declared for ``role``. ``None`` for undefined
-    roles — caller falls back to ``general``."""
+def plugin_for(role: str, roles: dict[str, dict[str, str]]) -> str | None:
+    """Return the persona plugin name declared for ``role``. ``None`` for
+    undefined roles — caller falls back to the general persona plugin."""
     entry = roles.get(role)
     if entry is None:
         return None
-    return entry.get("preset")
+    return entry.get("plugin")
 
 
 def undefined_role_warning(role: str) -> str:
     """Standard Korean stderr message for an undefined role."""
     return (
         f"[cc-agora] 경고: role '{role}'는 roles.json에 정의되지 않음. "
-        f"preset은 'general'로 대체. config/roles.json에 "
-        f'{{"{role}": {{"preset":"general"}}}} 항목을 추가하면 경고가 사라진다.'
+        f"plugin은 'cc-agora-general'로 대체. config/roles.json에 "
+        f'{{"{role}": {{"plugin":"cc-agora-general"}}}} 항목을 추가하면 경고가 사라진다.'
     )
 
 

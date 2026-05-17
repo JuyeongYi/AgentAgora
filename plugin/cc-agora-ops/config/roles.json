@@ -1,9 +1,9 @@
 {
-  "orchestrator": { "preset": "orchestrator" },
-  "coder":        { "preset": "coder" },
-  "reviewer":     { "preset": "reviewer" },
-  "tester":       { "preset": "tester" },
-  "writer":       { "preset": "writer" },
-  "planner":      { "preset": "planner" },
-  "general":      { "preset": "general" }
+  "orchestrator": { "plugin": "cc-agora-orchestrator" },
+  "coder":        { "plugin": "cc-agora-coder" },
+  "reviewer":     { "plugin": "cc-agora-reviewer" },
+  "tester":       { "plugin": "cc-agora-tester" },
+  "writer":       { "plugin": "cc-agora-writer" },
+  "planner":      { "plugin": "cc-agora-planner" },
+  "general":      { "plugin": "cc-agora-general" }
 }

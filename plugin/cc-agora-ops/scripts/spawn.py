@@ -14,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-from role_policy import is_defined, load_roles, preset_for, warn_undefined_role
+from role_policy import is_defined, load_roles, plugin_for, warn_undefined_role
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8420/mcp"
 
@@ -155,7 +155,11 @@ def do_spawn(
     if preset is not None:
         chosen_preset = preset
     elif defined:
-        chosen_preset = preset_for(role, roles) or "general"
+        # plugin_for returns "cc-agora-<role>"; strip prefix to get preset name.
+        plugin_name = plugin_for(role, roles)
+        chosen_preset = (
+            plugin_name.removeprefix("cc-agora-") if plugin_name else "general"
+        )
     else:
         chosen_preset = "general"
 
