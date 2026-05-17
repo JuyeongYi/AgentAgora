@@ -196,7 +196,6 @@ def main(argv: list[str] | None = None) -> int:
             instance_id=entry["id"],
             role=entry["role"],
             description=entry["description"],
-            preset=entry["preset"],
             target_dir=target_dir,
             force=args.force,
             server_url=args.server_url,

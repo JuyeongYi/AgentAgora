@@ -1,8 +1,8 @@
 """/agora-spawn implementation — 채널 모드 워커 생성.
 
-워커 디렉토리에 CLAUDE.md(preset에 description 헤더를 prepend), .mcp.json
-(HTTP 서버 + agora-channel stdio 어댑터), run.bat(채널 모드 기동)을 만든다.
-채널 모드 워커는 Stop hook이 없다.
+워커 디렉토리에 thin CLAUDE.md, .mcp.json(HTTP 서버 + agora-channel stdio 어댑터),
+run.bat(채널 모드 기동), .claude/settings.local.json(워커별 페르소나 플러그인 활성화)을
+만든다. 채널 모드 워커는 Stop hook이 없다.
 
 Public surface: ``do_spawn`` (spawn_team.py가 호출) + CLI 진입점.
 """
@@ -92,42 +92,34 @@ def _write_text(path: Path, content: str) -> None:
         fh.write(content)
 
 
-def _render_claude_md(
-    *, instance_id: str, role: str, description: str, preset_body: str
-) -> str:
-    header = (
+def _render_thin_claude_md(*, instance_id: str, role: str, description: str) -> str:
+    return (
         f"# {instance_id} ({role})\n"
         f"\n"
         f"이 인스턴스는 **{instance_id}** 워커이다. 역할: **{role}**. 책임: {description}.\n"
         f"\n"
-        f"## 등록·해제 자동성 (호출 금지)\n"
+        f"## 페르소나\n"
         f"\n"
-        f"본 워커의 등록은 `.mcp.json` 헤더(`X-Agora-Instance-Id`, `X-Agora-Role`, "
-        f"`X-Agora-Description`)와 서버의 `AutoRegisterMiddleware`가 첫 HTTP 요청에서 "
-        f"자동 처리한다. 해제는 idle timeout(디폴트 30분)으로 자동 sweep.\n"
+        f"본인의 역할 페르소나는 `cc-agora-{role}` 플러그인이 제공하는 `persona` 스킬에 "
+        f"있다. 기동 시 그 스킬을 적용해 역할을 수행한다.\n"
         f"\n"
-        f"본 워커는 **채널 모드**다 — `<channel source=\"agora-channel\">` 알림이 "
-        f"도착하면 턴이 깨어난다. 그때 `agora.flush`로 메시지를 수신해 처리하고, "
-        f"답신은 `agora.dispatch`로 보낸다.\n"
+        f"## 통신\n"
         f"\n"
-        f"다음을 **호출하지 마라**:\n"
-        f"\n"
-        f"- `agora.register` / `agora.unregister` (서버가 자동 처리)\n"
-        f"- `CallToolRequest`, `tools/call`, `tools/list` 등 **MCP protocol-level 이름** "
-        f"(이는 도구가 아니라 protocol message type이다 — 도구 호출은 도구 이름으로 직접)\n"
-        f"\n"
-        f"사용 가능한 도구는 `agora.*`로 시작하는 것들뿐이다: `agora.dispatch`, "
-        f"`agora.broadcast`, `agora.flush`, `agora.instances`, `agora.find`, `agora.peek`, "
-        f"`agora.conversation_status`, `agora.conversations_list`, `agora.close_thread`, "
-        f"`agora.info`.\n"
-        f"\n"
-        f"상세 페르소나는 아래 단락을 따른다.\n"
-        f"\n"
-        f"---\n"
-        f"\n"
+        f"채널 모드 메시징은 `agora-protocol` 스킬을 따른다 — 채널 알림으로 깨어나 "
+        f"`agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. "
+        f"등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/"
+        f"`agora.unregister`를 호출하지 않는다.\n"
     )
-    body = preset_body if preset_body.endswith("\n") else preset_body + "\n"
-    return header + body
+
+
+def _render_settings_local(*, persona_plugin: str, marketplace_path: str) -> str:
+    settings = {
+        "extraKnownMarketplaces": {
+            "agentagora": {"source": "directory", "path": marketplace_path}
+        },
+        "enabledPlugins": {f"{persona_plugin}@agentagora": True},
+    }
+    return json.dumps(settings, ensure_ascii=False, indent=2) + "\n"
 
 
 def do_spawn(
@@ -135,7 +127,6 @@ def do_spawn(
     instance_id: str,
     role: str,
     description: str,
-    preset: str | None,
     target_dir: Path,
     force: bool,
     server_url: str,
@@ -152,17 +143,9 @@ def do_spawn(
     roles = load_roles(plugin_root / "config" / "roles.json")
 
     defined = is_defined(role, roles)
-    if preset is not None:
-        chosen_preset = preset
-    elif defined:
-        # plugin_for returns "cc-agora-<role>"; strip prefix to get preset name.
-        plugin_name = plugin_for(role, roles)
-        chosen_preset = (
-            plugin_name.removeprefix("cc-agora-") if plugin_name else "general"
-        )
-    else:
-        chosen_preset = "general"
-
+    persona_plugin = plugin_for(role, roles) if defined else None
+    if persona_plugin is None:
+        persona_plugin = "cc-agora-general"
     if not defined:
         warn_undefined_role(role, stream=stderr)
 
@@ -176,24 +159,14 @@ def do_spawn(
         return 1
     worker_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. CLAUDE.md
-    preset_path = plugin_root / "templates" / "presets" / f"{chosen_preset}.md"
-    if not preset_path.is_file():
-        print(
-            f"[cc-agora] preset '{chosen_preset}' 파일을 찾을 수 없습니다: "
-            f"{preset_path.as_posix()}",
-            file=stderr,
-        )
-        return 1
-    preset_body = preset_path.read_text(encoding="utf-8")
+    # 1. thin CLAUDE.md
     _write_text(
         worker_dir / "CLAUDE.md",
-        _render_claude_md(
-            instance_id=instance_id, role=role,
-            description=description, preset_body=preset_body),
+        _render_thin_claude_md(
+            instance_id=instance_id, role=role, description=description),
     )
 
-    # 2. .mcp.json — HTTP 서버 + agora-channel stdio 어댑터
+    # 2. .mcp.json — HTTP 서버 + agora-channel stdio 어댑터 (불변)
     mcp_template = _read_template(plugin_root, "templates", "mcp.json.template")
     _write_text(
         worker_dir / ".mcp.json",
@@ -202,12 +175,20 @@ def do_spawn(
             instance_id=instance_id, role=role, description=description),
     )
 
-    # 3. run.bat — 채널 모드 기동
+    # 3. run.bat — 채널 모드 기동 (불변)
     _write_text(worker_dir / "run.bat", _RUN_BAT)
+
+    # 4. .claude/settings.local.json — 워커별 페르소나 플러그인 활성화
+    marketplace_path = plugin_root.parent.parent.as_posix()
+    _write_text(
+        worker_dir / ".claude" / "settings.local.json",
+        _render_settings_local(
+            persona_plugin=persona_plugin, marketplace_path=marketplace_path),
+    )
 
     print(
         f"[cc-agora] '{instance_id}/' 생성 완료 "
-        f"(role={role}, preset={chosen_preset}, 채널 모드). "
+        f"(role={role}, persona={persona_plugin}, 채널 모드). "
         f"시작: cd {instance_id} && run.bat",
         file=stdout,
     )
@@ -222,12 +203,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("id", help="Worker instance id (e.g. Coder1).")
     p.add_argument("role", help="Role name; looked up in config/roles.json.")
     p.add_argument("description", help="Worker description (Korean recommended).")
-    p.add_argument(
-        "--preset",
-        default=None,
-        help="Override preset name. Defaults to the role's preset; "
-             "falls back to 'general' for undefined roles.",
-    )
     p.add_argument(
         "--dir",
         dest="dir_override",
@@ -253,7 +228,6 @@ def main(argv: list[str] | None = None) -> int:
         instance_id=args.id,
         role=args.role,
         description=args.description,
-        preset=args.preset,
         target_dir=_resolve_target_dir(
             dir_override=args.dir_override,
             cwd=Path.cwd(),
