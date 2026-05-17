@@ -124,7 +124,9 @@ def _build_app(
         gc_retention_days=gc_retention_days,
     )
     from agent_agora.file_store import FileStore
+    from agent_agora.file_policy import load_file_policy
     file_store = FileStore(agora_dir, persistence)
+    file_policy = load_file_policy(agora_dir / "file-policy.json")
     mcp = create_agora_app(
         agora_dir=agora_dir,
         instance_registry=instance_registry,
@@ -135,6 +137,7 @@ def _build_app(
         dispatcher=dispatcher,
         port=port,
         file_store=file_store,
+        file_policy=file_policy,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
@@ -144,6 +147,7 @@ def _build_app(
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]
     mcp._agora_file_store = file_store  # type: ignore[attr-defined]
+    mcp._agora_file_policy = file_policy  # type: ignore[attr-defined]
     return mcp
 
 

@@ -8,6 +8,7 @@ import pytest
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
+from agent_agora.file_policy import FilePolicy
 from agent_agora.file_store import FileStore
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
@@ -42,12 +43,14 @@ async def file_app(tmp_path):
             schema_registry=schema_registry, bot_registry=bot_registry,
             comm_matrix=comm_matrix, default_timeout_ms=200)
         file_store = FileStore(tmp_path, persistence)
+        file_policy = FilePolicy()
         mcp = create_agora_app(
             agora_dir=tmp_path, instance_registry=instance_registry,
             schema_registry=schema_registry, bot_registry=bot_registry,
             comm_matrix=comm_matrix, persistence=persistence,
-            dispatcher=dispatcher, port=0, file_store=file_store)
-        yield mcp, dispatcher, file_store, None  # file_policy placeholder (Task 4)
+            dispatcher=dispatcher, port=0, file_store=file_store,
+            file_policy=file_policy)
+        yield mcp, dispatcher, file_store, file_policy
 
 
 @pytest.mark.asyncio
@@ -72,3 +75,24 @@ async def test_fetch_unknown_file(file_app, tmp_path):
     r = json.loads(await _tool(mcp, "agora.fetch_file")(
         _FakeCtx("sess-Inst2"), file_id="nope", dest_path=str(tmp_path / "x")))
     assert "unknown_file" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_share_file_upload_denied(file_app, tmp_path):
+    mcp, _, _, file_policy = file_app
+    file_policy.load_json(json.dumps({"workers": {"Inst1": {"r": ["*"], "w": ["*.md"]}}}))
+    src = tmp_path / "evil.exe"
+    src.write_bytes(b"x")
+    r = json.loads(await _tool(mcp, "agora.share_file")(
+        _FakeCtx("sess-Inst1"), path=str(src)))
+    assert "file_upload_denied" in r["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_download_denied(file_app, tmp_path):
+    mcp, _, file_store, file_policy = file_app
+    h = file_store.store_bytes(b"data", "app.py", "Inst1")
+    file_policy.load_json(json.dumps({"workers": {"Inst2": {"r": ["*.md"], "w": []}}}))
+    r = json.loads(await _tool(mcp, "agora.fetch_file")(
+        _FakeCtx("sess-Inst2"), file_id=h["file_id"], dest_path=str(tmp_path / "x")))
+    assert "file_download_denied" in r["error"]

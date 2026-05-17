@@ -70,6 +70,7 @@ def create_agora_app(
     dispatcher: Dispatcher,
     port: int,
     file_store: Any = None,
+    file_policy: Any = None,
 ) -> FastMCP:
     """FastMCP 앱을 생성한다 (v3: messaging-only)."""
 
@@ -79,6 +80,7 @@ def create_agora_app(
         port=port,
     )
     mcp._agora_file_store = file_store  # type: ignore[attr-defined]
+    mcp._agora_file_policy = file_policy  # type: ignore[attr-defined]
 
     start_time = time.time()
 
@@ -546,6 +548,9 @@ def create_agora_app(
             caller = _resolve_caller(session_id, instance_registry, bot_registry)
             import os.path
             name = os.path.basename(path)
+            if file_policy is not None and not file_policy.can_upload(caller, name):
+                return json.dumps({"error": str(AgoraError(
+                    "file_upload_denied", worker=caller, name=name))})
             try:
                 handle = file_store.store_path(Path(path), name, caller)
             except (AgoraError, OSError) as e:
@@ -563,6 +568,9 @@ def create_agora_app(
             meta = file_store.meta(file_id)
             if meta is None:
                 return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
+            if file_policy is not None and not file_policy.can_download(caller, meta["name"]):
+                return json.dumps({"error": str(AgoraError(
+                    "file_download_denied", worker=caller, name=meta["name"]))})
             src = file_store.path_of(file_id)
             if src is None:
                 return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
