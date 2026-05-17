@@ -173,6 +173,12 @@ def create_agora_app(
         subscribe = list(subscribe_schemas or [])
         emit = list(emit_schemas or [])
         schemas = schemas or {}
+        # 봇 재등록이면 옛 스키마 ref를 먼저 해제 (새 inline/subscribe로 재획득).
+        try:
+            prior = bot_registry.resolve_instance_id(instance_id)
+            schema_registry.release_holder(prior.instance_id)
+        except NotRegisteredError:
+            pass
         try:
             if not description:
                 raise AgoraError("description_required")
@@ -185,6 +191,11 @@ def create_agora_app(
                     raise AgoraError("schema_kind_not_bot_task", name=name)
                 existing = schema_registry.get(name)
                 if existing is not None and existing.body != defn.get("body"):
+                    await dispatcher.system_notify(instance_id, {
+                        "msgtype": "schema_conflict", "schema_name": name,
+                        "reason": f"schema '{name}' already registered with a different body",
+                        "attempted_by": instance_id,
+                        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat()})
                     raise AgoraError("schema_immutable", name=name)
             # (2) 일괄 등록 — 모두 검증 통과 후
             for name, defn in schemas.items():
@@ -211,6 +222,9 @@ def create_agora_app(
             persistence.save_bot_subscriptions(
                 instance_id, subscribe=list(info.subscribe_schemas),
                 emit=list(info.emit_schemas))
+            # 구독 schema에 subscriber ref 획득
+            for s in info.subscribe_schemas:
+                schema_registry.acquire_ref(s, instance_id)
         except AgoraError as e:
             return json.dumps({"error": str(e)})
         return json.dumps({
@@ -227,6 +241,13 @@ def create_agora_app(
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
+        # 해제 전에 holder id를 잡아 스키마 ref를 해제한다.
+        for reg in (instance_registry, bot_registry):
+            try:
+                holder = reg.resolve_session(session_id).instance_id
+                schema_registry.release_holder(holder)
+            except NotRegisteredError:
+                pass
         instance_registry.unregister_session(session_id)
         bot_registry.unregister_session(session_id)
         return json.dumps({"status": "ok"})
