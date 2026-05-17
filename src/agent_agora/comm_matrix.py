@@ -58,11 +58,16 @@ class CommMatrix:
         self.active = True
 
     def weight_of(self, from_: str, to: str) -> int:
-        """from_→to 엣지의 정수 weight. 비활성이면 0(평탄).
-        활성이면 셀 값, 미등재 쌍은 0."""
+        """from_→to 엣지의 정수 weight. 비활성이면 0.
+        활성이면 셀 값, 미등재 to/from은 '*' 와일드카드 행/열로 폴백, 없으면 0."""
         if not self.active:
             return 0
-        return self._weights.get(to, {}).get(from_, 0)
+        row = self._weights.get(to)
+        if row is None:
+            row = self._weights.get("*", {})   # 미등재 to → '*' 행
+        if from_ in row:
+            return row[from_]
+        return row.get("*", 0)                  # 미등재 from → 행의 '*' 열, 없으면 0
 
     def is_allowed(self, from_: str, to: str) -> bool:
         """from_→to dispatch가 허용되는가. 비활성이면 항상 True.

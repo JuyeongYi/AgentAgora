@@ -440,6 +440,61 @@ async def test_flush_fifo_ignores_weight(tmp_path):
         assert [c["payload"]["s"] for c in drained] == ["first", "second"]
 
 
+# header에 *(from 와일드카드 열), 첫 데이터 행에 *(to 와일드카드 행)
+_STAR = "\n".join([
+    "*,Inst1,Coder1",
+    "0,2,2",      # to=*       — 미등재 수신자 fallback 행
+    "5,0,1",      # to=Inst1
+    "5,1,0",      # to=Coder1
+])
+
+
+def test_star_row_fallback_for_unlisted_to():
+    cm = CommMatrix()
+    cm.load_csv(_STAR)
+    # Ghost(미등재 to), Inst1(등재 from) → '*' 행의 Inst1 열 = 2
+    assert cm.weight_of("Inst1", "Ghost") == 2
+    assert cm.weight_of("Coder1", "Ghost") == 2
+
+
+def test_star_column_fallback_for_unlisted_from():
+    cm = CommMatrix()
+    cm.load_csv(_STAR)
+    # Ghost(미등재 from) → Inst1 행의 '*' 열 = 5
+    assert cm.weight_of("Ghost", "Inst1") == 5
+    assert cm.weight_of("Ghost", "Coder1") == 5
+
+
+def test_star_star_catch_all():
+    cm = CommMatrix()
+    cm.load_csv(_STAR)
+    # 둘 다 미등재 → '*' 행의 '*' 열 = 0
+    assert cm.weight_of("Ghost", "Phantom") == 0
+
+
+def test_explicit_cell_beats_star():
+    cm = CommMatrix()
+    cm.load_csv(_STAR)
+    # 등재 to·from은 '*'로 폴백하지 않는다
+    assert cm.weight_of("Inst1", "Coder1") == 1
+    assert cm.weight_of("Coder1", "Coder1") == 0
+
+
+def test_star_fallback_feeds_is_allowed():
+    cm = CommMatrix()
+    cm.load_csv(_STAR)
+    assert cm.is_allowed("Inst1", "Ghost") is True   # weight 2 > 0
+    assert cm.is_allowed("Ghost", "Phantom") is False  # weight 0
+
+
+def test_no_star_csv_stays_strict_whitelist():
+    cm = CommMatrix()
+    cm.load_csv("Inst1,Coder1\n0,1\n1,0")  # '*' 없음
+    assert cm.weight_of("Ghost", "Inst1") == 0
+    assert cm.is_allowed("Ghost", "Inst1") is False
+    assert cm.is_allowed("Inst1", "Ghost") is False
+
+
 @pytest.mark.asyncio
 async def test_flush_tool_default_sort_is_priority(cm_app):
     """agora.flush 도구의 sort 기본값이 priority — weight 큰 메시지 먼저."""
