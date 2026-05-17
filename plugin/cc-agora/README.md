@@ -12,6 +12,7 @@ AgentAgora 워커 간 통신 코어 Claude Code 플러그인. 메시지 dispatch
 | `/cc-agora:broadcast` | `"<message>" [--closing --priority --conv --expect]` | 모든 등록 워커에 fan-out. announcement·세션 종료 신호. |
 | `/cc-agora:agora-target` | `"<task>"` | `agora.find` + 매칭으로 1순위 워커 추천. chaining 문자열 제안만 — 직접 발사 X. |
 | `/cc-agora:agora-close` | `<conversation-id> [--reason="<text>"]` | conversation을 명시 종결. 다른 참여자에 `type=closing` payload 자동 dispatch. |
+| `/cc-agora:agora-run-script` | `[<dir>]` | 워커 디렉토리에 OS에 맞는 채널 모드 실행 스크립트(`run.ps1`/`run.sh`)를 생성. |
 
 ## agora-protocol 스킬
 
