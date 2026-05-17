@@ -705,7 +705,7 @@ class Dispatcher:
         self,
         instance_id: str,
         from_sources: list[str] | None = None,
-        sort: Literal["fifo", "priority"] = "fifo",
+        sort: Literal["fifo", "priority"] = "priority",
         by_conversation: str | None = None,
     ) -> list[dict[str, Any]]:
         """현재 큐에 있는 메시지를 즉시 드레인하고 반환한다 (논블로킹)."""
@@ -740,9 +740,14 @@ class Dispatcher:
                 raise DispatcherClosed("Dispatcher is closed")
             drained = _drain_matching()
 
-        # sort
+        # sort — priority: 엣지 weight 1차, 메시지 priority 2차, created_at 3차
         if sort == "priority":
-            drained.sort(key=lambda e: (_PRIORITY_RANK[e.priority], e.created_at, e.id))
+            drained.sort(key=lambda e: (
+                -self._comm_matrix.weight_of(e.source, instance_id),
+                _PRIORITY_RANK[e.priority],
+                e.created_at,
+                e.id,
+            ))
         else:
             drained.sort(key=lambda e: (e.created_at, e.id))
 

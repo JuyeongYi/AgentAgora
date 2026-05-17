@@ -21,6 +21,7 @@ ERROR_MESSAGES: dict[str, str] = {
     # comm-matrix codes
     "comm_denied": "[agora] comm_denied: {from_} -> {to} (통신 매트릭스가 이 쌍의 dispatch를 금지함).",
     "comm_matrix_shape_mismatch": "[agora] comm-matrix CSV shape 불일치: {detail}",
+    "comm_matrix_invalid_cell": "[agora] comm-matrix CSV 셀 오류: {detail}",
 }
 
 

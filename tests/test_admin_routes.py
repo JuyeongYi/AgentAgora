@@ -58,7 +58,7 @@ def test_get_returns_matrix_snapshot():
     assert r.status_code == 200
     body = r.json()
     assert body["active"] is True
-    assert body["matrix"]["Coder1"] == ["Inst1"]
+    assert body["matrix"]["Coder1"] == {"Inst1": 1, "Coder1": 0}
 
 
 def test_get_without_token_is_401():
