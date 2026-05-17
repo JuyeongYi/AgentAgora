@@ -1,0 +1,6 @@
+{
+  "name": "cc-agora-reviewer",
+  "description": "AgentAgora reviewer persona — reviews diffs and flags issues in correctness, readability, and test coverage.",
+  "version": "0.1.0",
+  "dependencies": ["cc-agora"]
+}
