@@ -428,3 +428,15 @@ def test_fmt_payload_is_pretty_printed():
 def test_fmt_payload_non_serializable_falls_back_to_repr():
     out = _fmt_payload(object())              # JSON 직렬화 불가
     assert "object" in out                    # repr fallback
+
+
+@pytest.mark.asyncio
+async def test_system_notify_enqueues_and_wakes(setup):
+    _, _, dispatcher = setup
+    await dispatcher.system_notify("Inst3", {
+        "msgtype": "schema_conflict", "schema_name": "s",
+        "reason": "different body", "ts": "2026-05-17T00:00:00+00:00"})
+    drained = await dispatcher.flush("Inst3")
+    assert len(drained) == 1
+    assert drained[0]["payload"]["msgtype"] == "schema_conflict"
+    assert drained[0]["source"] == "agora-system"

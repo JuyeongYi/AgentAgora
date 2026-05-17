@@ -818,6 +818,23 @@ class Dispatcher:
                 "sources": sorted({e.source for e in queue}),
             }
 
+    async def system_notify(self, target: str, payload: dict[str, Any]) -> None:
+        """시스템 발신 알림을 target 인박스에 넣고 깨운다. comm-matrix·conversation·
+        in_flight 머신을 우회한다 — schema 충돌 통지 등 운영 이벤트용. 영속화 안 함."""
+        if self._closed:
+            raise DispatcherClosed("Dispatcher is closed")
+        now = _now_iso()
+        env = make_envelope(
+            cmd_id=str(uuid.uuid4()), source="agora-system", target=target,
+            payload=payload, created_at=now, conversation_id=str(uuid.uuid4()),
+            expect_result=False, delivered_as="primary", dispatch_kind="direct",
+        )
+        async with self._lock:
+            if self._closed:
+                raise DispatcherClosed("Dispatcher is closed")
+            self._queues[target].append(env)
+            self._wake(target)
+
     def in_flight_count(self, instance_id: str) -> int:
         """Number of expect_result=True messages sent TO instance_id that have not been replied."""
         count = 0
