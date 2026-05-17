@@ -123,6 +123,8 @@ def _build_app(
         dead_session_timeout_ms=dead_session_timeout_ms,
         gc_retention_days=gc_retention_days,
     )
+    from agent_agora.file_store import FileStore
+    file_store = FileStore(agora_dir, persistence)
     mcp = create_agora_app(
         agora_dir=agora_dir,
         instance_registry=instance_registry,
@@ -132,6 +134,7 @@ def _build_app(
         persistence=persistence,
         dispatcher=dispatcher,
         port=port,
+        file_store=file_store,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
@@ -140,6 +143,7 @@ def _build_app(
     mcp._agora_dispatcher = dispatcher  # type: ignore[attr-defined]
     mcp._agora_persistence = persistence  # type: ignore[attr-defined]
     mcp._agora_write_queue = write_queue  # type: ignore[attr-defined]
+    mcp._agora_file_store = file_store  # type: ignore[attr-defined]
     return mcp
 
 

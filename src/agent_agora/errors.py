@@ -26,7 +26,7 @@ ERROR_MESSAGES: dict[str, str] = {
     "file_too_large": "[agora] 파일이 너무 큽니다: {size} bytes (상한 {limit}).",
     "file_upload_denied": "[agora] file_upload_denied: {worker}는 '{name}'을 공유할 수 없습니다 (파일 권한 정책).",
     "file_download_denied": "[agora] file_download_denied: {worker}는 '{name}'을 받을 수 없습니다 (파일 권한 정책).",
-    "unknown_file": "[agora] file_id '{file_id}'를 찾을 수 없습니다.",
+    "unknown_file": "[agora] unknown_file: file_id '{file_id}'를 찾을 수 없습니다.",
     "file_policy_invalid": "[agora] file-policy.json 오류: {detail}",
 }
 
