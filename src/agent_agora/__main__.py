@@ -226,9 +226,9 @@ async def _sweep_loop_60s(dispatcher) -> None:
     while True:
         await asyncio.sleep(60)
         try:
-            dispatcher.close_ttl_sweep()
-            dispatcher.dead_session_sweep()
-            dispatcher.dead_bot_sweep()
+            dispatcher.sweeper.close_ttl_sweep()
+            dispatcher.sweeper.dead_session_sweep()
+            dispatcher.sweeper.dead_bot_sweep()
         except Exception as e:
             print(f"[agora] sweep error: {e}", file=sys.stderr)
 
@@ -243,7 +243,7 @@ async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
             next_run += _dt.timedelta(days=1)
         await asyncio.sleep((next_run - now).total_seconds())
         try:
-            dispatcher.message_gc_sweep()
+            dispatcher.sweeper.message_gc_sweep()
         except Exception as e:
             print(f"[agora] message_gc error: {e}", file=sys.stderr)
 
