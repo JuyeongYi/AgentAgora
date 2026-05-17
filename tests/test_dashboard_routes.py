@@ -1,8 +1,6 @@
 """팀 대시보드 라우트 테스트."""
 from __future__ import annotations
 
-import json
-
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
