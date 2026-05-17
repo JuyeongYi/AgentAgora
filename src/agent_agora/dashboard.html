@@ -1,2 +1,125 @@
-<!doctype html><meta charset="utf-8"><title>AgentAgora</title>
-<!-- polls /dashboard/data --><body>dashboard placeholder</body>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AgentAgora — 팀 현황</title>
+<style>
+  body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; margin:0; padding:16px; }
+  h2 { font-size:14px; color:#9aa; margin:18px 0 6px; text-transform:uppercase; letter-spacing:.05em; }
+  #conn { float:right; font-size:12px; padding:2px 8px; border-radius:4px; }
+  .ok { background:#1b5e20; } .bad { background:#7f1d1d; }
+  table { border-collapse:collapse; width:100%; }
+  th,td { text-align:left; padding:4px 8px; border-bottom:1px solid #33334d; }
+  th { color:#9aa; font-weight:600; }
+  .summary { display:flex; gap:24px; margin:8px 0; }
+  .summary div { background:#252542; padding:8px 14px; border-radius:6px; }
+  .summary b { font-size:20px; display:block; }
+  .hot { color:#ff9; font-weight:700; }
+  svg { background:#252542; border-radius:6px; }
+  .node { fill:#3d3d6b; stroke:#8888c0; }
+  .nodelabel { fill:#e8e8e8; font-size:11px; text-anchor:middle; }
+  .edge { stroke:#7a7ad0; fill:none; }
+  .edgelabel { fill:#bbf; font-size:10px; text-anchor:middle; }
+</style>
+</head>
+<body>
+<span id="conn" class="bad">연결 중…</span>
+<h1 style="font-size:18px;margin:0">AgentAgora 팀 현황</h1>
+
+<div class="summary" id="summary"></div>
+
+<h2>인스턴스</h2>
+<table><thead><tr><th>ID</th><th>role</th><th>인박스</th><th>in-flight</th>
+<th>last seen</th><th>accepting</th></tr></thead><tbody id="instances"></tbody></table>
+
+<h2>봇</h2>
+<table><thead><tr><th>ID</th><th>mode</th><th>구독 스키마</th></tr></thead>
+<tbody id="bots"></tbody></table>
+
+<h2>대화</h2>
+<table><thead><tr><th>conversation</th><th>kind</th><th>status</th>
+<th>메시지</th><th>last message</th></tr></thead><tbody id="convs"></tbody></table>
+
+<h2>comm-matrix</h2>
+<div id="commwrap"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+function render(d){
+  $("summary").innerHTML =
+    `<div><b>${d.summary.instances}</b>인스턴스</div>` +
+    `<div><b>${d.summary.bots}</b>봇</div>` +
+    `<div><b>${d.summary.open_conversations}</b>열린 대화</div>` +
+    `<div><b>${d.summary.total_inbox_depth}</b>총 인박스</div>`;
+  $("instances").innerHTML = d.instances.map(i =>
+    `<tr><td>${esc(i.instance_id)}</td><td>${esc(i.role)}</td>` +
+    `<td class="${i.inbox_depth>0?'hot':''}">${i.inbox_depth}</td>` +
+    `<td>${i.in_flight}</td><td>${esc(i.last_seen_at)}</td>` +
+    `<td>${i.accepting?'예':'아니오'}</td></tr>`).join("") ||
+    `<tr><td colspan=6>(없음)</td></tr>`;
+  $("bots").innerHTML = d.bots.map(b =>
+    `<tr><td>${esc(b.instance_id)}</td><td>${esc(b.bot_mode)}</td>` +
+    `<td>${esc((b.subscribe_schemas||[]).join(", "))}</td></tr>`).join("") ||
+    `<tr><td colspan=3>(없음)</td></tr>`;
+  $("convs").innerHTML = d.conversations.map(c =>
+    `<tr><td>${esc(c.conversation_id)}</td><td>${esc(c.kind)}</td>` +
+    `<td>${esc(c.status)}</td><td>${c.message_count}</td>` +
+    `<td>${esc(c.last_message_at)}</td></tr>`).join("") ||
+    `<tr><td colspan=5>(없음)</td></tr>`;
+  renderGraph(d.comm_matrix);
+}
+
+function renderGraph(cm){
+  const wrap = $("commwrap");
+  if(!cm.active){ wrap.innerHTML = "<p>비활성 — all-allow (모든 워커가 서로 dispatch 가능)</p>"; return; }
+  const nodes = Object.keys(cm.matrix);
+  if(nodes.length===0){ wrap.innerHTML = "<p>(빈 매트릭스)</p>"; return; }
+  const W=520, H=420, cx=W/2, cy=H/2, R=Math.min(cx,cy)-60;
+  const pos = {};
+  nodes.forEach((n,i)=>{ const a=2*Math.PI*i/nodes.length - Math.PI/2;
+    pos[n]={x:cx+R*Math.cos(a), y:cy+R*Math.sin(a)}; });
+  let edges = "";
+  // matrix[to][from] = weight; edge from->to when weight>0, from!=to
+  for(const to of nodes){ for(const from of Object.keys(cm.matrix[to]||{})){
+    const w = cm.matrix[to][from];
+    if(w>0 && from!==to && pos[from] && pos[to]){
+      const a=pos[from], b=pos[to];
+      // 노드 반지름(18)만큼 끝점을 당겨 화살표가 노드에 닿게
+      const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
+      const ux=dx/len, uy=dy/len;
+      const x1=a.x+ux*20, y1=a.y+uy*20, x2=b.x-ux*22, y2=b.y-uy*22;
+      // 양방향 겹침 방지로 살짝 휜 quadratic path
+      const mx=(x1+x2)/2 - uy*18, my=(y1+y2)/2 + ux*18;
+      edges += `<path class="edge" marker-end="url(#arr)" `+
+               `d="M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}"/>`+
+               `<text class="edgelabel" x="${mx}" y="${my}">${w}</text>`;
+    }
+  }}
+  const circles = nodes.map(n=>
+    `<circle class="node" cx="${pos[n].x}" cy="${pos[n].y}" r="18"/>`+
+    `<text class="nodelabel" x="${pos[n].x}" y="${pos[n].y+4}">${esc(n)}</text>`).join("");
+  wrap.innerHTML =
+    `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`+
+    `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" `+
+    `markerWidth="7" markerHeight="7" orient="auto-start-reverse">`+
+    `<path d="M0 0 L10 5 L0 10 z" fill="#7a7ad0"/></marker></defs>`+
+    edges + circles + `</svg>`;
+}
+
+async function poll(){
+  try{
+    const r = await fetch("/dashboard/data", {cache:"no-store"});
+    if(!r.ok) throw new Error(r.status);
+    render(await r.json());
+    $("conn").textContent="연결됨"; $("conn").className="ok";
+  }catch(e){
+    $("conn").textContent="연결 끊김"; $("conn").className="bad";
+  }
+}
+poll();
+setInterval(poll, 3000);
+</script>
+</body>
+</html>
