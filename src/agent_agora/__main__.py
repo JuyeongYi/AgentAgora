@@ -203,12 +203,17 @@ async def run_server(args: argparse.Namespace) -> None:
 
         starlette_app = mcp.streamable_http_app()
         starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
-        from agent_agora.admin_routes import maybe_register
+        from agent_agora.admin_routes import maybe_register, make_file_policy_route
+        _admin_token = os.environ.get("AGORA_ADMIN_TOKEN")
         if maybe_register(
             starlette_app, mcp._agora_comm_matrix,  # type: ignore[attr-defined]
-            os.environ.get("AGORA_ADMIN_TOKEN"),
+            _admin_token,
         ):
             print("  Admin    : POST/GET /admin/comm-matrix (AGORA_ADMIN_TOKEN set)")
+        if _admin_token:
+            starlette_app.router.routes.append(
+                make_file_policy_route(mcp._agora_file_policy, _admin_token))  # type: ignore[attr-defined]
+            print("  Admin    : POST/GET /admin/file-policy (AGORA_ADMIN_TOKEN set)")
         from agent_agora.dashboard_routes import register as register_dashboard
         register_dashboard(
             starlette_app,
