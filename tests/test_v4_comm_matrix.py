@@ -24,6 +24,72 @@ _HUB = "\n".join([
 ])
 
 
+_WEIGHTED = "\n".join([
+    "Inst1,Coder1,Reviewer1,Tester1",
+    "0,3,3,3",
+    "10,0,0,0",
+    "10,0,0,0",
+    "10,0,0,0",
+])
+
+
+def test_load_csv_parses_integer_weights():
+    cm = CommMatrix()
+    cm.load_csv(_WEIGHTED)
+    assert cm.weight_of("Coder1", "Inst1") == 3
+    assert cm.weight_of("Inst1", "Coder1") == 10
+    assert cm.weight_of("Coder1", "Coder1") == 0
+
+
+def test_weight_of_inactive_matrix_is_zero():
+    cm = CommMatrix()
+    assert cm.weight_of("anyone", "anyone_else") == 0
+
+
+def test_weight_of_unlisted_pair_is_zero():
+    cm = CommMatrix()
+    cm.load_csv(_WEIGHTED)
+    assert cm.weight_of("Ghost", "Inst1") == 0
+    assert cm.weight_of("Inst1", "Ghost") == 0
+
+
+def test_is_allowed_equals_weight_positive():
+    cm = CommMatrix()
+    cm.load_csv(_WEIGHTED)
+    assert cm.is_allowed("Coder1", "Inst1") is True   # weight 3
+    assert cm.is_allowed("Coder1", "Coder1") is False  # weight 0
+
+
+def test_zero_one_csv_still_works():
+    cm = CommMatrix()
+    cm.load_csv(_HUB)
+    assert cm.weight_of("Coder1", "Inst1") == 1
+    assert cm.is_allowed("Coder1", "Inst1") is True
+    assert cm.is_allowed("Inst1", "Inst1") is False
+
+
+def test_load_csv_rejects_negative_cell():
+    cm = CommMatrix()
+    with pytest.raises(AgoraError) as ei:
+        cm.load_csv("A,B\n0,-1\n1,0")
+    assert ei.value.code == "comm_matrix_invalid_cell"
+
+
+def test_load_csv_rejects_noninteger_cell():
+    cm = CommMatrix()
+    with pytest.raises(AgoraError) as ei:
+        cm.load_csv("A,B\n0,x\n1,0")
+    assert ei.value.code == "comm_matrix_invalid_cell"
+
+
+def test_snapshot_returns_weight_map():
+    cm = CommMatrix()
+    cm.load_csv(_WEIGHTED)
+    snap = cm.snapshot()
+    assert snap["Inst1"] == {"Inst1": 0, "Coder1": 3, "Reviewer1": 3, "Tester1": 3}
+    assert snap["Coder1"] == {"Inst1": 10, "Coder1": 0, "Reviewer1": 0, "Tester1": 0}
+
+
 def test_fresh_matrix_is_inactive_and_allows_all():
     cm = CommMatrix()
     assert cm.active is False
@@ -70,14 +136,6 @@ def test_load_csv_replaces_prior_matrix_in_place():
     cm.load_csv("A,B\n1,1\n1,1")
     assert cm.is_allowed("A", "B") is True
     assert cm.is_allowed("Coder1", "Inst1") is False
-
-
-def test_snapshot_returns_sorted_allowed_map():
-    cm = CommMatrix()
-    cm.load_csv(_HUB)
-    snap = cm.snapshot()
-    assert snap["Inst1"] == ["Coder1", "Reviewer1", "Tester1"]
-    assert snap["Coder1"] == ["Inst1"]
 
 
 def test_snapshot_inactive_is_empty():
