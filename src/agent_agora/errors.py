@@ -22,6 +22,12 @@ ERROR_MESSAGES: dict[str, str] = {
     "comm_denied": "[agora] comm_denied: {from_} -> {to} (통신 매트릭스가 이 쌍의 dispatch를 금지함).",
     "comm_matrix_shape_mismatch": "[agora] comm-matrix CSV shape 불일치: {detail}",
     "comm_matrix_invalid_cell": "[agora] comm-matrix CSV 셀 오류: {detail}",
+    # file codes
+    "file_too_large": "[agora] 파일이 너무 큽니다: {size} bytes (상한 {limit}).",
+    "file_upload_denied": "[agora] file_upload_denied: {worker}는 '{name}'을 공유할 수 없습니다 (파일 권한 정책).",
+    "file_download_denied": "[agora] file_download_denied: {worker}는 '{name}'을 받을 수 없습니다 (파일 권한 정책).",
+    "unknown_file": "[agora] file_id '{file_id}'를 찾을 수 없습니다.",
+    "file_policy_invalid": "[agora] file-policy.json 오류: {detail}",
 }
 
 
