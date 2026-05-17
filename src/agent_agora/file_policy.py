@@ -44,7 +44,7 @@ class FilePolicy:
 
     @staticmethod
     def _match(patterns: list[str], file_name: str) -> bool:
-        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+        spec = pathspec.PathSpec.from_lines("gitignore", patterns)
         return spec.match_file(file_name)
 
     def can_upload(self, worker_id: str, file_name: str) -> bool:
