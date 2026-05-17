@@ -86,7 +86,7 @@ function renderGraph(cm){
     const w = cm.matrix[to][from];
     if(w>0 && from!==to && pos[from] && pos[to]){
       const a=pos[from], b=pos[to];
-      // 노드 반지름(18)만큼 끝점을 당겨 화살표가 노드에 닿게
+      // 끝점을 노드 반지름(18)+여유만큼 당겨 화살표가 노드 경계에 닿게
       const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
       const ux=dx/len, uy=dy/len;
       const x1=a.x+ux*20, y1=a.y+uy*20, x2=b.x-ux*22, y2=b.y-uy*22;

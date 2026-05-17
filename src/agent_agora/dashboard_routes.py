@@ -16,6 +16,9 @@ from starlette.routing import Route
 
 _DASHBOARD_HTML = Path(__file__).with_name("dashboard.html")
 
+# 대시보드 대화 목록에 싣는 최근 대화 수 (전체가 아닌 최근 N개).
+_RECENT_CONVERSATIONS = 50
+
 
 def build_dashboard_data(*, dispatcher, instance_registry, bot_registry, comm_matrix) -> dict:
     """팀 현황 JSON 스냅샷을 조립한다."""
@@ -41,7 +44,7 @@ def build_dashboard_data(*, dispatcher, instance_registry, bot_registry, comm_ma
          "subscribe_schemas": list(b.subscribe_schemas)}
         for b in bot_registry.list_bots()
     ]
-    convs = dispatcher.conversations_list(limit=50)
+    convs = dispatcher.conversations_list(limit=_RECENT_CONVERSATIONS)
     open_convs = sum(1 for c in convs if c.get("status") == "open")
     return {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),

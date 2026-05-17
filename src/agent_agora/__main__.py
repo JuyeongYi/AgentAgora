@@ -204,7 +204,7 @@ async def run_server(args: argparse.Namespace) -> None:
             bot_registry=mcp._agora_bot_registry,  # type: ignore[attr-defined]
             comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
         )
-        print(f"  Dashboard: GET /dashboard")
+        print("  Dashboard: GET /dashboard")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
