@@ -134,7 +134,7 @@ async def test_message_gc_sweep_deletes_old_closed_messages_preserves_meta(setup
         (past, conv),
     )
     # also age in-memory state for cache eviction
-    dispatcher._conversations[conv]["closed_at"] = past
+    dispatcher._conv._conversations[conv]["closed_at"] = past
     deleted = dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     assert deleted >= 2
     msgs_left = persistence.conn.execute(
@@ -157,19 +157,19 @@ async def test_message_gc_sweep_evicts_in_memory_cache(setup):
     await dispatcher.dispatch(source="Inst2", target="Inst1", payload=tany(m=2),
                                conversation_id=conv, closing=True)
     cmd_id = res["command_id"]
-    assert conv in dispatcher._conversations
-    assert cmd_id in dispatcher._conversation_of
+    assert conv in dispatcher._conv._conversations
+    assert cmd_id in dispatcher._conv._conversation_of
     # age beyond retention
     past = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=91)).isoformat()
     persistence.conn.execute(
         "UPDATE conversations SET closed_at=? WHERE conversation_id=?",
         (past, conv),
     )
-    dispatcher._conversations[conv]["closed_at"] = past
+    dispatcher._conv._conversations[conv]["closed_at"] = past
     dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     # Inst4 우려4 — cache eviction
-    assert conv not in dispatcher._conversations
-    assert cmd_id not in dispatcher._conversation_of
+    assert conv not in dispatcher._conv._conversations
+    assert cmd_id not in dispatcher._conv._conversation_of
 
 
 @pytest.mark.asyncio
@@ -183,4 +183,4 @@ async def test_message_gc_sweep_skips_recently_closed(setup):
     # closed_at is now — well within 90d
     deleted = dispatcher.message_gc_sweep(now=datetime.datetime.now(datetime.timezone.utc))
     assert deleted == 0
-    assert conv in dispatcher._conversations
+    assert conv in dispatcher._conv._conversations
