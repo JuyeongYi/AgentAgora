@@ -1,6 +1,7 @@
 # src/agent_agora/server.py
 from __future__ import annotations
 
+import datetime
 import json
 import time
 from pathlib import Path
@@ -69,17 +70,37 @@ def create_agora_app(
 
     @mcp.tool(name="agora.register_schema")
     async def agora_register_schema(
+        ctx: Context,
         name: str,
         body: dict,
         kind: Literal["conversation", "bot-task"],
         purpose: str,
     ) -> str:
         """Register a schema. Immutable — 동일 이름 다른 body는 거부.
-        body에 msgtype property 필수 (결정 20)."""
+        body에 msgtype property 필수 (결정 20). 호출자가 ref holder가 된다."""
         try:
-            schema_registry.register(name, body, kind=kind, purpose=purpose)
-            persistence.save_schema(name, body, kind=kind, purpose=purpose)
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        # 호출자 instance_id 해석 — 워커/봇 모두 허용, 미등록이면 session_id를 holder로.
+        try:
+            holder = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError:
+            try:
+                holder = bot_registry.resolve_session(session_id).instance_id
+            except NotRegisteredError:
+                holder = session_id
+        try:
+            schema_registry.register(name, body, kind=kind, purpose=purpose,
+                                     registered_by=holder)
+            persistence.save_schema(name, body, kind=kind, purpose=purpose,
+                                    registered_by=holder)
         except AgoraError as e:
+            if e.code == "schema_immutable":
+                await dispatcher.system_notify(holder, {
+                    "msgtype": "schema_conflict", "schema_name": name,
+                    "reason": str(e), "attempted_by": holder,
+                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat()})
             return json.dumps({"error": str(e)})
         return json.dumps({"status": "ok", "name": name, "kind": kind})
 
