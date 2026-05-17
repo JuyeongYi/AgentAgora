@@ -1,6 +1,7 @@
 # src/agent_agora/server.py
 from __future__ import annotations
 
+import datetime
 import json
 import time
 from pathlib import Path
@@ -18,6 +19,16 @@ from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schemas import SchemaRegistry
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
+
+
+def _schema_conflict_payload(schema_name: str, reason: str, attempted_by: str) -> dict:
+    return {
+        "msgtype": "schema_conflict",
+        "schema_name": schema_name,
+        "reason": reason,
+        "attempted_by": attempted_by,
+        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
 
 
 def _session_id_from_ctx(ctx: Context) -> str:
@@ -69,17 +80,35 @@ def create_agora_app(
 
     @mcp.tool(name="agora.register_schema")
     async def agora_register_schema(
+        ctx: Context,
         name: str,
         body: dict,
         kind: Literal["conversation", "bot-task"],
         purpose: str,
     ) -> str:
         """Register a schema. Immutable — 동일 이름 다른 body는 거부.
-        body에 msgtype property 필수 (결정 20)."""
+        body에 msgtype property 필수 (결정 20). 호출자가 ref holder가 된다."""
         try:
-            schema_registry.register(name, body, kind=kind, purpose=purpose)
-            persistence.save_schema(name, body, kind=kind, purpose=purpose)
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        # 호출자 instance_id 해석 — 워커/봇 모두 허용, 미등록이면 session_id를 holder로.
+        try:
+            holder = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError:
+            try:
+                holder = bot_registry.resolve_session(session_id).instance_id
+            except NotRegisteredError:
+                holder = session_id
+        try:
+            schema_registry.register(name, body, kind=kind, purpose=purpose,
+                                     registered_by=holder)
+            persistence.save_schema(name, body, kind=kind, purpose=purpose,
+                                    registered_by=holder)
         except AgoraError as e:
+            if e.code == "schema_immutable":
+                await dispatcher.system_notify(holder,
+                    _schema_conflict_payload(name, str(e), holder))
             return json.dumps({"error": str(e)})
         return json.dumps({"status": "ok", "name": name, "kind": kind})
 
@@ -152,6 +181,12 @@ def create_agora_app(
         subscribe = list(subscribe_schemas or [])
         emit = list(emit_schemas or [])
         schemas = schemas or {}
+        # 봇 재등록이면 옛 스키마 ref를 먼저 해제 (새 inline/subscribe로 재획득).
+        try:
+            prior = bot_registry.resolve_instance_id(instance_id)
+            schema_registry.release_holder(prior.instance_id)
+        except NotRegisteredError:
+            pass
         try:
             if not description:
                 raise AgoraError("description_required")
@@ -164,6 +199,11 @@ def create_agora_app(
                     raise AgoraError("schema_kind_not_bot_task", name=name)
                 existing = schema_registry.get(name)
                 if existing is not None and existing.body != defn.get("body"):
+                    await dispatcher.system_notify(instance_id,
+                        _schema_conflict_payload(
+                            name,
+                            f"schema '{name}' already registered with a different body",
+                            instance_id))
                     raise AgoraError("schema_immutable", name=name)
             # (2) 일괄 등록 — 모두 검증 통과 후
             for name, defn in schemas.items():
@@ -190,7 +230,11 @@ def create_agora_app(
             persistence.save_bot_subscriptions(
                 instance_id, subscribe=list(info.subscribe_schemas),
                 emit=list(info.emit_schemas))
+            # 구독 schema에 subscriber ref 획득
+            for s in info.subscribe_schemas:
+                schema_registry.acquire_ref(s, instance_id)
         except AgoraError as e:
+            schema_registry.release_holder(instance_id)
             return json.dumps({"error": str(e)})
         return json.dumps({
             "status": "ok", "instance_id": info.instance_id,
@@ -206,6 +250,13 @@ def create_agora_app(
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
+        # 해제 전에 holder id를 잡아 스키마 ref를 해제한다.
+        for reg in (instance_registry, bot_registry):
+            try:
+                holder = reg.resolve_session(session_id).instance_id
+                schema_registry.release_holder(holder)
+            except NotRegisteredError:
+                pass
         instance_registry.unregister_session(session_id)
         bot_registry.unregister_session(session_id)
         return json.dumps({"status": "ok"})

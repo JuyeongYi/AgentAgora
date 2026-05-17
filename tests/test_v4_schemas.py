@@ -132,16 +132,19 @@ from agent_agora.schemas import (
 )
 
 
-def test_bundled_default_schemas_file_exists_and_has_six():
+def test_bundled_default_schemas_file_exists_and_has_seven():
     assert BUNDLED_DEFAULT_SCHEMAS.is_file()
     lines = [l for l in BUNDLED_DEFAULT_SCHEMAS.read_text("utf-8").splitlines() if l.strip()]
-    assert len(lines) == 6
+    assert len(lines) == 7
 
 
 def test_parse_schema_lines_yields_name_kind_purpose_body():
     parsed = parse_schema_lines(BUNDLED_DEFAULT_SCHEMAS.read_text("utf-8"))
     names = {p["name"] for p in parsed}
-    assert names == {"default", "worker_freeform", "bot_reply", "bot_error", "closing", "ack"}
+    assert names == {
+        "default", "worker_freeform", "bot_reply", "bot_error",
+        "closing", "ack", "schema_conflict",
+    }
     for p in parsed:
         assert "properties" in p["body"] and "msgtype" in p["body"]["properties"]
 
@@ -151,7 +154,7 @@ def test_ensure_schemas_file_copies_bundle_when_absent(tmp_path):
     assert not target.exists()
     ensure_schemas_file(target)
     assert target.is_file()
-    assert len([l for l in target.read_text("utf-8").splitlines() if l.strip()]) == 6
+    assert len([l for l in target.read_text("utf-8").splitlines() if l.strip()]) == 7
 
 
 def test_ensure_schemas_file_keeps_existing(tmp_path):
@@ -161,12 +164,13 @@ def test_ensure_schemas_file_keeps_existing(tmp_path):
     assert target.read_text("utf-8") == ""  # not overwritten
 
 
-def test_load_schemas_into_registers_all_six():
+def test_load_schemas_into_registers_all_seven():
     reg = SchemaRegistry()
     count = load_schemas_into(reg, BUNDLED_DEFAULT_SCHEMAS)
-    assert count == 6
+    assert count == 7
     assert reg.get("worker_freeform").kind == "conversation"
     assert reg.get("bot_reply").kind == "bot-task"
+    assert reg.get("schema_conflict").kind == "conversation"
 
 
 def test_plan2_bot_codes_present():

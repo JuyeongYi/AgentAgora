@@ -9,6 +9,30 @@ from agent_agora.persistence import Persistence, AsyncWriteQueue
 from _helpers import make_schema_registry
 
 
+@pytest.fixture
+async def bot_app(tmp_path):
+    instance_registry = InstanceRegistry()
+    for name in ("Inst1", "Inst2"):
+        instance_registry.register(f"sess-{name}", name)
+    bot_registry = BotRegistry()
+    schema_registry = make_schema_registry()
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    async with queue:
+        comm_matrix = CommMatrix()
+        dispatcher = Dispatcher(
+            instance_registry, persistence, queue,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, default_timeout_ms=300)
+        mcp = create_agora_app(
+            agora_dir=tmp_path, instance_registry=instance_registry,
+            schema_registry=schema_registry, bot_registry=bot_registry,
+            comm_matrix=comm_matrix, persistence=persistence,
+            dispatcher=dispatcher, port=0)
+        yield mcp, dispatcher, schema_registry
+
+
 class FakeCtx:
     """_session_id_from_ctx가 읽는 ctx.request_context.request.headers를 흉내낸다."""
     def __init__(self, session_id):
@@ -326,3 +350,29 @@ async def test_bot_emit_rejects_unknown_msgtype(app):
     res = json.loads(await _tool(mcp, "agora.bot_emit")(
         FakeCtx("bs1"), payload={"msgtype": "ghost_unregistered_xyz"}))
     assert "registry에 없습니다" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_bot_inline_schema_holds_ref(bot_app):
+    """register_bot 인라인 schemas= → 봇이 holder ref 보유."""
+    mcp, dispatcher, schema_registry = bot_app
+    body = {"type": "object", "properties": {"msgtype": {"const": "echo_task"}}}
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("sess-bot1"), instance_id="bot1", description="d",
+        bot_mode="handler", subscribe_schemas=["echo_task"],
+        schemas={"echo_task": {"kind": "bot-task", "purpose": "p", "body": body}})
+    assert "bot1" in schema_registry.refs_of("echo_task")
+
+
+@pytest.mark.asyncio
+async def test_unregister_releases_schema_ref(bot_app):
+    """봇 unregister → 그 봇이 마지막 holder면 스키마 해제."""
+    mcp, dispatcher, schema_registry = bot_app
+    body = {"type": "object", "properties": {"msgtype": {"const": "echo2"}}}
+    await _tool(mcp, "agora.register_bot")(
+        FakeCtx("sess-bot1"), instance_id="bot1", description="d",
+        bot_mode="handler", subscribe_schemas=["echo2"],
+        schemas={"echo2": {"kind": "bot-task", "purpose": "p", "body": body}})
+    assert schema_registry.get("echo2") is not None
+    await _tool(mcp, "agora.unregister")(FakeCtx("sess-bot1"))
+    assert schema_registry.get("echo2") is None
