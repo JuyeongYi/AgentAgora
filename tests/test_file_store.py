@@ -8,6 +8,15 @@ import pytest
 from agent_agora.errors import AgoraError
 from agent_agora.file_store import FileStore
 from agent_agora.persistence import Persistence
+from agent_agora.schemas import FILE_SHARE_NAME, FILE_SHARE_BODY
+
+
+def test_file_share_schema_constant():
+    assert FILE_SHARE_NAME == "file_share"
+    props = FILE_SHARE_BODY["properties"]
+    assert props["msgtype"]["const"] == "file_share"
+    for k in ("file_id", "name", "size", "sha256", "from", "ts"):
+        assert k in props
 
 
 def _store(tmp_path, max_bytes=104_857_600):
