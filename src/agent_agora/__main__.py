@@ -218,6 +218,10 @@ async def run_server(args: argparse.Namespace) -> None:
             comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
         )
         print("  Dashboard: GET /dashboard")
+        from agent_agora.file_routes import register as register_files
+        register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
+                       file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]
+        print("  Files    : POST /files, GET /files/<id>")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
