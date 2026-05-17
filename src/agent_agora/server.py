@@ -20,19 +20,6 @@ from agent_agora.schemas import SchemaRegistry
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 
 
-def _header_int(ctx: Context, header_name: str) -> int | None:
-    try:
-        v = ctx.request_context.request.headers.get(header_name)
-    except (AttributeError, ValueError, LookupError):
-        return None
-    if v is None:
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
-
-
 def _session_id_from_ctx(ctx: Context) -> str:
     try:
         request = ctx.request_context.request
