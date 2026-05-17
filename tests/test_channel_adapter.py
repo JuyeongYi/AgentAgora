@@ -29,7 +29,7 @@ def test_parse_args_overrides():
 def test_format_channel_notification():
     content, meta = format_channel_notification("InstA", 3, ["PM", "Coder1"])
     assert "PM, Coder1" in content
-    assert "agora.wait(timeout_ms=0)" in content
+    assert "agora.flush" in content
     assert "drain everything currently queued" in content
     assert meta == {"instance_id": "InstA", "pending": "3", "sources": "PM,Coder1"}
 

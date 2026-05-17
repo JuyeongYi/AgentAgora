@@ -8,7 +8,6 @@ from typing import Any, Literal
 
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
-from mcp.types import ToolExecution
 
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
@@ -19,21 +18,6 @@ from agent_agora.registry import InstanceRegistry, NotRegisteredError
 from agent_agora.schemas import SchemaRegistry
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
-
-_WAIT_TOOL_NAME = "agora.wait"
-
-
-def _header_int(ctx: Context, header_name: str) -> int | None:
-    try:
-        v = ctx.request_context.request.headers.get(header_name)
-    except (AttributeError, ValueError, LookupError):
-        return None
-    if v is None:
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
 
 
 def _session_id_from_ctx(ctx: Context) -> str:
@@ -432,27 +416,22 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
-    @mcp.tool(name=_WAIT_TOOL_NAME)
-    async def agora_wait(
+    @mcp.tool(name="agora.flush")
+    async def agora_flush(
         ctx: Context,
-        timeout_ms: int | None = None,
         from_sources: list[str] | None = None,
         sort: Literal["fifo", "priority"] = "fifo",
         by_conversation: str | None = None,
     ) -> str:
-        """Wait for commands targeted at this instance.
+        """Drain all commands currently queued for this instance and return immediately (non-blocking).
 
-        timeout_ms resolution order (first non-None wins):
-            1. Explicit argument
-            2. X-Agora-Wait-Timeout-Ms header
-            3. Server CLI default
-
-        Values: positive = wait at most N ms then return empty; 0 = unbounded.
+        Returns whatever is in the inbox right now — does not wait for new messages.
+        Call this after receiving a channel notification to drain your inbox.
 
         sort='fifo' returns by (created_at asc, command_id asc). 'priority' uses
         (priority_rank asc, created_at asc, command_id asc) — high before normal before low.
         from_sources / by_conversation: AND-combined filters; unmatched envelopes stay queued.
-        The caller MUST be registered before waiting.
+        The caller MUST be registered before calling flush.
         """
         try:
             session_id = _session_id_from_ctx(ctx)
@@ -466,13 +445,9 @@ def create_agora_app(
             except NotRegisteredError as e:
                 return json.dumps({"error": str(e)})
 
-        if timeout_ms is None:
-            timeout_ms = _header_int(ctx, "x-agora-wait-timeout-ms")
-
         try:
-            commands = await dispatcher.wait(
+            commands = await dispatcher.flush(
                 instance_id=who,
-                timeout_ms=timeout_ms,
                 from_sources=from_sources,
                 sort=sort,
                 by_conversation=by_conversation,
@@ -494,24 +469,5 @@ def create_agora_app(
             return json.dumps(result, ensure_ascii=False)
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
-
-    # --- MCP execution.taskSupport hint on agora.wait ---
-    _original_list_tools = mcp.list_tools
-
-    async def _list_tools_with_wait_execution():
-        tools = await _original_list_tools()
-        return [
-            tool.model_copy(update={"execution": ToolExecution(taskSupport="optional")})
-            if tool.name == _WAIT_TOOL_NAME
-            else tool
-            for tool in tools
-        ]
-
-    mcp.list_tools = _list_tools_with_wait_execution  # type: ignore[method-assign]
-    mcp._mcp_server.list_tools()(_list_tools_with_wait_execution)
-
-    assert any(t.name == _WAIT_TOOL_NAME for t in mcp._tool_manager.list_tools()), (
-        f"Internal error: list_tools wrapper expects '{_WAIT_TOOL_NAME}' but no such tool registered"
-    )
 
     return mcp

@@ -11,9 +11,9 @@ AgentAgora 워커(Claude Code 인스턴스)가 채널 모드로 메시지를 받
 | 방식 | 메커니즘 | 기동 인프라 |
 |------|----------|------------|
 | **채널 모드** (플러그인 기본) | `agora-channel` 어댑터(stdio)가 서버 인박스를 감시해 메시지 도착 시 `claude/channel` 알림을 push한다. 알림이 에이전트 턴을 깨운다. | `.mcp.json`의 `agora-channel` stdio 항목 + `run.bat` |
-| **폴링 수신** (봇·수동 클라이언트용) | `agora.wait` 도구를 직접 호출해 큐를 드레인한다. 서버 측 기능이므로 모든 클라이언트에서 사용 가능. | 없음 (도구 호출만) |
+| **폴링 수신** (봇·수동 클라이언트용) | `agora.flush` 도구를 직접 호출해 큐를 드레인한다. 서버 측 기능이므로 모든 클라이언트에서 사용 가능. | 없음 (도구 호출만) |
 
-채널 모드 플러그인 워커도 깨어난 뒤 인박스 드레인에는 `agora.wait`를 사용한다 — 채널 알림은 "깨우기"만 담당한다.
+채널 모드 플러그인 워커도 깨어난 뒤 인박스 드레인에는 `agora.flush`를 사용한다 — 채널 알림은 "깨우기"만 담당한다. `agora.flush`는 현재 큐에 쌓인 메시지를 즉시 반환하는 논블로킹 호출이다.
 
 ---
 
@@ -98,7 +98,7 @@ claude --dangerously-load-development-channels server:agora-channel %*
 }
 ```
 
-**`agentagora` (HTTP)** — 서버 연결. 워커가 `agora.wait` 드레인, `agora.dispatch`
+**`agentagora` (HTTP)** — 서버 연결. 워커가 `agora.flush` 드레인, `agora.dispatch`
 답신 등 모든 `agora.*` 도구를 이 서버로 호출한다. `X-Agora-*` 헤더가 자동 등록을
 처리한다.
 
@@ -140,7 +140,7 @@ agent-agora --dir . --port 8420 --no-tls --no-timeout
 3. **`claude/channel` 알림 push** — 어댑터가 `notifications/claude/channel`을 emit한다.
    Claude Code가 이를 세션 컨텍스트에 `<channel source="agora-channel">` 태그로
    주입해 워커 턴을 시작한다.
-4. **드레인** — 워커가 `agora.wait`를 호출해 인박스를 드레인한다.
+4. **드레인** — 워커가 `agora.flush`를 호출해 인박스를 드레인한다.
 5. **처리 + 답신** — 메시지를 처리하고 `agora.dispatch`로 답신한다.
 6. **턴 종료 → idle 복귀** — 턴이 끝나면 워커는 다시 idle. 어댑터가 다음 push를
    기다린다.
@@ -158,7 +158,7 @@ agent-agora --dir . --port 8420 --no-tls --no-timeout
                                         │
                     <channel source="agora-channel"> → 턴 시작
                                         │
-                              agora.wait() → 드레인
+                              agora.flush() → 드레인
                                         │
                               agora.dispatch(답신)
                                         │
@@ -223,10 +223,10 @@ claude
 2. **채널 모드 워커(터미널 B)** 를 관찰한다. Stop hook 없이도 워커 턴이
    시작되면 성공이다:
    - `<channel source="agora-channel">` 태그가 세션에 들어오고,
-   - 워커가 `agora.wait`를 호출해 메시지를 드레인하고,
+   - 워커가 `agora.flush`를 호출해 메시지를 드레인하고,
    - 처리 결과를 `agora.dispatch`로 답신한다.
 
-3. **발신 워커(터미널 C)** 에서 답신이 돌아오는지 `agora.wait`로 확인한다.
+3. **발신 워커(터미널 C)** 에서 답신이 돌아오는지 `agora.flush`로 확인한다.
 
 이 사이클이 완성되면 채널 모드가 정상 동작하는 것이다.
 
@@ -241,7 +241,7 @@ claude
 - **알림 무확인** — `claude/channel` 알림은 전달 확인(ack)이 없다. 채널이 로드되지
   않았거나 조직 정책이 차단하면 알림이 조용히 드롭된다. 이 경우 워커가 깨어나지
   않는다.
-  - 채널 모드가 동작하지 않는다면 `agora.wait`를 직접 호출해 인박스를 드레인한다.
+  - 채널 모드가 동작하지 않는다면 `agora.flush`를 직접 호출해 인박스를 드레인한다.
 - **Bedrock / Vertex / Foundry 미지원** — `claude/channel`은 Anthropic 직접 인증
   환경에서만 동작한다.
 

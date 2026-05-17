@@ -39,7 +39,7 @@ async def test_restart_recovery_restores_inflight_messages(tmp_path):
     async with q2:
         d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         d2.restore_from_persistence()
-        msgs = await d2.wait("Inst2", timeout_ms=200)
+        msgs = await d2.flush("Inst2")
     pers2.close()
     assert len(msgs) == 1
     assert msgs[0]["payload"] == tany(keep=True)
@@ -83,7 +83,7 @@ async def test_restart_recovery_drops_closed_conversation_messages_with_drop_rea
     async with q2:
         d2 = Dispatcher(reg2, pers2, q2, schema_registry=make_schema_registry(), bot_registry=BotRegistry(), comm_matrix=CommMatrix())
         d2.restore_from_persistence()
-        msgs = await d2.wait("Inst2", timeout_ms=100)
+        msgs = await d2.flush("Inst2")
     # orphan must NOT be in restored queue
     assert all(m.get("id") != "cmd-orphan" for m in msgs)
     # drop_reason marking persisted

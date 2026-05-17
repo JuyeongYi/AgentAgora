@@ -10,7 +10,7 @@ description: Broadcast a task or closing announcement to all registered cc-agora
 
 - `"<message>"` (필수): 자연어 본문. 따옴표로 감싼다.
 - `--closing` (선택): announcement 패턴. 회의 종료·시스템 셧다운 등 한 방향 종결 신호. 일상 fan-out에는 쓰지 않는다.
-- `--priority=low|normal|high` (선택): 큐 정렬용 메타. 디폴트 `normal`. 실제 정렬은 수신자가 `agora.wait(sort="priority")`로 켤 때만 활성.
+- `--priority=low|normal|high` (선택): 큐 정렬용 메타. 디폴트 `normal`. 실제 정렬은 수신자가 `agora.flush(sort="priority")`로 켤 때만 활성.
 - `--conv=<id>` (선택): `conversation_id`. 기존 스레드에 묶을 때 사용.
 - `--expect` (선택): `expect_result=true`. 워커 페르소나에 응답을 요구하는 신호.
 

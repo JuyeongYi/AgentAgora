@@ -27,7 +27,7 @@ from agent_agora.schemas import SchemaRegistry
 
 def _fmt_payload(payload: Any) -> str:
     try:
-        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(payload, ensure_ascii=False, indent=2)
     except (TypeError, ValueError):
         return repr(payload)
 
@@ -701,21 +701,19 @@ class Dispatcher:
         else:
             self._registry.touch_last_seen(instance_id)
 
-    async def wait(
+    async def flush(
         self,
         instance_id: str,
-        timeout_ms: int | None = None,
         from_sources: list[str] | None = None,
         sort: Literal["fifo", "priority"] = "fifo",
         by_conversation: str | None = None,
     ) -> list[dict[str, Any]]:
+        """현재 큐에 있는 메시지를 즉시 드레인하고 반환한다 (논블로킹)."""
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
         # 봇 instance_id는 bot_registry에서, 워커는 worker registry에서 검증 (결정 22)
         if not self._bot_registry.is_bot(instance_id):
             self._registry.resolve_instance_id(instance_id)
-        effective = self._default_timeout_ms if timeout_ms is None else timeout_ms
-        loop = asyncio.get_running_loop()
 
         def _matches(env: Envelope) -> bool:
             if from_sources is not None and env.source not in set(from_sources):
@@ -741,26 +739,6 @@ class Dispatcher:
             if self._closed:
                 raise DispatcherClosed("Dispatcher is closed")
             drained = _drain_matching()
-            if not drained:
-                fut: asyncio.Future = loop.create_future()
-                self._waiters[instance_id].append(fut)
-            else:
-                fut = None  # type: ignore
-
-        if not drained and fut is not None:
-            try:
-                if effective <= 0:
-                    await fut
-                else:
-                    await asyncio.wait_for(fut, timeout=effective / 1000.0)
-            except asyncio.TimeoutError:
-                async with self._lock:
-                    if fut in self._waiters.get(instance_id, []):
-                        self._waiters[instance_id].remove(fut)
-                self._touch_last_seen(instance_id)
-                return []
-            async with self._lock:
-                drained = _drain_matching()
 
         # sort
         if sort == "priority":
@@ -990,6 +968,20 @@ class Dispatcher:
         pending = self._persistence.restore_in_flight_pending()
         for source, m in pending.items():
             self._in_flight.setdefault(source, {}).update(m)
+
+    def drop_inflight_on_restart(self) -> None:
+        """클린 스타트 — 이전 실행의 미배달(undrained) 메시지를 전부 drop
+        마킹한다. restore_from_persistence와 달리 _queues에 싣지 않는다.
+        대화·메시지 행 자체는 audit용으로 남는다."""
+        now = _now_iso()
+        self._persistence.conn.execute(
+            """
+            UPDATE messages
+            SET drained_at = ?, drop_reason = 'server_restart'
+            WHERE drained_at IS NULL
+            """,
+            (now,),
+        )
 
     # ------------------------- M2: background sweeps -------------------------
 

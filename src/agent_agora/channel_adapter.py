@@ -25,7 +25,7 @@ from mcp.types import JSONRPCMessage, JSONRPCNotification
 
 CHANNEL_INSTRUCTIONS = (
     "AgentAgora channel adapter. When an inbox notification arrives as a "
-    "<channel source=\"agora-channel\"> tag, call agora.wait(timeout_ms=0) to "
+    "<channel source=\"agora-channel\"> tag, call agora.flush to "
     "drain your inbox (non-blocking — the channel already woke you), handle the "
     "messages, and reply with agora.dispatch. Do not enter a long blocking wait."
 )
@@ -58,7 +58,7 @@ def format_channel_notification(
     meta 키는 식별자만(letters/digits/underscore), 값은 문자열이어야 한다."""
     src = ", ".join(sources) if sources else "(unknown)"
     content = (f"New messages in your AgentAgora inbox (from: {src}). "
-               f"Call agora.wait(timeout_ms=0) once to drain everything currently "
+               f"Call agora.flush once to drain everything currently "
                f"queued and process all of it, then reply with agora.dispatch. "
                f"Do not block on a long wait — the channel wakes you again when "
                f"more arrives.")

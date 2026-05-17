@@ -1,111 +1,132 @@
-# AgentAgora Inter-Instance Smoke Test
+# AgentAgora 인스턴스 간 Smoke Test
 
-End-to-end verification of the A→B command channel using two real Claude Code instances and a running AgentAgora server. Automated tests use in-process simulation; this procedure exercises the real HTTP transport + `Mcp-Session-Id` header path that production clients use.
+실제 Claude Code 인스턴스 두 개와 떠 있는 AgentAgora 서버로 A→B 명령 채널을
+end-to-end 검증한다. 자동 테스트(`tests/`)는 in-process 시뮬레이션이고, 이 절차는
+실 클라이언트가 쓰는 HTTP transport + `Mcp-Session-Id` 헤더 경로를 굴린다.
 
-## Prerequisites
+파이썬 스크립트만으로 더 빠르게 굴려보려면 [`examples/README.md`](../examples/README.md).
 
-- Python 3.13 with the `agent-agora` package installable (`pip install -e .` from the repo root)
-- A directory containing `.agentagora/schemas.json` (any valid user schemas — `instances`, `commands`, `results` are auto-injected)
-- Two Claude Code instances ready to connect to the AgentAgora MCP endpoint
+## 사전 준비
 
-## Procedure
+- Python 3.13, 저장소 루트에서 `pip install -e .`
+- AgentAgora MCP 엔드포인트에 붙을 Claude Code 인스턴스 두 개
 
-### 1. Start the AgentAgora server
+## 절차
 
-From the repo root (or any directory containing `.agentagora/`):
+### 1. 서버 기동
 
-```
-agent-agora --dir ./.agentagora --port 8420
-```
-
-You should see:
+저장소 루트(또는 임의 작업 디렉토리)에서:
 
 ```
-AgentAgora starting on https://127.0.0.1:8420/mcp
-  Data dir : .../​.agentagora
-  Schemas  : finding, status, instances, commands, results
-  Cert     : .../cert.pem
+agent-agora --dir . --port 8420 --no-tls
 ```
 
-The reserved schemas (`instances`, `commands`, `results`) should appear alongside user schemas.
+기대 출력:
 
-### 2. Connect Claude Code instance A
+```
+AgentAgora starting on http://127.0.0.1:8420/mcp
+  Data dir : .../.agentagora
+  DB       : .../.agentagora/agora.db
+  Cert     : (none -- HTTP mode, localhost only)
+```
 
-In Claude Code instance A, configure the MCP server to connect to `https://127.0.0.1:8420/mcp` (accept the self-signed cert).
+서버는 첫 기동에 `.agentagora/schemas.jsonl`(기본 스키마 6종)을 생성한다.
+HTTPS로 검증하려면 `--no-tls`를 빼면 되고, 클라이언트가 self-signed cert를
+신뢰해야 한다.
 
-In A, prompt:
+### 2. Claude Code 인스턴스 A 연결
 
-> Call the `agora.register` tool with `instance_id="A"` and `role="orchestrator"`.
+A의 MCP 설정을 `http://127.0.0.1:8420/mcp`로 맞춘다. A에서 프롬프트:
 
-Expected: `{"status": "ok", "instance_id": "A", "role": "orchestrator", "registered_at": "..."}`.
+> `agora.register` 도구를 `instance_id="A"`, `role="orchestrator"`로 호출해줘.
 
-### 3. Connect Claude Code instance B and put it in wait loop
+기대: `{"status": "ok", "instance_id": "A", "role": "orchestrator", ...}`.
 
-In Claude Code instance B, configure the same MCP endpoint.
+### 3. 인스턴스 B 연결 + wait 루프
 
-In B, prompt:
+B의 MCP 설정을 같은 엔드포인트로 맞춘다. B에서 프롬프트:
 
-> Call `agora.register` with `instance_id="B"`, `role="worker"`. Then enter a loop: call `agora.wait` repeatedly. For each command received, examine `payload` and act on it. After acting, dispatch the result back to the command's `source` instance using `agora.dispatch(target=<source>, payload={"result_for": <command id>, ...})`. Then call `agora.wait` again.
+> `agora.register`를 `instance_id="B"`, `role="worker"`로 호출해. 그다음 루프:
+> `agora.flush`를 반복 호출하고, 명령이 오면 `payload`를 보고 처리한 뒤, 결과를
+> 명령의 `source`에게 `agora.dispatch`로 되돌려. payload는 `worker_freeform`
+> 스키마를 따라야 한다 — `{"msgtype":"worker_freeform","type":"reply","from":"B",
+> "ts":<ISO 시각>,"message":<결과>}`. `in_reply_to`에는 받은 명령의 `id`를 넣어.
+> 그리고 다시 `agora.flush`.
 
-Expected: B registers successfully and enters the long-poll loop. The first `agora.wait` should block (because the queue is empty) until a command arrives.
+기대: B가 등록되고 flush 루프에 든다. `agora.flush`는 논블로킹 — 큐가 비어 있으면 빈 배열을 즉시 반환한다.
 
-### 4. From A, dispatch a command to B
+### 4. A에서 B로 명령 dispatch
 
-In A, prompt:
+A에서 프롬프트:
 
-> First call `agora.instances` to confirm B is registered. Then call `agora.dispatch` with `target="B"` and `payload={"task": "list the files in src/agent_agora"}`.
+> 먼저 `agora.instances`로 B가 등록됐는지 확인해. 그다음 `agora.dispatch`를
+> `target="B"`, `payload={"msgtype":"worker_freeform","type":"task","from":"A",
+> "ts":<ISO 시각>,"message":"src/agent_agora 파일을 나열해줘"}`로 호출해.
 
-Expected:
-- `agora.instances` shows entries for both A and B with correct `role` values
-- `agora.dispatch` returns `{"status": "ok", "command_id": "<uuid>", "target": "B"}`
+기대:
+- `agora.instances`가 A·B를 올바른 `role`로 보여준다.
+- `agora.dispatch`가 `{"status":"ok","command_id":"<uuid>", ...}`를 반환한다.
 
-### 5. Observe B receiving and processing
+> 모든 payload는 `msgtype`이 필수고 등록 스키마로 검증된다. `msgtype`이 없거나
+> 스키마에 안 맞으면 dispatch가 거부된다.
 
-Within a moment, B's pending `agora.wait` call should return with the dispatched command. B's LLM then:
-- Reads the payload
-- Performs the action (here: lists files in `src/agent_agora`)
-- Calls `agora.dispatch(target="A", payload={"result_for": <id>, "files": [...]})`
-- Loops back to `agora.wait`
+### 5. B의 수신·처리 관찰
 
-### 6. From A, retrieve the result
+B가 `agora.flush`를 호출하면 dispatch된 명령과 함께 리턴된다. B의 LLM은
+payload를 읽고, 작업(여기선 `src/agent_agora` 파일 나열)을 수행하고,
+`agora.dispatch(target="A", in_reply_to=<id>, payload=<worker_freeform reply>)`로
+답신한 뒤 `agora.flush`로 복귀한다.
 
-In A, prompt:
+### 6. A에서 결과 회수
 
-> Call `agora.wait` with `timeout_ms=5000`. The result from B should arrive.
+A에서 프롬프트:
 
-Expected: A's `agora.wait` returns a command whose `source` is `"B"` and whose payload contains the file list with `result_for` matching A's original command id.
+> `agora.flush`를 호출해. B의 결과가 도착해 있을 거야. 큐가 비어 있으면 잠시 뒤 다시 호출.
 
-### 7. Test broadcast (optional)
+기대: A의 `agora.flush`가 `source="B"`인 명령을 반환하고, payload에 파일 목록이
+담겨 있다.
 
-In A:
+### 7. broadcast (선택)
 
-> Call `agora.broadcast` with `payload={"ping": 1}`.
+A에서:
 
-Expected: B receives one command with payload `{"ping": 1}`. A does NOT receive its own broadcast.
+> `agora.broadcast`를 `payload={"msgtype":"worker_freeform","type":"task",
+> "from":"A","ts":<ISO 시각>,"message":"ping"}`로 호출해.
 
-### 8. Test session-close auto-unregister
+기대: B가 명령 하나를 받는다. A는 자기 broadcast를 받지 않는다.
 
-Terminate Claude Code instance B (Ctrl+C the process, or close the window).
+### 8. unregister
 
-After a moment, in A:
+B에서:
 
-> Call `agora.instances` again.
+> `agora.unregister`를 호출해.
 
-Expected: B is no longer in the list. The `SessionCloseMiddleware` should have unregistered B's session when its HTTP connection dropped.
+이어서 A에서:
 
-## Pass criteria
+> `agora.instances`를 다시 호출해.
 
-- Step 2: A registers.
-- Step 3: B registers and `agora.wait` blocks rather than returning immediately.
-- Step 4: A's `agora.instances` lists both, and `agora.dispatch` succeeds.
-- Step 5: B's `agora.wait` returns the command within a second of dispatch.
-- Step 6: A receives the result.
-- Step 7: Broadcast reaches B but not A.
-- Step 8: B is auto-unregistered after disconnect.
+기대: B가 목록에서 사라진다. 명시적 `agora.unregister` 없이 인스턴스가
+종료되면, 서버의 dead-session sweep이 `--dead-session-timeout-ms`(기본 30분)
+경과 후 정리한다 — 즉시 사라지지는 않는다.
 
-## Common failure modes
+## 합격 기준
 
-- **B's `agora.wait` returns immediately with empty commands every call:** B may not be registered, or B's instance_id doesn't match the dispatch target. Verify via `agora.instances`.
-- **`Mcp-Session-Id` header missing:** Indicates the Claude Code client is not using the Streamable HTTP transport. AgentAgora only supports Streamable HTTP — verify the client config.
-- **Self-signed cert rejected:** Claude Code must trust the cert at `~/.agent-agora/certs/cert.pem`, or be configured to skip verification.
-- **B still listed after termination:** Either the disconnect did not trigger `http.disconnect` (some shutdown paths skip the event), or middleware was not attached. Check server logs for the unregister.
+- 2: A 등록.
+- 3: B 등록 + `agora.flush` 루프 시작.
+- 4: A의 `agora.instances`가 둘 다 나열, `agora.dispatch` 성공.
+- 5: dispatch 후 B의 `agora.flush`가 명령 반환.
+- 6: A가 결과 수신.
+- 7: broadcast가 B에 도달, A에는 미도달.
+- 8: `agora.unregister` 후 B가 목록에서 사라짐.
+
+## 자주 보는 실패
+
+- **B의 `agora.flush`가 매번 빈 commands를 반환:** B가 미등록이거나 dispatch
+  `target`이 B의 `instance_id`와 불일치. `agora.instances`로 확인.
+- **dispatch가 `payload_missing_msgtype` / `unknown_msgtype` / `schema_violation`로
+  거부:** payload에 `msgtype`이 없거나, 미등록 스키마이거나, 스키마 위반.
+  `agora.schemas_list`로 등록 스키마를 확인.
+- **`Mcp-Session-Id` 헤더 누락:** 클라이언트가 Streamable HTTP transport를 안
+  쓰고 있다. AgentAgora는 Streamable HTTP 전용이다.
+- **self-signed cert 거부:** Claude Code가 `~/.agent-agora/certs/cert.pem`을
+  신뢰하거나 검증을 건너뛰도록 설정돼야 한다 (HTTPS 모드 한정).

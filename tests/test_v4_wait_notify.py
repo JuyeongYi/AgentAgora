@@ -66,8 +66,8 @@ async def test_is_non_destructive(setup):
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(x=1))
     snap = await dispatcher.wait_notify("Inst2", timeout_ms=200)
     assert snap["pending"] == 1
-    # 큐가 그대로 — 이어서 wait가 같은 메시지를 드레인한다
-    drained = await dispatcher.wait("Inst2", timeout_ms=200)
+    # 큐가 그대로 — 이어서 flush가 같은 메시지를 드레인한다
+    drained = await dispatcher.flush("Inst2")
     assert len(drained) == 1
     assert drained[0]["payload"]["x"] == 1
 
@@ -92,16 +92,14 @@ async def test_distinct_sources_sorted(setup):
 
 
 @pytest.mark.asyncio
-async def test_coexists_with_wait(setup):
+async def test_coexists_with_flush(setup):
     registry, dispatcher = setup
-    wn = asyncio.create_task(dispatcher.wait_notify("Inst2", timeout_ms=2000))
-    w = asyncio.create_task(dispatcher.wait("Inst2", timeout_ms=2000))
-    await asyncio.sleep(0.05)
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=tany(x=1))
-    snap = await wn
-    drained = await w
-    # 둘 다 깨어났다(데드락 없음). wait가 메시지를 드레인한다.
+    # wait_notify는 비파괴 peek, flush는 드레인 — 순차 호출 시 충돌 없음
+    snap = await dispatcher.wait_notify("Inst2", timeout_ms=200)
+    drained = await dispatcher.flush("Inst2")
     assert snap["instance_id"] == "Inst2"
+    assert snap["pending"] == 1
     assert len(drained) == 1
 
 

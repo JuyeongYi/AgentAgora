@@ -25,6 +25,14 @@ def test_no_timeout_and_default_wait_are_exclusive():
         parse_args(["--no-timeout", "--default-wait-timeout-ms", "5000"])
 
 
+def test_restore_flag_defaults_false():
+    assert parse_args(["--port", "8420"]).restore is False
+
+
+def test_restore_flag_true_when_given():
+    assert parse_args(["--restore"]).restore is True
+
+
 def test_build_app_wires_bot_registry(tmp_path):
     from agent_agora.__main__ import _build_app
     agora_dir = tmp_path / ".agentagora"

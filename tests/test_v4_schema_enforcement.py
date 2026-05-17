@@ -57,7 +57,7 @@ async def test_dispatch_rejects_schema_violation(setup):
 async def test_dispatch_accepts_valid_worker_freeform(setup):
     _, dispatcher = setup
     await dispatcher.dispatch(source="Inst1", target="Inst2", payload=wf("안녕"))
-    drained = await dispatcher.wait("Inst2", timeout_ms=200)
+    drained = await dispatcher.flush("Inst2")
     assert drained[0]["payload"]["message"] == "안녕"
 
 
@@ -77,7 +77,7 @@ async def test_close_thread_uses_closing_schema(setup):
                               conversation_id=conv)
     res = await dispatcher.close_thread("Inst1", conv, reason="끝")
     assert res["conversation_id"] == conv
-    drained = await dispatcher.wait("Inst2", timeout_ms=200)
+    drained = await dispatcher.flush("Inst2")
     closing_msgs = [d for d in drained if d["payload"].get("msgtype") == "closing"]
     assert len(closing_msgs) == 1
     assert closing_msgs[0]["payload"]["reason"] == "끝"
