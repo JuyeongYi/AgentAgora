@@ -1,0 +1,15 @@
+{
+  "name": "agentagora",
+  "owner": { "name": "AgentAgora" },
+  "plugins": [
+    { "name": "cc-agora", "source": "./plugin/cc-agora" },
+    { "name": "cc-agora-ops", "source": "./plugin/cc-agora-ops" },
+    { "name": "cc-agora-orchestrator", "source": "./plugin/personas/orchestrator" },
+    { "name": "cc-agora-coder", "source": "./plugin/personas/coder" },
+    { "name": "cc-agora-reviewer", "source": "./plugin/personas/reviewer" },
+    { "name": "cc-agora-tester", "source": "./plugin/personas/tester" },
+    { "name": "cc-agora-writer", "source": "./plugin/personas/writer" },
+    { "name": "cc-agora-planner", "source": "./plugin/personas/planner" },
+    { "name": "cc-agora-general", "source": "./plugin/personas/general" }
+  ]
+}
