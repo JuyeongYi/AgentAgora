@@ -1,39 +1,40 @@
 ---
 description: Broadcast a task or closing announcement to all registered cc-agora instances — auto-fills payload, separates envelope flags like priority and conversation_id.
+argument-hint: "<message>" [--closing --priority --conv --expect]
 ---
 
 # /cc-agora:broadcast
 
-모든 등록 인스턴스에 fan-out 한다. spec §4.6.
+Fan-out to all registered instances. spec §4.6.
 
-## 인자
+## Arguments
 
-- `"<message>"` (필수): 자연어 본문. 따옴표로 감싼다.
-- `--closing` (선택): announcement 패턴. 회의 종료·시스템 셧다운 등 한 방향 종결 신호. 일상 fan-out에는 쓰지 않는다.
-- `--priority=low|normal|high` (선택): 큐 정렬용 메타. 디폴트 `normal`. 실제 정렬은 수신자가 `agora.flush(sort="priority")`로 켤 때만 활성.
-- `--conv=<id>` (선택): `conversation_id`. 기존 스레드에 묶을 때 사용.
-- `--expect` (선택): `expect_result=true`. 워커 페르소나에 응답을 요구하는 신호.
+- `"<message>"` (required): Natural-language body. Wrap in quotes.
+- `--closing` (optional): Announcement pattern. One-directional closing signal for end-of-meeting, system shutdown, etc. Do not use for regular fan-outs.
+- `--priority=low|normal|high` (optional): Queue sorting metadata. Default `normal`. Actual sorting is only active when the receiver calls `agora.flush(sort="priority")`.
+- `--conv=<id>` (optional): `conversation_id`. Use to attach to an existing thread.
+- `--expect` (optional): `expect_result=true`. Signals worker personas that a reply is required.
 
-## 동작
+## Behavior
 
-### payload 자동 채움 (§5.3)
+### Payload auto-fill (§5.3)
 
-`scripts/payload.py::make_payload`를 따른다:
+Follows `scripts/payload.py::make_payload`:
 
-- `--closing`이 **없으면** `type="task"` + `message=<arg>` + `from=<자기 instance_id>` + `ts=<ISO 8601 UTC>`.
-- `--closing`이 **있으면** `type="closing"` + `from` + `ts` (message·reason 없이 announcement).
+- Without `--closing`: `type="task"` + `message=<arg>` + `from=<own instance_id>` + `ts=<ISO 8601 UTC>`.
+- With `--closing`: `type="closing"` + `from` + `ts` (no message or reason — announcement only).
 
-자기 instance_id는 등록 시점 또는 `agora.instances()` 결과에서 자기 항목으로 알아낸다.
+Own instance_id is obtained at registration time or from the self-entry in `agora.instances()` results.
 
-### envelope vs payload 분리 (§5.3 명시 규약)
+### Envelope vs payload separation (§5.3 explicit rule)
 
-`closing`, `priority`, `conversation_id`, `expect_result`, `reply_to`, `in_reply_to`, `deadline_ts`는 도구 인자로 직접 전달한다 — **payload 안에 박지 않는다.**
+`closing`, `priority`, `conversation_id`, `expect_result`, `reply_to`, `in_reply_to`, `deadline_ts` are passed directly as tool arguments — **not** embedded inside the payload object.
 
-### MCP 호출
+### MCP call
 
 ```
 agora.broadcast(
-  payload=<위 payload>,
+  payload=<payload above>,
   closing=<--closing bool>,
   priority=<--priority or "normal">,
   conversation_id=<--conv or None>,
@@ -41,18 +42,18 @@ agora.broadcast(
 )
 ```
 
-응답을 그대로 사용자에 출력한다. `inbox_full` 에러는 §5.6 한국어 표준 메시지로 안내한다.
+Print the response directly to the user. `inbox_full` errors are reported with the §5.6 standard message.
 
-## 예시
-
-```
-/cc-agora:broadcast "오늘 18:00에 코드 리뷰 회의 시작합니다." --priority=high
-```
-
-모든 등록 워커에 `{type:"task", from, ts, message}` payload가 priority=high envelope과 함께 전달된다.
+## Examples
 
 ```
-/cc-agora:broadcast "세션 종료 — 다음 회의는 내일." --closing
+/cc-agora:broadcast "Code review meeting starts at 18:00 today." --priority=high
 ```
 
-`type="closing"` announcement가 모두에게 즉시 전달되고 관련 대화가 close된다.
+Delivers `{type:"task", from, ts, message}` payload to all registered workers with a priority=high envelope.
+
+```
+/cc-agora:broadcast "Session ending — next meeting is tomorrow." --closing
+```
+
+Delivers a `type="closing"` announcement to all immediately, closing any associated conversations.
