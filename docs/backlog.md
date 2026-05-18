@@ -10,15 +10,6 @@
   어댑터·`AgoraBot` SDK를 HTTP로 전환, MCP `agora.wait_notify`는 기본 비등록 +
   `--add-wait` 플래그로만 등록.
 
-- **cc-agora 컴팩션 복구 훅** — 채널 모드 워커가 컴팩션 후 대화가 끊기는 현상.
-  컴팩션이 채널 루프 상태(인박스 드레인 중 등)를 요약에서 잃어 워커가 멈춘다.
-  spec 완료 — `docs/superpowers/specs/2026-05-18-cc-agora-compaction-hook-design.md`,
-  브랜치 `cc-agora-compaction-hook`. `cc-agora` 플러그인에 `SessionStart`
-  (`matcher: "compact"`) command 훅을 추가해 "인박스를 `agora.flush`로 확인하고
-  채널 루프를 재개하라"는 안내문을 stdout으로 주입한다. (`PostCompact` 훅은
-  side-effect 전용이라 컨텍스트 주입 불가 — spec §3 참조.) 구현·테스트 완료,
-  머지 대기.
-
 ## 기능 후보 — observability · 편의 도구
 
 2026-05-15 워커 brainstorming에서 나온 미구현 제안. 6명의 워커 중 5명이
