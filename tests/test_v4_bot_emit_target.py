@@ -12,6 +12,40 @@ import pytest
 
 from agent_agora.bot import AgoraBot
 
+# ── Dispatcher-level 테스트용 imports ────────────────────────────────────────
+from agent_agora.bot_registry import BotRegistry
+from agent_agora.comm_matrix import CommMatrix
+from agent_agora.dispatcher import Dispatcher
+from agent_agora.persistence import AsyncWriteQueue, Persistence
+from agent_agora.registry import InstanceRegistry, NotRegisteredError
+from _helpers import make_schema_registry, wf
+
+
+async def _make_bot_emit_dispatcher(tmp_path):
+    """bot_emit 테스트용 최소 Dispatcher. worker-src와 worker-dst 등록."""
+    registry = InstanceRegistry()
+    registry.register("sess-src", "worker-src")
+    registry.register("sess-dst", "worker-dst")
+    persistence = Persistence(tmp_path / "agora.db")
+    persistence.migrate()
+    queue = AsyncWriteQueue(persistence)
+    bot_registry = BotRegistry()
+    # bot_emit을 bot으로서 호출할 수 있도록 더미 봇 등록
+    bot_registry.register(
+        session_id="sess-bot",
+        instance_id="bot-router",
+        description="test routing bot",
+        subscribe_schemas=["worker_freeform"],
+        bot_mode="handler",
+    )
+    d = Dispatcher(
+        registry, persistence, queue,
+        schema_registry=make_schema_registry(),
+        bot_registry=bot_registry,
+        comm_matrix=CommMatrix(),
+    )
+    return d, queue
+
 
 # ── FakeSession 헬퍼 ─────────────────────────────────────────────────────────
 
@@ -103,3 +137,53 @@ async def test_emit_without_target_uses_in_reply_to():
     assert emits[0].get("target") is None
     # in_reply_to = 현재 cmd id
     assert emits[0].get("in_reply_to") == "cmd-2"
+
+
+# ── Dispatcher 레벨 테스트 ────────────────────────────────────────────────────
+# 실제 Dispatcher.bot_emit의 target 가드 로직을 직접 검증한다.
+# (SDK 레벨 테스트는 FakeSession으로 MCP 호출만 확인하고 Dispatcher를 타지 않는다.)
+
+@pytest.mark.asyncio
+async def test_dispatcher_bot_emit_target_delivers_to_worker_inbox(tmp_path):
+    """Dispatcher.bot_emit(target='worker-dst') → worker-dst 인박스에 메시지가 전달된다."""
+    d, queue = await _make_bot_emit_dispatcher(tmp_path)
+    async with queue:
+        res = await d.bot_emit(
+            source="bot-router",
+            payload=wf("hello from bot"),
+            target="worker-dst",
+        )
+        assert res["command_id"]
+        drained = await d.flush("worker-dst")
+        assert len(drained) == 1, "worker-dst 인박스에 1개 메시지가 있어야 한다"
+        assert drained[0]["payload"]["message"] == "hello from bot"
+        assert drained[0]["target"] == "worker-dst"
+        # worker-src 인박스는 비어 있어야 한다
+        assert await d.flush("worker-src") == []
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_bot_emit_target_and_in_reply_to_raises(tmp_path):
+    """Dispatcher.bot_emit에 target과 in_reply_to를 동시에 지정하면 ValueError."""
+    d, queue = await _make_bot_emit_dispatcher(tmp_path)
+    async with queue:
+        with pytest.raises(ValueError, match="in_reply_to"):
+            await d.bot_emit(
+                source="bot-router",
+                payload=wf("hi"),
+                target="worker-dst",
+                in_reply_to="some-cmd-id",
+            )
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_bot_emit_unknown_target_raises(tmp_path):
+    """Dispatcher.bot_emit에 미등록 target을 지정하면 NotRegisteredError."""
+    d, queue = await _make_bot_emit_dispatcher(tmp_path)
+    async with queue:
+        with pytest.raises(NotRegisteredError):
+            await d.bot_emit(
+                source="bot-router",
+                payload=wf("hi"),
+                target="ghost-worker",
+            )

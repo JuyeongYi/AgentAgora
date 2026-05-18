@@ -244,3 +244,71 @@ async def test_handle_context_summary_appended_to_payload():
     msg_text = forwarded.get("message", "")
     assert ("플랜: 3단계 TDD 사이클" in msg_text or
             forwarded.get("context_summary") == "플랜: 3단계 TDD 사이클")
+
+
+# ── 테스트 6: worker_freeform인데 message 필드 없으면 bot_error emit ──────────
+
+@pytest.mark.asyncio
+async def test_handle_worker_freeform_missing_message_emits_error():
+    """delegation_request.payload가 worker_freeform이지만 message 필드가 없으면
+    포워딩하지 않고 bot_error를 emit해야 한다 (조기 검증).
+
+    현재 구현은 검증 없이 바로 포워딩해서 다운스트림에서 실패하므로 이 테스트는
+    구현 추가 전까지 실패한다.
+    """
+    bot = RoutingBot()
+    bot._session = FakeSession()
+
+    cmd = {
+        "id": "cmd-6",
+        "source": "superpowers-planner-001",
+        "payload": {
+            "msgtype": "delegation_request",
+            "from_persona": "superpowers-planner-001",
+            "to_persona": "superpowers-implementer-001",
+            # worker_freeform에 필수 필드 message가 없음
+            "payload": {"msgtype": "worker_freeform", "type": "task",
+                        "from": "superpowers-planner-001",
+                        "ts": "2026-05-18T00:00:00Z"},
+            "context_summary": "컨텍스트",
+        },
+    }
+    await bot._dispatch(cmd)
+
+    emits = bot._session.emit_calls()
+    assert len(emits) == 1, "bot_emit이 정확히 1회 호출돼야 한다"
+    assert emits[0]["payload"]["msgtype"] == "bot_error", (
+        "malformed payload를 포워딩하지 않고 bot_error를 emit해야 한다"
+    )
+    assert "message" in emits[0]["payload"]["error_message"], (
+        "오류 메시지에 누락된 필드명 'message'가 포함돼야 한다"
+    )
+
+
+# ── 테스트 7: inner payload가 빈 dict이면 bot_error emit ─────────────────────
+
+@pytest.mark.asyncio
+async def test_handle_empty_inner_payload_emits_error():
+    """delegation_request.payload가 빈 dict이면 (msgtype 없음)
+    포워딩하지 않고 bot_error를 emit해야 한다."""
+    bot = RoutingBot()
+    bot._session = FakeSession()
+
+    cmd = {
+        "id": "cmd-7",
+        "source": "superpowers-planner-001",
+        "payload": {
+            "msgtype": "delegation_request",
+            "from_persona": "superpowers-planner-001",
+            "to_persona": "superpowers-implementer-001",
+            "payload": {},  # 빈 dict — msgtype도 없음
+            "context_summary": "컨텍스트",
+        },
+    }
+    await bot._dispatch(cmd)
+
+    emits = bot._session.emit_calls()
+    assert len(emits) == 1
+    assert emits[0]["payload"]["msgtype"] == "bot_error", (
+        "빈 inner payload는 bot_error를 emit해야 한다"
+    )

@@ -82,6 +82,20 @@ class RoutingBot(AgoraBot):
                 flush=True,
             )
 
+        # inner_payload 조기 검증 — malformed payload를 다운스트림으로 넘기지 않는다.
+        # 1. msgtype이 없으면 서버 side에서 payload_missing_msgtype으로 실패하므로 여기서 차단.
+        # 2. worker_freeform이고 message 필드가 없으면 schema_violation으로 실패하므로 여기서 차단.
+        if not inner_payload or "msgtype" not in inner_payload:
+            raise ValueError(
+                "delegation_request.payload가 비어 있거나 msgtype이 없습니다. "
+                "전달할 메시지 payload에 msgtype이 필수입니다."
+            )
+        if inner_payload.get("msgtype") == "worker_freeform" and "message" not in inner_payload:
+            raise ValueError(
+                "delegation_request.payload(worker_freeform)에 필수 필드 'message'가 없습니다. "
+                "worker_freeform 스키마는 message 필드를 필수로 요구합니다."
+            )
+
         # context_summary를 message에 주입한다
         forwarded = dict(inner_payload)
         if context_summary:
