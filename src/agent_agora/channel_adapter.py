@@ -80,13 +80,16 @@ async def watch_loop(
     *,
     wait_timeout_ms: int = 30000,
     drain_poll_s: float = 2.0,
+    reemit_interval_s: float = 30.0,
 ) -> None:
-    """edge-triggered 감시 루프.
+    """edge-triggered 감시 루프 + 주기적 재발화.
 
     wait_notify(instance_id, timeout_ms) -> dict{pending, sources} 로 인박스
-    도착을 블로킹 감지하고, pending이 0->N으로 올라설 때만 emit(content, meta)
+    도착을 블로킹 감지하고, pending이 0->N으로 올라설 때 emit(content, meta)
     한다. emit 후에는 peek_pending(instance_id) -> int 가 0을 반환할 때까지
-    폴링하다 wait_notify로 복귀한다 — 워커가 드레인하기 전 중복 알림 방지."""
+    drain_poll_s 간격으로 폴링한다. 인박스가 비지 않은 채로 reemit_interval_s가
+    지나면 claude/channel을 재발화한다 — 알림 유실·컴팩션·일시적 바쁨으로 워커가
+    드레인하지 못해도 결국 다시 깨워 self-heal한다."""
     while True:
         signal = await wait_notify(instance_id, wait_timeout_ms)
         if isinstance(signal, dict) and "error" in signal:
@@ -96,12 +99,23 @@ async def watch_loop(
         pending = signal.get("pending", 0)
         if pending <= 0:
             continue                          # timeout heartbeat — emit 안 함
-        content, meta = format_channel_notification(
-            instance_id, pending, signal.get("sources", []))
+        sources = signal.get("sources", [])
+        content, meta = format_channel_notification(instance_id, pending, sources)
         await emit(content, meta)
-        # 워커가 큐를 드레인할 때까지 재발화 보류 (edge-triggered)
-        while await peek_pending(instance_id) > 0:
+        # 워커가 큐를 드레인할 때까지 폴링하되, reemit_interval_s마다 재발화한다 —
+        # claude/channel 알림 유실·컴팩션·일시적 바쁨으로 워커가 멈춰도 self-heal.
+        since_emit = 0.0
+        while True:
             await asyncio.sleep(drain_poll_s)
+            depth = await peek_pending(instance_id)
+            if depth <= 0:
+                break
+            since_emit += drain_poll_s
+            if since_emit >= reemit_interval_s:
+                content, meta = format_channel_notification(
+                    instance_id, depth, sources)
+                await emit(content, meta)
+                since_emit = 0.0
 
 
 # --- 브로커(HTTP MCP 클라이언트) 글루 ----------------------------------------

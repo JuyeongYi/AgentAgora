@@ -50,7 +50,7 @@ class _Stop(BaseException):
 
 @pytest.mark.asyncio
 async def test_watch_loop_emits_once_per_rising_edge():
-    """pending 0->N 전이에만 emit — N 유지 중에는 재발화하지 않는다."""
+    """pending 0->N 전이에 emit — drain 폴링은 재발화를 누적하지 않는다(drain_poll_s=0)."""
     emits: list = []
     wait_calls = [0]
 
@@ -146,6 +146,55 @@ async def test_watch_loop_backs_off_on_error_signal():
         await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
                          wait_timeout_ms=1000, drain_poll_s=0)
     assert emits == []                               # 에러 신호엔 emit 안 함
+
+
+@pytest.mark.asyncio
+async def test_watch_loop_reemits_while_inbox_stays_pending():
+    """워커가 드레인하지 않으면 reemit_interval_s마다 claude/channel을 재발화한다."""
+    emits: list = []
+
+    async def fake_wait_notify(iid, timeout_ms):
+        return {"instance_id": iid, "pending": 1, "sources": ["PM"]}
+
+    async def fake_peek(iid):
+        return 1                                     # 워커가 영원히 드레인 안 함
+
+    async def fake_emit(content, meta):
+        emits.append((content, meta))
+        if len(emits) >= 3:                          # 최초 1 + 재발화 2
+            raise _Stop()
+
+    with pytest.raises(_Stop):
+        await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
+                         wait_timeout_ms=1000, drain_poll_s=0.01,
+                         reemit_interval_s=0.015)
+    assert len(emits) == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_loop_no_reemit_if_drained_before_interval():
+    """reemit_interval_s 전에 워커가 드레인하면 재발화하지 않는다."""
+    emits: list = []
+    wait_calls = [0]
+
+    async def fake_wait_notify(iid, timeout_ms):
+        wait_calls[0] += 1
+        if wait_calls[0] == 1:
+            return {"instance_id": iid, "pending": 1, "sources": ["PM"]}
+        raise _Stop()                                # 2번째 wait_notify → 루프 종료
+
+    peek_seq = [1, 1, 0]                             # interval 전에 드레인
+    async def fake_peek(iid):
+        return peek_seq.pop(0)
+
+    async def fake_emit(content, meta):
+        emits.append((content, meta))
+
+    with pytest.raises(_Stop):
+        await watch_loop("InstA", fake_wait_notify, fake_peek, fake_emit,
+                         wait_timeout_ms=1000, drain_poll_s=0.01,
+                         reemit_interval_s=0.1)
+    assert len(emits) == 1                           # 최초 emit만 — 재발화 없음
 
 
 def test_channel_wait_base_url_strips_mcp_suffix():
