@@ -1,6 +1,6 @@
 {
   "name": "cc-agora-writer",
   "description": "AgentAgora writer persona — produces docs and prose with concrete examples, avoiding generic filler.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "dependencies": ["cc-agora"]
 }

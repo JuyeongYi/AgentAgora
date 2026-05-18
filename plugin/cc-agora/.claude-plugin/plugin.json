@@ -1,5 +1,5 @@
 {
   "name": "cc-agora",
   "description": "AgentAgora communication core — worker-to-worker messaging slashes (invoke, broadcast, target, close) and the agora-protocol operating rules.",
-  "version": "0.2.0"
+  "version": "1.0.0"
 }

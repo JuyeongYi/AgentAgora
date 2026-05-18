@@ -1,6 +1,6 @@
 {
   "name": "cc-agora-general",
   "description": "AgentAgora general persona — generalist fallback worker that handles tasks directly or forwards to a specialist.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "dependencies": ["cc-agora"]
 }

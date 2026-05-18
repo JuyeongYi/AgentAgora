@@ -1,6 +1,6 @@
 {
   "name": "cc-agora-ops",
   "description": "AgentAgora operator tooling — spawn workers, spawn teams from a manifest, manage the communication matrix, and launch a local server.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "dependencies": ["cc-agora"]
 }

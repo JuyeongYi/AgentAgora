@@ -1,6 +1,6 @@
 {
   "name": "cc-agora-orchestrator",
   "description": "AgentAgora orchestrator persona — team work distribution PM that delegates user requests to the right workers.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "dependencies": ["cc-agora"]
 }
