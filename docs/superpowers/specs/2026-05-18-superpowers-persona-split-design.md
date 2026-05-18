@@ -22,7 +22,7 @@ AgentAgora는 다중 에이전트 메시지 라우팅 브로커다 — 워커(Cl
 
 - superpowers 스킬 *내용*의 재작성. 스킬 본문은 원본을 잘라붙이고 위임 메타만 추가한다.
 - `claude -p` 기반 실행. 별도 요금체계를 쓰므로 전면 제거한다.
-- AgentAgora `dispatcher`·메시지 라우팅 시맨틱 변경. 신규 MCP 도구·CLI 명령 추가(§10).
+- AgentAgora `dispatcher`·메시지 라우팅 시맨틱의 큰 변경, 신규 MCP 도구·CLI 명령 추가. (예외 1건: `agora.bot_emit`에 `target` 인자를 더하는 소폭 확장 — 라우팅 봇에 필요, §10.)
 
 ## 3. 페르소나 집합 & 스킬 분배
 
@@ -73,7 +73,7 @@ plugin/superpowers/
 
 - **스킬 내 subagent 디스패치 지점 → `agora.dispatch`.** 원본 스킬은 Task 도구로 subagent를 디스패치한다(예: `subagent-driven-development`의 "implementer subagent 디스패치", `requesting-code-review`의 "code reviewer subagent 디스패치"). 페르소나 모델에서 이 지점은 대상 페르소나-워커로의 `agora.dispatch`가 된다.
 - **`delegation_request` 스키마** — 위임 메시지 스키마. `.agentagora/schemas.jsonl`에 등록한다. 필드: `from_persona`·`to_persona`(또는 역할 `to_capability`)·`payload`·`context_summary`.
-- **라우팅 봇** — 새 `AgoraBot` 서브클래스 스크립트다(`examples/echo_bot` 패턴 — `agent_agora.bot`의 `AgoraBot`을 상속, `handle()`만 구현, 별도 프로세스로 기동). `delegation_request` 스키마를 구독하는 handler 봇으로, 페르소나가 다른 역할이 필요할 때 이 스키마로 emit하면 봇이 대상 페르소나를 골라 `agora.dispatch`한다(AgentAgora schema-routed dispatch 모델). 대상이 명확한 핸드오프는 페르소나가 직접 `agora.dispatch`해도 된다.
+- **라우팅 봇** — 새 `AgoraBot` 서브클래스 스크립트다(`examples/echo_bot` 패턴 — `agent_agora.bot`의 `AgoraBot`을 상속, `handle()`만 구현, 별도 프로세스로 기동). `delegation_request` 스키마를 구독하는 handler 봇으로, 페르소나가 다른 역할이 필요할 때 이 스키마로 emit하면 봇이 `agora.find`로 대상 페르소나 워커를 resolve해 `agora.bot_emit`(`target` 인자 — §10)으로 전달한다. 대상이 명확한 핸드오프는 페르소나가 직접 `agora.dispatch`해도 된다.
 - **comm-matrix** — 페르소나 간 위임 ACL. AgentAgora 기존 `comm-matrix.csv` 메커니즘으로 표현한다(§9 워크플로의 엣지가 곧 매트릭스의 허용 셀; 정규식 헤더 — `comm-matrix-file-policy-regex` 설계).
 - **`cc-agora-ops/config/roles.json`** — `agora-spawn`이 role→플러그인을 해석하는 매핑. 7개 페르소나 role 항목을 추가한다(`planner`→`superpowers-planner` 등).
 - **스킬 본문 위임 메타** — 각 스킬에 다음 단계 위임 대상 페르소나를 명시한다. 원본 스킬의 `superpowers:<skill>` cross-reference는 스킬이 플러그인별로 흩어지면서 cross-plugin 참조가 된다 — 워커에 두 플러그인이 함께 활성화돼 있으면 이름으로 resolve되어 대부분 무해하나, `writing-skills`(base) → `superpowers:test-driven-development`(implementer)처럼 끊길 수 있는 케이스는 통합 플랜의 위임 배선에서 처리한다.
@@ -133,11 +133,11 @@ improver (improvement-review)
 
 ## 10. CLI · MCP 영향
 
-신규 MCP 도구·CLI 명령은 **필요 없다.** 이 설계는 AgentAgora의 기존 표면으로 충족된다:
+신규 CLI 명령·신규 MCP 도구는 없으나, **`agora.bot_emit`에 `target` 인자를 더하는 소폭 확장 1건이 필요하다.**
 
-- 위임 = 기존 `agora.dispatch`. 워커 등록 = `X-Agora-*` 자동 등록. 라우팅 봇 = `agora.register_bot` + `agora.bot_emit`. `delegation_request` 스키마 = `agora.register_schema`(또는 `schemas.jsonl` 로드). 인박스 드레인 = `agora.flush`. — 모두 현존 도구(`agora.*` 21종).
-- 라우팅 봇은 새 *아티팩트*이지 새 CLI/MCP 프리미티브가 아니다 — `examples/echo_bot`처럼 `AgoraBot` 스크립트 + 런처(`run-*.bat`/`.sh`). 선택적으로 `pyproject.toml [project.scripts]`에 편의 엔트리(예: `agora-routing-bot`)를 둘 수 있으나 필수는 아니다.
-- 라우팅 봇은 서버·워커와 별개 프로세스다 — 배포 시 함께 기동해야 한다. `agora-setup` 흐름에 라우팅 봇 기동을 더하는 것은 통합 플랜에서 다룬다.
+- 현행 `agora.bot_emit`은 `in_reply_to`(원 발신자 회신)·스키마 fan-out만 지원하고, 봇 세션의 `agora.dispatch`는 `_session_is_bot` 가드로 차단된다 — 라우팅 봇이 임의 대상으로 위임할 경로가 없다. 따라서 `agora.bot_emit`에 `target` 인자를 더해 봇이 지정한 워커로 전달할 수 있게 한다(`server.py` + `dispatcher`). 이 확장은 라우팅 봇 플랜(§12 플랜 8)의 선행 Task다.
+- 그 외는 기존 표면으로 충족된다 — 위임 `agora.dispatch`, 워커 등록 `X-Agora-*` 자동 등록, 봇 등록 `agora.register_bot`, 스키마 `agora.register_schema`(또는 `schemas.jsonl` 로드), 인박스 드레인 `agora.flush`. (`agora.*` 21종.)
+- 라우팅 봇 자체는 새 *아티팩트*다 — `examples/echo_bot`처럼 `AgoraBot` 스크립트 + 런처(`run-*.bat`/`.sh`). 선택적으로 `pyproject.toml [project.scripts]`에 편의 엔트리. 서버·워커와 별개 프로세스이므로 배포 시 함께 기동한다(통합 플랜).
 
 ## 11. 파일 영향 / 산출물
 
@@ -170,7 +170,7 @@ improver (improvement-review)
 
 **라우팅 봇 플랜 1개** — 신규 코드이므로 독립 플랜:
 
-8. 라우팅 봇 — `delegation_request` 스키마 정의, `AgoraBot` 서브클래스 구현(`delegation_request` 구독 → `agora.find`로 대상 페르소나 워커 resolve → `agora.dispatch`), 런처 스크립트(`run-*.bat`/`.sh`), 봇 단위 테스트. 배치 위치 확정.
+8. 라우팅 봇 — (a) `agora.bot_emit`에 `target` 인자 추가(SDK 선행 확장, `server.py`+`dispatcher` — §10), (b) `delegation_request` 스키마 정의, (c) `AgoraBot` 서브클래스 구현(`delegation_request` 구독 → `agora.find`로 대상 워커 resolve → `agora.bot_emit(target=...)`), (d) 런처 스크립트(`run-*.bat`/`.sh`), (e) 봇 단위 테스트. 배치 위치 확정.
 
 **통합 플랜 1개** — 1~8이 존재한 뒤 실행:
 
