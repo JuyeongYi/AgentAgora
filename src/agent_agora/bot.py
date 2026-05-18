@@ -136,24 +136,38 @@ class AgoraBot(ABC):
         except Exception as exc:  # noqa: BLE001 — 봇은 wait 실패에 죽지 않는다
             return {"error": f"channel/wait HTTP 호출 실패: {exc!r}"}
 
-    async def emit(self, payload: Any, *, in_reply_to: str | None = None) -> dict:
+    async def emit(
+        self,
+        payload: Any,
+        *,
+        in_reply_to: str | None = None,
+        target: str | None = None,
+    ) -> dict:
         """결과를 emit한다 (③ 경로 — handle 안에서 직접 호출 가능).
 
         payload가 `msgtype` 키를 가진 dict면 그대로 보내고, 아니면 `bot_reply`
-        스키마로 감싼다. in_reply_to 생략 시 현재 처리 중인 cmd에 회신하고,
+        스키마로 감싼다.
+
+        target 지정 시: 해당 워커/봇 인박스에 직접 전달. in_reply_to를 쓰지 않는다.
+        target 미지정 시: in_reply_to 생략 시 현재 처리 중인 cmd에 회신하고,
         처리 중인 cmd가 없으면 msgtype 구독 봇에게 schema-routed fan-out 된다.
         """
-        if in_reply_to is None:
-            in_reply_to = self._current_cmd_id
+        args: dict = {"payload": payload}
+        if target is not None:
+            args["target"] = target
+            # target 직접 지정 시 in_reply_to 불필요 (서버가 동시 지정을 거부)
+        else:
+            effective_reply_to = in_reply_to if in_reply_to is not None else self._current_cmd_id
+            if effective_reply_to is not None:
+                args["in_reply_to"] = effective_reply_to
         if not (isinstance(payload, dict) and "msgtype" in payload):
-            payload = {
+            args["payload"] = {
                 "msgtype": "bot_reply",
                 "from": self.INSTANCE_ID,
                 "ts": self.now(),
                 "result": payload,
             }
-        res = _result_json(await self.session.call_tool(
-            "agora.bot_emit", {"payload": payload, "in_reply_to": in_reply_to}))
+        res = _result_json(await self.session.call_tool("agora.bot_emit", args))
         if "error" in res:
             print(f"[{self.INSTANCE_ID}] emit 실패: {res['error']}", flush=True)
         self._emitted = True

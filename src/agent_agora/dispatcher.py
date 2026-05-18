@@ -471,22 +471,36 @@ class Dispatcher:
         source: str,
         payload: Any,
         in_reply_to: str | None = None,
+        target: str | None = None,
     ) -> dict[str, Any]:
-        """봇 결과 emit (결정 25). in_reply_to 지정 시 원 메시지의 source로 라우팅,
-        미지정 시 payload msgtype 구독 봇에 schema-routed fan-out. 항상 observer cc."""
+        """봇 결과 emit (결정 25).
+
+        target 지정 시: 해당 워커/봇 인박스에 직접 전달 (라우팅 봇용 — spec §10).
+        in_reply_to 지정 시: 원 메시지의 source로 라우팅.
+        둘 다 미지정 시: payload msgtype 구독 봇에 schema-routed fan-out.
+        항상 observer cc.
+        target과 in_reply_to를 동시에 지정하면 ValueError.
+        """
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
         msgtype = self._validate_payload(payload)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority("normal")
 
+        if target is not None and in_reply_to is not None:
+            raise ValueError("target과 in_reply_to를 동시에 지정할 수 없습니다")
         reply_target: str | None = None
-        if in_reply_to is not None:
+        if target is not None:
+            # target을 워커 또는 봇 레지스트리에서 검증 — 미등록이면 NotRegisteredError
+            if not self._bot_registry.is_bot(target):
+                self._registry.resolve_instance_id(target)  # 워커 미등록 시 raise
+            reply_target = target
+        elif in_reply_to is not None:
             reply_target = self._conv.source_of(in_reply_to)
             if reply_target is None:
                 reply_target = self._persistence.lookup_source_for(in_reply_to)
         subscriber_bots: list[str] = []
-        if in_reply_to is None:
+        if target is None and in_reply_to is None:
             subscriber_bots = sorted(self._bot_registry.subscribers_of(msgtype))
         observer_bots = sorted(self._bot_registry.observers())
 

@@ -470,9 +470,15 @@ def create_agora_app(
         ctx: Context,
         payload: dict,
         in_reply_to: str | None = None,
+        target: str | None = None,
     ) -> str:
-        """Emit a bot result. Bots only. in_reply_to 지정 시 원 caller로,
-        미지정 시 payload msgtype 구독 봇에 fan-out (결정 25)."""
+        """Emit a bot result. Bots only.
+
+        target 지정 시 해당 워커/봇 인박스에 직접 전달 (라우팅 봇용).
+        in_reply_to 지정 시 원 caller로 회신.
+        둘 다 미지정 시 payload msgtype 구독 봇에 schema-routed fan-out (결정 25).
+        target과 in_reply_to는 동시에 지정 불가.
+        """
         try:
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
@@ -483,7 +489,8 @@ def create_agora_app(
             return json.dumps({"error": str(AgoraError("bot_emit_not_a_bot"))})
         try:
             result = await dispatcher.bot_emit(
-                source=bot.instance_id, payload=payload, in_reply_to=in_reply_to)
+                source=bot.instance_id, payload=payload,
+                in_reply_to=in_reply_to, target=target)
             return json.dumps({"status": "ok", **result}, ensure_ascii=False)
         except (ValueError, NotRegisteredError) as e:
             return json.dumps({"error": str(e)})
