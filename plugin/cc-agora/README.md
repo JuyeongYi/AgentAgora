@@ -20,6 +20,14 @@ AgentAgora 워커 간 통신 코어 Claude Code 플러그인. 메시지 dispatch
 
 각 슬래시의 상세 동작은 `skills/<name>/SKILL.md`에 있다. frontmatter `description`은 영어, 본문은 한국어 평서체.
 
+## 훅
+
+`hooks/hooks.json`은 `SessionStart` 훅을 하나 등록한다 — `matcher: "compact"`로
+컴팩션 직후 발화해, 채널 모드 워커가 `agora.flush`로 인박스를 다시 드레인하도록
+안내문을 stdout으로 주입한다. 컴팩션이 채널 루프 진행 상태를 요약에서 잃어
+워커가 멈추는 것을 복구한다. 안내문은 셸 메타문자 없는 한 줄 평문이어야 한다
+(cmd.exe·POSIX 셸 양쪽에서 동일하게 출력되도록).
+
 ## payload.py
 
 `scripts/payload.py`의 `make_payload`가 `type` enum(`task | reply | closing | ack`)을 강제해 envelope·payload 분리를 보장한다(spec §5.3).
