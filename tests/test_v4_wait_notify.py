@@ -103,9 +103,25 @@ async def test_coexists_with_flush(setup):
     assert len(drained) == 1
 
 
-def test_wait_notify_tool_registered(agora_dir):
-    """_build_app이 agora.wait_notify 도구를 등록한다."""
+def test_wait_notify_tool_not_registered_by_default(agora_dir):
+    """_build_app은 기본적으로 agora.wait_notify 도구를 등록하지 않는다."""
     from agent_agora.__main__ import _build_app
     mcp = _build_app(agora_dir=agora_dir, port=8499)
     names = {t.name for t in mcp._tool_manager.list_tools()}
+    assert "agora.wait_notify" not in names
+
+
+def test_wait_notify_tool_registered_with_add_wait(agora_dir):
+    """add_wait=True면 agora.wait_notify 도구가 등록된다."""
+    from agent_agora.__main__ import _build_app
+    mcp = _build_app(agora_dir=agora_dir, port=8499, add_wait=True)
+    names = {t.name for t in mcp._tool_manager.list_tools()}
     assert "agora.wait_notify" in names
+
+
+def test_flush_tool_always_registered(agora_dir):
+    """agora.flush는 게이팅과 무관하게 항상 등록된다."""
+    from agent_agora.__main__ import _build_app
+    mcp = _build_app(agora_dir=agora_dir, port=8499)
+    names = {t.name for t in mcp._tool_manager.list_tools()}
+    assert "agora.flush" in names

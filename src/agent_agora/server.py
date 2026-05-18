@@ -73,8 +73,15 @@ def create_agora_app(
     port: int,
     file_store: Any = None,
     file_policy: Any = None,
+    add_wait: bool = False,
 ) -> FastMCP:
-    """FastMCP 앱을 생성한다 (v3: messaging-only)."""
+    """FastMCP 앱을 생성한다 (v3: messaging-only).
+
+    add_wait: True면 blocking long-poll 도구 agora.wait_notify를 MCP 도구로
+    등록한다. 기본 False — 채널 어댑터·봇 SDK는 GET /channel/wait HTTP
+    엔드포인트를 쓰므로 워커 도구 표면에서 이 도구를 들어낸다 (--add-wait는
+    레거시·디버깅용 옵트인).
+    """
 
     mcp = FastMCP(
         name="AgentAgora",
@@ -526,17 +533,20 @@ def create_agora_app(
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
-    @mcp.tool(name="agora.wait_notify")
-    async def agora_wait_notify(instance_id: str, timeout_ms: int | None = None) -> str:
-        """Non-destructive long-poll — block until instance_id has inbound,
-        then return {instance_id, pending, sources} without draining the queue.
-        For the agora-channel adapter. instance_id need not be registered."""
-        try:
-            result = await dispatcher.wait_notify(
-                instance_id=instance_id, timeout_ms=timeout_ms)
-            return json.dumps(result, ensure_ascii=False)
-        except DispatcherClosed:
-            return json.dumps({"error": "server is shutting down"})
+    if add_wait:
+        @mcp.tool(name="agora.wait_notify")
+        async def agora_wait_notify(instance_id: str, timeout_ms: int | None = None) -> str:
+            """Non-destructive long-poll — block until instance_id has inbound,
+            then return {instance_id, pending, sources} without draining the queue.
+            Opt-in via --add-wait. The agora-channel adapter and AgoraBot SDK use
+            the GET /channel/wait HTTP endpoint instead. instance_id need not be
+            registered."""
+            try:
+                result = await dispatcher.wait_notify(
+                    instance_id=instance_id, timeout_ms=timeout_ms)
+                return json.dumps(result, ensure_ascii=False)
+            except DispatcherClosed:
+                return json.dumps({"error": "server is shutting down"})
 
     if file_store is not None:
         @mcp.tool(name="agora.share_file")

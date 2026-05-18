@@ -64,6 +64,7 @@ def _build_app(
     dead_session_timeout_ms: int = 1_800_000,
     gc_retention_days: int = 90,
     file_retention_days: int = 7,
+    add_wait: bool = False,
 ):
     """Construct FastMCP app + supporting state. Used by CLI and tests.
 
@@ -143,6 +144,7 @@ def _build_app(
         port=port,
         file_store=file_store,
         file_policy=file_policy,
+        add_wait=add_wait,
     )
     mcp._agora_instance_registry = instance_registry  # type: ignore[attr-defined]
     mcp._agora_schema_registry = schema_registry  # type: ignore[attr-defined]
