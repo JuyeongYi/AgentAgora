@@ -64,6 +64,28 @@ fi
 `<flags>` is the chosen combination of `--no-tls`, `--no-timeout` or
 `--default-wait-timeout-ms <ms>`, and `--restore`.
 
+Then record the chosen server configuration to
+`<dir>/.agentagora/server-info.json` (create the `.agentagora/` directory if it
+does not exist yet). This file is an operator/worker reference — the server does
+not read it. It exists so later setup steps and other sessions can look up the
+connection details without re-deriving them from the launch script. Write these
+keys:
+
+```json
+{
+  "host": "127.0.0.1",
+  "port": <chosen port>,
+  "tls": <true if TLS on, false if --no-tls>,
+  "url": "<http if --no-tls, else https>://127.0.0.1:<port>/mcp",
+  "wait_timeout_ms": <chosen ms, or null when --no-timeout>,
+  "restore": <true if --restore was chosen, else false>,
+  "admin_token_required": <true if an AGORA_ADMIN_TOKEN was set, else false>
+}
+```
+
+`url` is the exact value workers put in their `.mcp.json`. Never write the admin
+token value itself — only the boolean `admin_token_required`.
+
 ### 2. Agent roster
 
 Ask the operator for the list of agents to create — each as an `id` plus a
@@ -120,5 +142,5 @@ reliable ordering.
 | Artifact | Location |
 | --- | --- |
 | `run-cc-agora.ps1` / `run-cc-agora.sh` | `<dir>/` |
-| `schemas.jsonl`, `comm-matrix.csv`, `file-policy.json` | `<dir>/.agentagora/` |
+| `server-info.json`, `schemas.jsonl`, `comm-matrix.csv`, `file-policy.json` | `<dir>/.agentagora/` |
 | Worker directories | `<dir>/<id>/` |
