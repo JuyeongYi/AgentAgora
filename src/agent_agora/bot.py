@@ -29,6 +29,7 @@ import traceback
 from abc import ABC, abstractmethod
 from typing import Any
 
+import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
@@ -108,6 +109,33 @@ class AgoraBot(ABC):
     def now() -> str:
         return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    def _channel_wait_url(self) -> str:
+        """GET /channel/wait의 전체 URL. self.url(MCP 엔드포인트)에서 /mcp
+        꼬리를 떼어 같은 호스트·포트의 채널 경로를 유도한다."""
+        base = self.url.rstrip("/")
+        if base.endswith("/mcp"):
+            base = base[: -len("/mcp")]
+        return base.rstrip("/") + "/channel/wait"
+
+    async def _http_wait(self, instance_id: str, timeout_ms: int) -> dict:
+        """GET /channel/wait로 인박스 도착을 long-poll한다.
+
+        blocking long-poll 도구 agora.wait_notify의 대체 경로 — 봇은 MCP 도구
+        표면 대신 이 HTTP 엔드포인트를 쓴다. 호출 실패는 봇을 죽이지 않는다:
+        {error:...}를 반환하고, 이어지는 flush가 인박스를 드레인하고
+        last_seen heartbeat를 갱신한다."""
+        try:
+            async with httpx.AsyncClient(timeout=None) as http:
+                resp = await http.get(
+                    self._channel_wait_url(),
+                    params={"instance_id": instance_id,
+                            "timeout_ms": timeout_ms})
+                resp.raise_for_status()
+                data = resp.json()
+                return data if isinstance(data, dict) else {}
+        except Exception as exc:  # noqa: BLE001 — 봇은 wait 실패에 죽지 않는다
+            return {"error": f"channel/wait HTTP 호출 실패: {exc!r}"}
+
     async def emit(self, payload: Any, *, in_reply_to: str | None = None) -> dict:
         """결과를 emit한다 (③ 경로 — handle 안에서 직접 호출 가능).
 
@@ -132,18 +160,16 @@ class AgoraBot(ABC):
         return res
 
     async def run(self) -> None:
-        """수신 루프. wait_notify로 도착을 기다리고(event-driven — 구독 스키마
-        메시지가 라우팅되면 즉시 리턴), flush로 인박스를 드레인한다.
-        메시지 없이 heartbeat 주기로 wait_notify가 리턴해도 이어지는 flush가
-        last_seen을 갱신해 dead-bot sweep용 heartbeat를 유지한다."""
+        """수신 루프. GET /channel/wait HTTP 엔드포인트로 도착을 기다리고
+        (event-driven — 구독 스키마 메시지가 라우팅되면 즉시 리턴), flush로
+        인박스를 드레인한다. 메시지 없이 heartbeat 주기로 wait가 리턴해도
+        이어지는 flush가 last_seen을 갱신해 dead-bot sweep용 heartbeat를
+        유지한다."""
         print(f"[{self.INSTANCE_ID}] 수신 루프 시작 "
               f"(mode={self.BOT_MODE}, subscribe={self.SUBSCRIBE_SCHEMAS}, "
               f"heartbeat={self.WAIT_TIMEOUT_MS}ms).", flush=True)
         while True:
-            await self.session.call_tool(
-                "agora.wait_notify",
-                {"instance_id": self.INSTANCE_ID,
-                 "timeout_ms": self.WAIT_TIMEOUT_MS})
+            await self._http_wait(self.INSTANCE_ID, self.WAIT_TIMEOUT_MS)
             res = _result_json(await self.session.call_tool("agora.flush", {}))
             for cmd in res.get("commands", []):
                 await self._dispatch(cmd)

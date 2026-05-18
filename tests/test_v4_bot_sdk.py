@@ -201,32 +201,43 @@ class _StopLoop(Exception):
 
 
 @pytest.mark.asyncio
-async def test_run_uses_wait_notify_then_flush():
-    """run()은 agora.wait_notify(WAIT_TIMEOUT_MS) 호출 뒤 agora.flush를 호출해야 한다."""
-    seen_notify_timeouts: list = []
+async def test_run_uses_http_wait_then_flush(monkeypatch):
+    """run()은 GET /channel/wait HTTP 엔드포인트로 도착을 기다린 뒤 agora.flush를
+    호출한다. agora.wait_notify MCP 도구는 더 이상 호출하지 않는다."""
+    seen_wait_calls: list = []
     seen_flush_calls: list = []
 
-    class _WaitNotifySession(FakeSession):
+    async def fake_http_wait(self, instance_id, timeout_ms):
+        seen_wait_calls.append((instance_id, timeout_ms))
+        if len(seen_wait_calls) >= 2:
+            raise _StopLoop()  # 루프 탈출
+        return {"instance_id": instance_id, "pending": 0, "sources": []}
+
+    monkeypatch.setattr("agent_agora.bot.AgoraBot._http_wait", fake_http_wait)
+
+    class _FlushSession(FakeSession):
         async def call_tool(self, name, args):
-            if name == "agora.wait_notify":
-                seen_notify_timeouts.append(args.get("timeout_ms"))
-                if len(seen_notify_timeouts) >= 2:
-                    raise _StopLoop()  # 루프 탈출
-                return _FakeResult({"status": "ok"})
             if name == "agora.flush":
                 seen_flush_calls.append(args)
                 return _FakeResult({"commands": []})
+            if name == "agora.wait_notify":
+                raise AssertionError(
+                    "run()은 agora.wait_notify MCP 도구를 호출하면 안 된다")
             return await super().call_tool(name, args)
 
     bot = _ReturnBot()
-    bot._session = _WaitNotifySession()
+    bot._session = _FlushSession()
     with pytest.raises(_StopLoop):
         await bot.run()
-    # wait_notify는 WAIT_TIMEOUT_MS로 호출돼야 한다
-    assert seen_notify_timeouts
-    assert all(t == _ReturnBot.WAIT_TIMEOUT_MS for t in seen_notify_timeouts)
-    # flush는 각 wait_notify 성공 뒤 호출돼야 한다 (루프 탈출 전까지)
+    assert seen_wait_calls
+    assert all(t == _ReturnBot.WAIT_TIMEOUT_MS for _, t in seen_wait_calls)
     assert len(seen_flush_calls) >= 1
+
+
+def test_channel_wait_url_derived_from_mcp_url():
+    """봇의 /channel/wait URL은 MCP URL에서 /mcp 꼬리를 떼어 유도된다."""
+    bot = _ReturnBot(url="http://127.0.0.1:8420/mcp")
+    assert bot._channel_wait_url() == "http://127.0.0.1:8420/channel/wait"
 
 
 # ── 스키마 이름 충돌 에러 명확화 ────────────────────────────────────────────
