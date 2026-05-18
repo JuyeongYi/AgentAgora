@@ -112,10 +112,10 @@ line, each with the four keys the server requires: `name`, `kind`, `purpose`,
 Using the roster from step 2:
 
 - **Communication matrix** — pick a topology with the operator (hub-and-spoke /
-  all-allow / custom) and write an `(N+1)×(N+1)` CSV with a `*` fallback row and
-  column to `<dir>/.agentagora/comm-matrix.csv`. Cells are non-negative integers
-  — `0` forbids the edge, `>0` allows it. Follow the `agora-make-comm-matrix`
-  skill's CSV rules.
+  all-allow / custom) and write an `(N+1)×(N+1)` CSV with a `.*` catch-all row
+  and column to `<dir>/.agentagora/comm-matrix.csv`. Cells are non-negative
+  integers — `0` forbids the edge, `>0` allows it. Follow the
+  `agora-make-comm-matrix` skill's CSV rules.
 - **File policy** — for each agent, ask for read and write gitignore-pattern
   globs, and write `<dir>/.agentagora/file-policy.json` as
   `{"<id>": {"r": [...], "w": [...]}}`. A missing `r` means read-all; a missing

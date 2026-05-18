@@ -1,5 +1,5 @@
 ---
-description: Author a communication-matrix CSV from the live registered instances — lays out the N×N grid (plus the * fallback row/column) for a chosen topology.
+description: Author a communication-matrix CSV from the live registered instances — lays out the N×N grid (plus the .* catch-all row/column) for a chosen topology.
 argument-hint: [<out-path>]
 disable-model-invocation: true
 ---
@@ -37,14 +37,15 @@ This skill *authors* the CSV. To *apply* it, use
    - **custom** — the operator dictates the allowed edges and their weights.
 
 3. Build the CSV:
-   - Header row = the `from` list: every instance id, plus `*` (the wildcard
-     column — fallback weight for a sender not in the matrix).
+   - Header row = the `from` list: every instance id, plus `.*` (the catch-all
+     column — fallback weight for a sender not matched by any other pattern).
    - One data row per instance id (the row label is the `to` instance), plus a
-     `*` row (the wildcard row — fallback for a receiver not in the matrix).
-   - The grid is square: N instances + the `*` label → (N+1)×(N+1).
+     `.*` row (the catch-all row — fallback for a receiver not matched by any
+     other pattern).
+   - The grid is square: N instances + the `.*` label → (N+1)×(N+1).
    - Cells are non-negative integers — `0` = forbidden, `>0` = allowed weight.
-     Default every `*` fallback cell to `0` (an instance absent from the matrix
-     is denied) unless the operator asks otherwise.
+     Default every `.*` catch-all cell to `0` (an instance absent from the
+     matrix is denied) unless the operator asks otherwise.
 
 4. Show the operator the rendered CSV, then write it to `<out-path>`.
 
@@ -56,15 +57,19 @@ This skill *authors* the CSV. To *apply* it, use
 ## CSV format
 
 ```
-*,pm,coder,reviewer
+.*,pm,coder,reviewer
 0,1,1,1
 1,0,1,1
 1,1,0,0
 1,1,0,0
 ```
 
-Header = the `from` list (`*` = unlisted-sender fallback column). Data row i
-has `to` = header[i]; the `*` row is the unlisted-receiver fallback. The server
-resolves `weight_of(from, to)` against the explicit cell, falling back to the
-`*` row/column for instances absent from the matrix. A matrix with no `*` label
-is a strict whitelist — any unlisted `from`/`to` is denied.
+Header = the `from` list (`.*` = catch-all sender column). Data row i has `to`
+= header[i]; the `.*` row is the catch-all receiver row. CSV headers and row
+labels are **regex patterns** matched with `re.fullmatch` against instance ids —
+an exact name like `pm` is itself a valid regex and matches only that instance;
+a pattern like `coder-.*` covers any id starting with `coder-`; `.*` is the
+catch-all that matches every instance. The server resolves `weight_of(from, to)`
+against the highest-weight matching cell (max weight when multiple patterns
+match). A matrix with no `.*` label is a strict whitelist — any unmatched
+`from`/`to` is denied.
