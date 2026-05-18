@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo Context was just compacted. If you are an AgentAgora channel-mode worker, call agora.flush now to drain any unprocessed inbox messages, reply to each sender, then return to idle."
+          }
+        ]
+      }
+    ]
+  }
+}
