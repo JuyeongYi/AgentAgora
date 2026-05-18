@@ -3,6 +3,9 @@ name: requesting-code-review
 description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements
 model: sonnet
 effort: medium
+delegation-target: "sp-implementer"
+delegation-schema: "delegation_request"
+delegation-note: "requesting-code-review initiates the review; receiving-code-review handles the result. After review is complete, dispatch review findings back to sp-implementer."
 ---
 
 # Requesting Code Review
@@ -103,3 +106,9 @@ You: [Fix progress indicators]
 - Request clarification
 
 See template at: requesting-code-review/code-reviewer.md
+
+## Handoff
+
+After review is complete, emit a `delegation_request` to `sp-implementer`.
+Payload: `{ "review_result": "<approved|changes_requested>", "comments": [...] }`.
+`context_summary`: code reviewed, key findings, and recommended next action.

@@ -3,6 +3,8 @@ name: subagent-driven-development
 description: Use when executing implementation plans with independent tasks in the current session
 model: sonnet
 effort: medium
+delegation-target: "sp-implementer"
+delegation-schema: "delegation_request"
 ---
 
 # Subagent-Driven Development

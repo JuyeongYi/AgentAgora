@@ -3,6 +3,8 @@ name: writing-plans
 description: Use when you have a spec or requirements for a multi-step task, before touching code
 model: opus
 effort: high
+delegation-target: "sp-router"
+delegation-schema: "delegation_request"
 ---
 
 # Writing Plans
@@ -152,3 +154,9 @@ After saving the plan, offer execution choice:
 **If Inline Execution chosen:**
 - **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
 - Batch execution with checkpoints for review
+
+## Handoff
+
+When the plan is finalized, emit a `delegation_request` to `sp-router` (or dispatch directly with `agora.dispatch`).
+Payload: `{ "plan": "<plan content or file path>", "tasks": [...] }`.
+`context_summary`: brief statement of what was planned and the top-level goal.

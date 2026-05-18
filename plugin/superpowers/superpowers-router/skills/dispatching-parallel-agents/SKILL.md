@@ -3,6 +3,9 @@ name: dispatching-parallel-agents
 description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
 model: sonnet
 effort: medium
+delegation-target: "sp-implementer"
+delegation-schema: "delegation_request"
+delegation-note: "Dispatch one delegation_request per parallel implementer subagent."
 ---
 
 # Dispatching Parallel Agents

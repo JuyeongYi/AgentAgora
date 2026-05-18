@@ -129,13 +129,30 @@ label, working style, handoff) and scaffold the worker directory under `<dir>`.
 
 ## Closing
 
-Tell the operator the launch order: first run `run-cc-agora` to start the server
-and confirm it is up, then run each worker's `run.ps1`/`run.sh` from inside its
-directory. The server must be up before any worker connects — a worker registers
-with the server when its MCP client connects at session start, and Claude Code
-connects MCP servers before it runs any `SessionStart` hook, so a hook cannot
-bring the server up in time. A standalone launch script run first is the only
-reliable ordering.
+Tell the operator the launch order:
+
+1. Run `run-cc-agora` (or `run-cc-agora.ps1` on Windows) to start the AgentAgora server.
+   Confirm it is up (it prints the listening port).
+2. If a routing bot is deployed (e.g. `examples/routing_bot/run-routing-bot.ps1`), start it next.
+   The routing bot subscribes to `delegation_request` and must be running before persona workers
+   begin emitting delegation requests.
+3. Run each worker's `run.ps1`/`run.sh` from inside its directory.
+
+The server must be up before any worker connects — a worker registers with the server when its
+MCP client connects at session start, and Claude Code connects MCP servers before it runs any
+`SessionStart` hook, so a hook cannot bring the server up in time. A standalone launch script
+run first is the only reliable ordering. The routing bot has the same constraint — it connects
+at startup, so it must come up after the server but before the persona workers.
+
+### Superpowers persona deployment note
+
+If deploying superpowers persona workers (`sp-planner`, `sp-router`, `sp-implementer`, etc.),
+also confirm:
+- `.agentagora/comm-matrix.csv` is present (enforces §9 workflow ACL).
+- `.agentagora/schemas.jsonl` contains the `delegation_request` schema.
+- `plugin/cc-agora-ops/config/roles.json` has `sp-planner`, `sp-router`, etc. mapped to
+  their `superpowers-*` plugins.
+- The routing bot is running before persona workers start.
 
 ## Output
 

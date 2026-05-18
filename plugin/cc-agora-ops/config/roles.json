@@ -5,5 +5,12 @@
   "tester":       { "plugin": "cc-agora-tester" },
   "writer":       { "plugin": "cc-agora-writer" },
   "planner":      { "plugin": "cc-agora-planner" },
-  "general":      { "plugin": "cc-agora-general" }
+  "general":      { "plugin": "cc-agora-general" },
+  "sp-planner":   { "plugin": "superpowers-planner" },
+  "sp-implementer": { "plugin": "superpowers-implementer" },
+  "sp-debugger":  { "plugin": "superpowers-debugger" },
+  "sp-reviewer":  { "plugin": "superpowers-reviewer" },
+  "sp-router":    { "plugin": "superpowers-router" },
+  "sp-improver":  { "plugin": "superpowers-improver" },
+  "sp-base":      { "plugin": "superpowers-base" }
 }

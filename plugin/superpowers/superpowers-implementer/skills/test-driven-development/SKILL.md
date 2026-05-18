@@ -3,6 +3,7 @@ name: test-driven-development
 description: Use when implementing any feature or bugfix, before writing implementation code
 model: sonnet
 effort: medium
+delegation-note: "in-persona skill; no cross-persona dispatch. Proceed to executing-plans within the same implementer worker."
 ---
 
 # Test-Driven Development (TDD)

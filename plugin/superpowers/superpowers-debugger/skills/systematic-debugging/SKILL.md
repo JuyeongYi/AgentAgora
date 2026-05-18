@@ -3,6 +3,8 @@ name: systematic-debugging
 description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
 model: opus
 effort: high
+delegation-target: "sp-implementer"
+delegation-schema: "delegation_request"
 ---
 
 # Systematic Debugging
@@ -296,3 +298,9 @@ From debugging sessions:
 - Random fixes approach: 2-3 hours of thrashing
 - First-time fix rate: 95% vs 40%
 - New bugs introduced: Near zero vs common
+
+## Handoff
+
+When root cause is identified and fix is ready, emit a `delegation_request` back to `sp-implementer`.
+Payload: `{ "fix": "<description or patch>", "root_cause": "<analysis>" }`.
+`context_summary`: what bug was found and what fix is proposed.

@@ -3,6 +3,7 @@ name: writing-skills
 description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
 model: opus
 effort: high
+delegation-note: "superpowers:test-driven-development is in superpowers-implementer plugin. Ensure that plugin is active in the same worker, or dispatch to sp-implementer persona."
 ---
 
 # Writing Skills
@@ -655,3 +656,9 @@ Same cycle: RED (baseline) → GREEN (write skill) → REFACTOR (close loopholes
 Same benefits: Better quality, fewer surprises, bulletproof results.
 
 If you follow TDD for code, follow it for skills. It's the same discipline applied to documentation.
+
+## Cross-plugin reference note
+
+`superpowers:test-driven-development` is defined in the `superpowers-implementer` plugin.
+If skill resolution fails (worker does not have `superpowers-implementer` active),
+dispatch to the `sp-implementer` persona via `agora.dispatch` instead of invoking the skill directly.

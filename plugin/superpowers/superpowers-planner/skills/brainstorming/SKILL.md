@@ -3,6 +3,8 @@ name: brainstorming
 description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
 model: opus
 effort: max
+delegation-target: "superpowers:writing-plans"
+delegation-note: "brainstorming completes in-persona; invoke writing-plans next within the same planner worker."
 ---
 
 # Brainstorming Ideas Into Designs

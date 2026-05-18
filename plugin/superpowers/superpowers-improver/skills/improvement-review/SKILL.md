@@ -6,6 +6,9 @@ description: >
   research→analyze→enhance-identification pattern into a single focused review. Produces a
   structured findings document covering feature improvements, refactoring opportunities, and
   new feature ideas, then hands off to the planner persona to close the ouroboros loop.
+delegation-target: "sp-planner"
+delegation-schema: "delegation_request"
+delegation-note: "If user approves another cycle, dispatch findings to sp-planner to restart the workflow loop."
 ---
 
 # Improvement Review
@@ -128,3 +131,11 @@ After producing the findings document, decide whether to loop or stop:
 - Do not invent findings to fill categories. An empty category with "(none found)" is a valid and honest result.
 - The findings document is intentionally lightweight — it is input to the planner, not a final report. The planner will expand each finding into tasks.
 - If `agora.find` returns no registered planner worker, log the findings path and instruct the user to manually forward `.improvement-review/findings.md` to the planner.
+
+## Handoff
+
+If the user approves a new improvement cycle, emit a `delegation_request` to `sp-planner`.
+Payload: `{ "findings": { "improvements": [...], "refactoring": [...], "new_features": [...] } }`.
+`context_summary`: what was reviewed, what opportunities were found.
+
+If the user declines, end the workflow. Do not emit a dispatch.

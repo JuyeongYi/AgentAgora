@@ -3,6 +3,8 @@ name: finishing-a-development-branch
 description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup
 model: sonnet
 effort: medium
+delegation-target: "sp-improver"
+delegation-schema: "delegation_request"
 ---
 
 # Finishing a Development Branch
@@ -251,3 +253,9 @@ git worktree prune  # Self-healing: clean up any stale registrations
 - Clean up worktree for Options 1 & 4 only
 - `cd` to main repo root before worktree removal
 - Run `git worktree prune` after removal
+
+## Handoff
+
+After branch finishing is complete, emit a `delegation_request` to `sp-improver`.
+Payload: `{ "branch": "<branch name>", "summary": "<what was built>" }`.
+`context_summary`: summary of the implementation just completed.
