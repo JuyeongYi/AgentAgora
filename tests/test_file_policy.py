@@ -12,8 +12,8 @@ _POLICY = json.dumps({
     "workers": {
         "Coder1": {"r": ["*"], "w": ["*.py", "*.md", "!secret_*.py"]},
         "Reviewer1": {"r": ["*.md"], "w": []},
+        ".*": {"r": ["*.txt"], "w": []},
     },
-    "fallback": {"r": ["*.txt"], "w": []},
 })
 
 
@@ -41,12 +41,12 @@ def test_worker_download_patterns():
     assert fp.can_download("Reviewer1", "app.py") is False     # r=["*.md"]
 
 
-def test_fallback_for_unlisted():
+def test_dotstar_catch_all_for_unlisted():
     fp = FilePolicy()
     fp.load_json(_POLICY)
-    assert fp.can_download("Ghost", "readme.txt") is True   # fallback r
+    assert fp.can_download("Ghost", "readme.txt") is True   # .* catch-all r
     assert fp.can_download("Ghost", "app.py") is False
-    assert fp.can_upload("Ghost", "app.py") is False        # fallback w=[]
+    assert fp.can_upload("Ghost", "app.py") is False        # .* catch-all w=[]
 
 
 def test_missing_dimension_asymmetric_default():
@@ -72,4 +72,44 @@ def test_load_json_rejects_bad():
     fp = FilePolicy()
     with pytest.raises(AgoraError) as ei:
         fp.load_json("not json")
+    assert ei.value.code == "file_policy_invalid"
+
+
+def test_regex_worker_key_matches_group():
+    fp = FilePolicy()
+    fp.load_json(json.dumps({"workers": {"coder-.*": {"r": ["*.py"], "w": ["*.py"]}}}))
+    assert fp.can_upload("coder-1", "app.py") is True
+    assert fp.can_upload("coder-2", "app.py") is True
+    assert fp.can_download("coder-9", "lib.py") is True
+
+
+def test_regex_worker_key_fullmatch_not_partial():
+    fp = FilePolicy()
+    fp.load_json(json.dumps({"workers": {"coder-.*": {"r": ["*.py"], "w": ["*.py"]}}}))
+    # 'decoder'는 coder 그룹 아님 — 매칭 항목 없음 → 무제한
+    assert fp.can_upload("decoder", "anything.exe") is True
+
+
+def test_multi_match_unions_permission():
+    fp = FilePolicy()
+    fp.load_json(json.dumps({"workers": {
+        "coder-1": {"r": ["*.md"], "w": []},
+        "coder-.*": {"r": [], "w": ["*.py"]},
+    }}))
+    # coder-1은 두 항목 모두에 매칭 — 업로드는 넓은 항목이, 다운로드는 좁은 항목이 허용 (OR)
+    assert fp.can_upload("coder-1", "app.py") is True
+    assert fp.can_download("coder-1", "notes.md") is True
+
+
+def test_load_json_rejects_invalid_regex_key():
+    fp = FilePolicy()
+    with pytest.raises(AgoraError) as ei:
+        fp.load_json(json.dumps({"workers": {"*": {"r": [], "w": []}}}))
+    assert ei.value.code == "file_policy_invalid"
+
+
+def test_load_json_rejects_fallback_field():
+    fp = FilePolicy()
+    with pytest.raises(AgoraError) as ei:
+        fp.load_json(json.dumps({"workers": {}, "fallback": {"r": ["*"], "w": []}}))
     assert ei.value.code == "file_policy_invalid"
