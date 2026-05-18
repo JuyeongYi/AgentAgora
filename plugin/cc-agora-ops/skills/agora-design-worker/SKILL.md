@@ -35,6 +35,18 @@ Ask the operator the following **one question at a time** — do not batch them:
    this role.
 5. **Handoff specifics** — does this worker forward out-of-domain work? Is there
    a default delegate?
+6. **Permission mode** — which `--permission-mode` the worker launches with. A
+   channel-mode worker runs unattended (it wakes on notifications, with no
+   operator at the keyboard), so `default` stalls it on the first permission
+   prompt. Recommend `acceptEdits`; use `bypassPermissions` for a fully
+   autonomous worker in a trusted sandbox. Choices: `acceptEdits`, `auto`,
+   `bypassPermissions`, `default`, `dontAsk`, `plan`.
+7. **Model** — which `--model` the worker launches with. Recommend `sonnet` for
+   routine workers; `opus` for roles that need heavy reasoning. Accepts an alias
+   (`opus`, `sonnet`) or a full model name.
+8. **Effort** — which `--effort` level the worker launches with. Recommend
+   `medium`; raise to `high` or above for complex roles. Choices: `low`,
+   `medium`, `high`, `xhigh`, `max`.
 
 ### 2. Compose the persona
 
@@ -87,8 +99,9 @@ Discover currently registered workers dynamically via `agora.instances` or
 
 ### 3. Confirm
 
-Show the operator the fully composed persona and ask for confirmation. Revise on
-request. Do not scaffold until the operator approves.
+Show the operator the fully composed persona and the chosen launch settings
+(permission mode, model, effort) and ask for confirmation. Revise on request. Do
+not scaffold until the operator approves.
 
 ### 4. Scaffold the worker directory
 
@@ -101,8 +114,31 @@ request. Do not scaffold until the operator approves.
    `.mcp.json`, and `.claude/settings.local.json` (enables `cc-agora`); it writes
    no run script.
 3. Delete the temporary file.
-4. Invoke the `agora-run-script` skill with the worker directory as its `<dir>`
-   argument to write the channel-mode launch script (`run.ps1`/`run.sh`).
+4. Write the channel-mode launch script into the worker directory, UTF-8 with LF
+   newlines. Pick the file by host OS and bake in the launch settings from
+   dialogue answers 6–8 — substitute `<permission-mode>`, `<model>`, `<effort>`
+   with the operator's chosen values:
+
+   - **Windows** → `<id>/run.ps1`:
+
+     ```
+     # AgentAgora channel-mode worker launcher. Run from inside this directory.
+     claude --dangerously-load-development-channels server:agora-channel --permission-mode <permission-mode> --model <model> --effort <effort> @args
+     ```
+
+   - **Unix (macOS/Linux)** → `<id>/run.sh`:
+
+     ```
+     #!/usr/bin/env bash
+     # AgentAgora channel-mode worker launcher. Run from inside this directory.
+     claude --dangerously-load-development-channels server:agora-channel --permission-mode <permission-mode> --model <model> --effort <effort> "$@"
+     ```
+
+   `--dangerously-load-development-channels` is required because `agora-channel`
+   is a self-made channel not on the official allowlist. On Unix, tell the
+   operator to mark the script executable: `chmod +x <id>/run.sh`. This is the
+   script `/cc-agora:agora-run-script` writes, plus the three launch settings —
+   do not also invoke that skill.
 
 ### 5. Report
 
