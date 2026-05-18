@@ -4,19 +4,26 @@
 
 ## 구조
 
-- `src/agent_agora/` — 서버 (v3 messaging)
-  - `server.py` — FastMCP 앱, `agora.*` 도구 정의
-  - `dispatcher.py` — 메시지 라우터 (in-memory 큐 + SQLite cold path)
-  - `registry.py` — `instance_id` ↔ `session_id` 매핑
-  - `persistence.py` — SQLite (conversations · messages), AsyncWriteQueue
-  - `envelope.py` — 메시지 envelope dataclass + 검증
-  - `auto_register.py` — `X-Agora-*` 헤더 기반 자동 등록 ASGI 미들웨어
+- `src/agent_agora/` — 서버 (v4 messaging)
+  - 라우팅 코어: `server.py`(FastMCP `agora.*` 도구), `dispatcher.py`(메시지 라우터 — in-memory 큐 + SQLite cold path), `conversation_store.py`·`dispatch_console.py`, `envelope.py`(메시지 envelope + 검증), `errors.py`
+  - 레지스트리: `registry.py`(`instance_id` ↔ `session_id`), `bot_registry.py`(봇 네임스페이스)
+  - 영속: `persistence.py`(SQLite WAL — conversations·messages, AsyncWriteQueue), `dispatch_persistence.py`, `schemas.py`(런타임 가변 JSON Schema 카탈로그), `sweeper.py`(주기 sweep — TTL·dead-session·GC)
+  - HTTP 라우트·미들웨어: `auto_register.py`(`X-Agora-*` 자동 등록), `admin_routes.py`(`AGORA_ADMIN_TOKEN` 게이팅), `channel_routes.py`(`GET /channel/wait`), `file_routes.py`, `dashboard_routes.py`
+  - 채널 모드: `channel_adapter.py`(워커별 stdio MCP 채널 서버 — 인박스 감지 → `claude/channel` 알림)
+  - 봇 SDK: `bot.py`(`AgoraBot` 베이스 클래스)
+  - 파일 공유: `file_store.py`·`file_policy.py`
+  - 통신 매트릭스: `comm_matrix.py`(워커↔워커 dispatch ACL)
+  - TLS: `certs.py`(self-signed 인증서)
   - `__main__.py` — CLI 진입점
-- `plugin/cc-agora/` — Claude Code 플러그인. 워커 spawn + 통신 슬래시 skill 9개
-- `examples/echo_bot/` — 테스트용 MCP client 봇
-- `tests/` — pytest (`test_v3_*`, `test_plugin_*`, `test_integration`)
-- `docs/superpowers/specs/` — 설계 문서 (spec 우선 — 구현 전 확인)
-- `docs/backlog.md` — 진행 중·미뤄둔 작업
+- `plugin/` — Claude Code 플러그인 마켓플레이스 (`.claude-plugin/marketplace.json` — 9개 플러그인)
+  - `cc-agora/` — 통신 코어 (메시지 dispatch·broadcast·종결 슬래시 + `agora-protocol` 운용 규칙)
+  - `cc-agora-ops/` — 운영자 도구 (워커·팀 spawn, 통신 매트릭스, 대시보드, 배치 셋업)
+  - `personas/` — 역할 페르소나 7종 (coder·reviewer·tester·writer·planner·orchestrator·general)
+- `examples/` — 테스트·데모용 MCP client (`echo_bot`, `comm_demo`)
+- `tests/` — pytest (`test_v3_*`·`test_v4_*`·`test_channel_*`·`test_file_*`·`test_plugin_*`·`test_integration` 등)
+- `docs/` — 사용자·운영 문서 (`plugins.md`·`channel-mode.md`·`bot-sdk.md`·`usage-guide.md`·`file-sharing.md` 등)
+  - `docs/superpowers/specs/` — 설계 문서 (spec 우선 — 구현 전 확인)
+  - `docs/backlog.md` — 진행 중·미뤄둔 작업
 
 ## 개발
 
