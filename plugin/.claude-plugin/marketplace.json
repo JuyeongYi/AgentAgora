@@ -53,6 +53,41 @@
       "name": "cc-agora-writer",
       "source": "./personas/writer",
       "description": "AgentAgora writer persona — produces docs and prose with concrete examples, avoiding generic filler."
+    },
+    {
+      "name": "superpowers-base",
+      "source": "./superpowers/superpowers-base",
+      "description": "Superpowers persona base — shared skills every persona needs."
+    },
+    {
+      "name": "superpowers-planner",
+      "source": "./superpowers/superpowers-planner",
+      "description": "Superpowers planner persona — ideas into specs and implementation plans."
+    },
+    {
+      "name": "superpowers-implementer",
+      "source": "./superpowers/superpowers-implementer",
+      "description": "Superpowers implementer persona — TDD implementation and branch completion."
+    },
+    {
+      "name": "superpowers-debugger",
+      "source": "./superpowers/superpowers-debugger",
+      "description": "Superpowers debugger persona — systematic debugging."
+    },
+    {
+      "name": "superpowers-reviewer",
+      "source": "./superpowers/superpowers-reviewer",
+      "description": "Superpowers reviewer persona — code review and feedback handling."
+    },
+    {
+      "name": "superpowers-router",
+      "source": "./superpowers/superpowers-router",
+      "description": "Superpowers router persona — task decomposition and routing."
+    },
+    {
+      "name": "superpowers-improver",
+      "source": "./superpowers/superpowers-improver",
+      "description": "Superpowers improver persona — improvement review and workflow loop-back."
     }
   ]
 }

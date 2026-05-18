@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-debugger",
+  "description": "Superpowers debugger persona — systematically tracks down and fixes bugs and test failures.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}

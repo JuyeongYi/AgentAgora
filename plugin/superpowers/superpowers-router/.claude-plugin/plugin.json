@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-router",
+  "description": "Superpowers router persona — decomposes a plan into tasks and routes them to worker personas, parallel or sequential.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}

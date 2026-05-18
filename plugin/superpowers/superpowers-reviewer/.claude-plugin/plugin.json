@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-reviewer",
+  "description": "Superpowers reviewer persona — reviews code changes and handles review feedback with technical rigor.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}

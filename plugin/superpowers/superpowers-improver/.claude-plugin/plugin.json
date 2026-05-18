@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-improver",
+  "description": "Superpowers improver persona — reviews finished work for improvements, refactors, and new ideas, then loops back to the planner.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}

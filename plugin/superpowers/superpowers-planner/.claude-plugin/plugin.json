@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-planner",
+  "description": "Superpowers planner persona — turns ideas into approved specs and bite-sized implementation plans.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}
