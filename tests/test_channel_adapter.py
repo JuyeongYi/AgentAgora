@@ -148,6 +148,78 @@ async def test_watch_loop_backs_off_on_error_signal():
     assert emits == []                               # 에러 신호엔 emit 안 함
 
 
+def test_channel_wait_base_url_strips_mcp_suffix():
+    from agent_agora.channel_adapter import _channel_wait_base_url
+    assert _channel_wait_base_url("http://127.0.0.1:8420/mcp") == "http://127.0.0.1:8420"
+    assert _channel_wait_base_url("http://h:9/mcp/") == "http://h:9"
+    # no /mcp suffix → returned unchanged (minus any trailing slash)
+    assert _channel_wait_base_url("http://h:9") == "http://h:9"
+    assert _channel_wait_base_url("http://h:9/") == "http://h:9"
+
+
+@pytest.mark.asyncio
+async def test_http_wait_notify_calls_channel_wait_endpoint(monkeypatch):
+    """HTTP wait_notify 콜러블이 GET /channel/wait를 올바른 파라미터로 호출한다."""
+    from agent_agora.channel_adapter import _make_http_wait_notify
+
+    seen = {}
+
+    class _FakeResponse:
+        def json(self):
+            return {"instance_id": "InstA", "pending": 2, "sources": ["PM"]}
+
+        def raise_for_status(self):
+            pass
+
+    class _FakeAsyncClient:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, params=None):
+            seen["url"] = url
+            seen["params"] = params
+            return _FakeResponse()
+
+    monkeypatch.setattr("agent_agora.channel_adapter.httpx.AsyncClient",
+                        _FakeAsyncClient)
+    wait_notify = _make_http_wait_notify("http://127.0.0.1:8420/mcp")
+    result = await wait_notify("InstA", 5000)
+    assert result == {"instance_id": "InstA", "pending": 2, "sources": ["PM"]}
+    assert seen["url"] == "http://127.0.0.1:8420/channel/wait"
+    assert seen["params"] == {"instance_id": "InstA", "timeout_ms": 5000}
+
+
+@pytest.mark.asyncio
+async def test_http_wait_notify_returns_error_dict_on_failure(monkeypatch):
+    """HTTP 호출 실패 시 {error:...} dict를 반환한다 — watch_loop가 backoff한다."""
+    from agent_agora.channel_adapter import _make_http_wait_notify
+
+    class _BoomClient:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, params=None):
+            raise RuntimeError("connection refused")
+
+    monkeypatch.setattr("agent_agora.channel_adapter.httpx.AsyncClient",
+                        _BoomClient)
+    wait_notify = _make_http_wait_notify("http://127.0.0.1:8420/mcp")
+    result = await wait_notify("InstA", 5000)
+    assert "error" in result
+
+
 def test_cli_entrypoint_registered():
     """agora-channel 콘솔 스크립트가 pyproject에 등록되고 cli()가 동기 호출 가능하다."""
     import pathlib

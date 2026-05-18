@@ -1,9 +1,10 @@
 """agora-channel 어댑터 — per-worker stdio MCP 채널 서버.
 
 워커 Claude Code가 자식으로 spawn하는 stdio MCP 서버. 브로커의
-agora.wait_notify로 워커 인박스 도착을 감지하고, claude/channel 알림으로
-워커 턴을 깨운다. 자세한 설계는
-docs/superpowers/specs/2026-05-16-channel-adapter-design.md.
+GET /channel/wait HTTP 엔드포인트로 워커 인박스 도착을 감지하고,
+claude/channel 알림으로 워커 턴을 깨운다. 자세한 설계는
+docs/superpowers/specs/2026-05-16-channel-adapter-design.md 및
+docs/superpowers/specs/2026-05-18-wait-tool-gating-design.md.
 
 실행: python -m agent_agora.channel_adapter --instance-id <id> --broker <url>
 """
@@ -15,6 +16,7 @@ import json
 import sys
 
 import anyio
+import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.lowlevel import Server
@@ -119,15 +121,49 @@ def _result_json(result) -> dict:
     return {}
 
 
-def _make_broker_callables(broker_session: ClientSession):
-    """브로커 ClientSession에 바인딩된 (wait_notify, peek_pending)을 만든다."""
+def _channel_wait_base_url(broker_mcp_url: str) -> str:
+    """브로커 MCP URL에서 GET /channel/wait의 베이스 URL을 유도한다.
+
+    어댑터는 --broker로 MCP 엔드포인트(http://host:port/mcp)를 받는다.
+    /channel/wait는 같은 호스트·포트의 다른 경로다 — /mcp 꼬리를 떼어낸다."""
+    url = broker_mcp_url.rstrip("/")
+    if url.endswith("/mcp"):
+        url = url[: -len("/mcp")]
+    return url.rstrip("/")
+
+
+def _make_http_wait_notify(broker_mcp_url: str):
+    """GET /channel/wait를 호출하는 wait_notify 콜러블을 만든다.
+
+    blocking long-poll 도구 agora.wait_notify를 대체한다 — 워커 MCP 도구
+    표면을 오염시키지 않는 HTTP 경로다. 호출 실패 시 {error:...} dict를
+    반환한다(watch_loop가 이 신호를 보면 backoff한다)."""
+    wait_url = _channel_wait_base_url(broker_mcp_url) + "/channel/wait"
 
     async def wait_notify(instance_id: str, timeout_ms: int) -> dict:
-        result = await broker_session.call_tool(
-            "agora.wait_notify",
-            {"instance_id": instance_id, "timeout_ms": timeout_ms},
-        )
-        return _result_json(result)
+        try:
+            async with httpx.AsyncClient(timeout=None) as http:
+                resp = await http.get(
+                    wait_url,
+                    params={"instance_id": instance_id,
+                            "timeout_ms": timeout_ms})
+                resp.raise_for_status()
+                data = resp.json()
+                return data if isinstance(data, dict) else {}
+        except Exception as exc:  # noqa: BLE001 — 연결 실패는 backoff 신호
+            return {"error": f"channel/wait HTTP 호출 실패: {exc!r}"}
+
+    return wait_notify
+
+
+def _make_broker_callables(broker_session: ClientSession, broker_mcp_url: str):
+    """브로커 콜러블 (wait_notify, peek_pending)을 만든다.
+
+    wait_notify는 GET /channel/wait HTTP 엔드포인트를 쓴다 — blocking long-poll
+    도구를 워커 MCP 도구 표면에서 들어낸 결과. peek_pending은 논블로킹·비파괴
+    agora.peek MCP 도구를 그대로 쓴다."""
+
+    wait_notify = _make_http_wait_notify(broker_mcp_url)
 
     async def peek_pending(instance_id: str) -> int:
         result = await broker_session.call_tool(
@@ -175,7 +211,7 @@ async def _run_watch(
                     await broker_session.initialize()
                     backoff = _BACKOFF_START_S  # 연결 성공 — backoff 리셋
                     wait_notify, peek_pending = _make_broker_callables(
-                        broker_session)
+                        broker_session, broker)
 
                     async def emit(content: str, meta: dict[str, str]) -> None:
                         # 채널 측 write stream이 닫힌 경우(부모 Claude Code
