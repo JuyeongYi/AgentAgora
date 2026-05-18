@@ -65,3 +65,11 @@ def test_build_app_wires_comm_matrix(tmp_path):
     comm_matrix = mcp._agora_comm_matrix
     # comm-matrix.csv가 없으므로 비활성 (all-allow)
     assert comm_matrix.active is False
+
+
+def test_add_wait_flag_defaults_false():
+    assert parse_args(["--port", "8420"]).add_wait is False
+
+
+def test_add_wait_flag_true_when_given():
+    assert parse_args(["--add-wait"]).add_wait is True

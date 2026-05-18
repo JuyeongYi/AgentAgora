@@ -40,6 +40,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="재시작 시 이전 미배달 메시지를 인박스로 복구한다 "
              "(크래시 내구성). 미지정 시 클린 스타트 — 미배달 메시지는 drop된다.",
     )
+    parser.add_argument(
+        "--add-wait",
+        action="store_true",
+        help="레거시·디버깅용 — agora.wait_notify MCP 도구를 등록한다. "
+             "기본 미등록. 채널 어댑터·봇 SDK는 GET /channel/wait를 쓴다.",
+    )
     return parser.parse_args(argv)
 
 
@@ -187,6 +193,7 @@ async def run_server(args: argparse.Namespace) -> None:
         dead_session_timeout_ms=args.dead_session_timeout_ms,
         gc_retention_days=args.gc_retention_days,
         file_retention_days=args.file_retention_days,
+        add_wait=args.add_wait,
     )
     instance_registry = mcp._agora_instance_registry  # type: ignore[attr-defined]
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
@@ -235,6 +242,11 @@ async def run_server(args: argparse.Namespace) -> None:
         register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
                        file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]
         print("  Files    : POST /files, GET /files/<id>")
+        # GET /channel/wait는 --add-wait와 무관하게 항상 등록한다 — 채널
+        # 어댑터·봇 SDK의 인박스 감지가 이 라우트에 의존하기 때문.
+        from agent_agora.channel_routes import register as register_channel
+        register_channel(starlette_app, dispatcher=dispatcher)
+        print("  Channel  : GET /channel/wait")
         config_kwargs = {
             "host": "127.0.0.1",
             "port": args.port,
