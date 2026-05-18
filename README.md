@@ -135,7 +135,9 @@ AgentAgora starting on http://127.0.0.1:8420/mcp
 
 ### 2) MCP 클라이언트 연결
 
-Streamable HTTP 전용. 다른 transport는 지원하지 않는다.
+AgentAgora 브로커는 Streamable HTTP 전용이다 — 다른 transport는 지원하지 않는다.
+채널 모드 워커의 `.mcp.json`은 MCP 서버 **둘**을 함께 물린다 — (1) 브로커(HTTP),
+(2) 워커별 `agora-channel` 채널 어댑터(stdio).
 
 Claude Code의 `.mcp.json` 예시:
 
@@ -150,6 +152,11 @@ Claude Code의 `.mcp.json` 예시:
         "X-Agora-Role": "orchestrator",
         "X-Agora-Description": "User-facing orchestrator"
       }
+    },
+    "agora-channel": {
+      "type": "stdio",
+      "command": "agora-channel",
+      "args": ["--instance-id", "InstA", "--broker", "http://127.0.0.1:8420/mcp"]
     }
   }
 }
@@ -157,6 +164,11 @@ Claude Code의 `.mcp.json` 예시:
 
 `X-Agora-Instance-Id` 헤더가 있으면 첫 MCP 요청 시 `AutoRegisterMiddleware`가
 자동으로 `agora.register`를 호출한다 — 별도 register 도구 호출은 필요 없다.
+
+`agora-channel` 어댑터는 브로커의 `GET /channel/wait`로 인박스 도착을 감지해
+`claude/channel` 알림으로 워커 턴을 깨운다(채널 모드). `--instance-id`는
+`X-Agora-Instance-Id`와, `--broker`는 브로커 URL과 같은 값을 쓴다. 채널 모드를
+쓰지 않으면 `agora-channel` 항목은 생략해도 된다.
 
 ### 3) 직접 띄워보기
 
