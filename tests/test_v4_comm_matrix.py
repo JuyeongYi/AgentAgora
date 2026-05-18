@@ -4,7 +4,7 @@ from agent_agora.errors import AgoraError, ERROR_MESSAGES
 
 def test_comm_matrix_error_codes_present():
     assert {"comm_denied", "comm_matrix_shape_mismatch",
-            "comm_matrix_invalid_cell"} <= set(ERROR_MESSAGES)
+            "comm_matrix_invalid_cell", "comm_matrix_invalid_pattern"} <= set(ERROR_MESSAGES)
 
 
 def test_comm_denied_message_formats_from_and_to():
