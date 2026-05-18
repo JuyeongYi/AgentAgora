@@ -440,51 +440,47 @@ async def test_flush_fifo_ignores_weight(tmp_path):
         assert [c["payload"]["s"] for c in drained] == ["first", "second"]
 
 
-# header에 *(from 와일드카드 열), 첫 데이터 행에 *(to 와일드카드 행)
-_STAR = "\n".join([
-    "*,Inst1,Coder1",
-    "0,2,2",      # to=*       — 미등재 수신자 fallback 행
-    "5,0,1",      # to=Inst1
-    "5,1,0",      # to=Coder1
-])
+_REGEX_GROUP = "hub,coder-.*\n0,3\n7,0"
 
 
-def test_star_row_fallback_for_unlisted_to():
+def test_regex_header_matches_group():
     cm = CommMatrix()
-    cm.load_csv(_STAR)
-    # Ghost(미등재 to), Inst1(등재 from) → '*' 행의 Inst1 열 = 2
-    assert cm.weight_of("Inst1", "Ghost") == 2
-    assert cm.weight_of("Coder1", "Ghost") == 2
+    cm.load_csv(_REGEX_GROUP)
+    # coder-.* 행/열은 coder-N 전체에 fullmatch
+    assert cm.weight_of("coder-1", "hub") == 3
+    assert cm.weight_of("coder-2", "hub") == 3
+    assert cm.weight_of("hub", "coder-9") == 7
 
 
-def test_star_column_fallback_for_unlisted_from():
+def test_regex_fullmatch_not_partial():
     cm = CommMatrix()
-    cm.load_csv(_STAR)
-    # Ghost(미등재 from) → Inst1 행의 '*' 열 = 5
-    assert cm.weight_of("Ghost", "Inst1") == 5
-    assert cm.weight_of("Ghost", "Coder1") == 5
+    cm.load_csv(_REGEX_GROUP)
+    # 'decoder'는 coder-.* 그룹이 아님 (fullmatch — 부분 매칭 안 함)
+    assert cm.weight_of("decoder", "hub") == 0
 
 
-def test_star_star_catch_all():
+def test_dotstar_catch_all_column():
     cm = CommMatrix()
-    cm.load_csv(_STAR)
-    # 둘 다 미등재 → '*' 행의 '*' 열 = 0
-    assert cm.weight_of("Ghost", "Phantom") == 0
+    # 행 .*(catch-all), hub / 데이터: to=.* 행 전부 0, to=hub 행 from=.* 열 5
+    cm.load_csv(".*,hub\n0,0\n5,0")
+    # 미등재 from은 '.*' from-열을 통해 hub에 도달
+    assert cm.weight_of("ghost", "hub") == 5
+    assert cm.weight_of("anyone", "hub") == 5
 
 
-def test_explicit_cell_beats_star():
+def test_multi_match_takes_max_weight():
     cm = CommMatrix()
-    cm.load_csv(_STAR)
-    # 등재 to·from은 '*'로 폴백하지 않는다
-    assert cm.weight_of("Inst1", "Coder1") == 1
-    assert cm.weight_of("Coder1", "Coder1") == 0
+    # 명시적 coder-1 to-행은 전부 0, 넓은 coder-.* to-행은 8
+    cm.load_csv("coder-1,coder-.*\n0,0\n8,8")
+    # coder-1은 두 행 모두에 매칭 — 높은 weight(8)가 이긴다
+    assert cm.weight_of("coder-1", "coder-1") == 8
 
 
-def test_star_fallback_feeds_is_allowed():
+def test_load_csv_rejects_invalid_regex_header():
     cm = CommMatrix()
-    cm.load_csv(_STAR)
-    assert cm.is_allowed("Inst1", "Ghost") is True   # weight 2 > 0
-    assert cm.is_allowed("Ghost", "Phantom") is False  # weight 0
+    with pytest.raises(AgoraError) as ei:
+        cm.load_csv("A,*\n0,0\n0,0")
+    assert ei.value.code == "comm_matrix_invalid_pattern"
 
 
 def test_no_star_csv_stays_strict_whitelist():
