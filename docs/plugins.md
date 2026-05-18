@@ -100,9 +100,9 @@ git -C AgentAgora sparse-checkout set plugin
 
 **2) 마켓플레이스 등록.** 두 방법 중 하나를 쓴다.
 
-*대화형* — Claude Code에서 클론한 `plugin/` 디렉토리를 마켓플레이스로 추가한 뒤 `/plugin` 메뉴로 플러그인을 설치한다. 가리키는 경로는 저장소 루트가 아니라 `.claude-plugin/`을 직접 담은 `plugin/` 디렉토리다.
+*대화형* — Claude Code에서 `/plugin marketplace add <클론한_AgentAgora>/plugin` 을 실행해 `plugin/` 디렉토리를 마켓플레이스로 추가한 뒤, `/plugin` 메뉴에서 플러그인을 설치한다. 추가하는 경로는 저장소 루트가 아니라 `.claude-plugin/`을 직접 담은 `plugin/` 디렉토리다.
 
-*선언형* — `.claude/settings.json`(또는 `settings.local.json`)에 등록한다. `agora-spawn`이 워커에 생성하는 형식과 동일하다:
+*선언형* — 프로젝트의 `.claude/settings.json`(팀 공유) 또는 `.claude/settings.local.json`(개인·gitignore), 혹은 사용자 전역 `~/.claude/settings.json`에 등록한다. `agora-spawn`이 워커에 생성하는 형식과 동일하다:
 
 ```json
 {
@@ -118,7 +118,7 @@ git -C AgentAgora sparse-checkout set plugin
 }
 ```
 
-`path`는 클론한 `plugin/` 디렉토리의 절대경로다 — Windows에서도 forward slash로 쓴다. `enabledPlugins`에는 설치할 플러그인을 `<plugin>@agentagora`로 나열한다(운영자 세션 `cc-agora-ops@agentagora`, 워커 `cc-agora-<role>@agentagora`).
+`path`는 클론한 `plugin/` 디렉토리의 절대경로다 — Windows에서도 forward slash로 쓴다. `enabledPlugins`에는 설치할 플러그인을 `<plugin>@agentagora`로 나열한다(운영자 세션 `cc-agora-ops@agentagora`, 워커 `cc-agora-<role>@agentagora`). 기존 `settings.json`이 있으면 통째로 바꾸지 말고 위 두 키만 병합한다. 편집 후 Claude Code를 다시 시작하면 플러그인이 로드된다.
 
 **3) 업데이트.** 로컬 경로 마켓플레이스는 그 경로에서 live로 읽힌다. 클론 디렉토리에서 `git pull`하면 재등록 없이 최신 플러그인이 반영된다.
 
@@ -126,8 +126,9 @@ git -C AgentAgora sparse-checkout set plugin
 
 **사전 조건**
 
-- Python 3.13+, `agent_agora`가 `pip install -e .` 또는 `uv tool install .`로 설치돼 있어야 한다.
-- AgentAgora MCP 서버가 실행 중이어야 한다 (기본 `http://127.0.0.1:8420/mcp`).
+- `agent_agora` 서버 패키지가 설치돼 있어야 한다 — `uv tool install`(권장) 또는 `pip install -e .`. 설치·기동 절차는 저장소 루트의 [`FOR_AGENT.md`](../FOR_AGENT.md) 참조.
+- AgentAgora MCP 서버가 실행 중이어야 한다 (기본 `http://127.0.0.1:8420/mcp`). **플러그인 등록만으로는 슬래시 명령이 동작하지 않는다** — 슬래시는 이 서버를 호출한다.
+- 워커가 서버에 연결되려면 워커 디렉토리에 서버를 가리키는 `.mcp.json`이 필요하다 — `agora-spawn`이 생성한다(§6).
 - Claude Code v2.1.80+ (채널 모드 사용 시).
 
 ---
