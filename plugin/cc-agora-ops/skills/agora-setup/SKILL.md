@@ -133,7 +133,8 @@ Tell the operator the launch order:
 
 1. Run `run-cc-agora` (or `run-cc-agora.ps1` on Windows) to start the AgentAgora server.
    Confirm it is up (it prints the listening port).
-2. If a routing bot is deployed (e.g. `examples/routing_bot/run-routing-bot.ps1`), start it next.
+2. If a routing bot is deployed (`plugin/superpowers/routing-bot/`), start it next:
+   Windows — `run-bot.bat`, Unix — `run-bot.sh` (both in that directory).
    The routing bot subscribes to `delegation_request` and must be running before persona workers
    begin emitting delegation requests.
 3. Run each worker's `run.ps1`/`run.sh` from inside its directory.
@@ -153,6 +154,32 @@ also confirm:
 - `plugin/cc-agora-ops/config/roles.json` has `sp-planner`, `sp-router`, etc. mapped to
   their `superpowers-*` plugins.
 - The routing bot is running before persona workers start.
+
+**런타임 파일 설치 (superpowers 배포 시 필수):**
+
+`.agentagora/` 디렉터리는 gitignore되어 있어 버전 관리 파일이 자동 복사되지 않는다.
+서버 첫 기동 전에 아래 두 파일을 수동으로 설치한다.
+
+1. **comm-matrix 복사** — 소스 파일을 배포 루트의 `.agentagora/`로 복사한다:
+
+   ```
+   cp plugin/superpowers/routing-bot/comm-matrix.csv <dir>/.agentagora/comm-matrix.csv
+   ```
+
+2. **delegation_request 스키마 등록** — 소스 파일의 한 줄을 `schemas.jsonl`에 추가한다
+   (파일이 없으면 새로 생성됨):
+
+   ```
+   # Unix
+   cat plugin/superpowers/routing-bot/delegation_request.schema.jsonl >> <dir>/.agentagora/schemas.jsonl
+
+   # Windows PowerShell
+   Get-Content plugin/superpowers/routing-bot/delegation_request.schema.jsonl | Add-Content <dir>/.agentagora/schemas.jsonl
+   ```
+
+   `<dir>`는 배포 루트 경로(기본값 `.`). 두 파일이 없으면 서버 기동 시
+   comm-matrix ACL과 delegation_request 스키마가 적용되지 않으며,
+   라우팅 봇이 정상 동작하지 않는다.
 
 ## Output
 

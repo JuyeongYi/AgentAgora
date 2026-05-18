@@ -75,6 +75,20 @@ plugin/superpowers/
 - **`delegation_request` 스키마** — 위임 메시지 스키마. `.agentagora/schemas.jsonl`에 등록한다. 필드: `from_persona`·`to_persona`(또는 역할 `to_capability`)·`payload`·`context_summary`.
 - **라우팅 봇** — 새 `AgoraBot` 서브클래스 스크립트다(`examples/echo_bot` 패턴 — `agent_agora.bot`의 `AgoraBot`을 상속, `handle()`만 구현, 별도 프로세스로 기동). `delegation_request` 스키마를 구독하는 handler 봇으로, 페르소나가 다른 역할이 필요할 때 이 스키마로 emit하면 봇이 `agora.find`로 대상 페르소나 워커를 resolve해 `agora.bot_emit`(`target` 인자 — §10)으로 전달한다. 대상이 명확한 핸드오프는 페르소나가 직접 `agora.dispatch`해도 된다.
 - **comm-matrix** — 페르소나 간 위임 ACL. AgentAgora 기존 `comm-matrix.csv` 메커니즘으로 표현한다(§9 워크플로의 엣지가 곧 매트릭스의 허용 셀; 정규식 헤더 — `comm-matrix-file-policy-regex` 설계).
+
+  > **설계 결정 — 라우팅 봇 경유 위임은 comm-matrix를 재검사하지 않는다.**
+  >
+  > `agora.bot_emit(target=...)` 경로는 comm-matrix ACL을 독립적으로 재검사하지 않는다.
+  > ACL 검사는 `agora.dispatch` / `agora.broadcast` 호출 시에만 수행된다.
+  >
+  > 이는 AgentAgora의 위협 모델에서 허용되는 설계다 — 배포는 신뢰된 사설 네트워크이며,
+  > 오퍼레이터가 모든 머신을 제어한다. 라우팅 봇은 §9 워크플로의 고정된 엣지를
+  > 따라 라우팅하는 신뢰된 인프라다. comm-matrix는 직접 `agora.dispatch` 경로에 대한
+  > defense-in-depth로서, 페르소나 워커 간 직접 위임을 게이팅한다.
+  >
+  > **향후 강화 후보**: 라우팅 봇 내부에서도 comm-matrix를 로드해 `to_persona`/`to_capability`
+  > 라우팅 전에 ACL을 검증하는 로직을 추가할 수 있다.
+
 - **`cc-agora-ops/config/roles.json`** — `agora-spawn`이 role→플러그인을 해석하는 매핑. 7개 페르소나 role 항목을 추가한다(`planner`→`superpowers-planner` 등).
 - **스킬 본문 위임 메타** — 각 스킬에 다음 단계 위임 대상 페르소나를 명시한다. 원본 스킬의 `superpowers:<skill>` cross-reference는 스킬이 플러그인별로 흩어지면서 cross-plugin 참조가 된다 — 워커에 두 플러그인이 함께 활성화돼 있으면 이름으로 resolve되어 대부분 무해하나, `writing-skills`(base) → `superpowers:test-driven-development`(implementer)처럼 끊길 수 있는 케이스는 통합 플랜의 위임 배선에서 처리한다.
 
