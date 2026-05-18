@@ -134,7 +134,10 @@ agent-agora --dir . --port 8420 --no-tls --no-timeout
 
 ## 동작 흐름
 
-1. **idle** — 워커 턴이 없다. 어댑터는 서버의 `agora.wait_notify`를 long-poll한다.
+1. **idle** — 워커 턴이 없다. 어댑터는 서버의 `GET /channel/wait` HTTP
+   엔드포인트를 long-poll한다. (`agora.wait_notify` MCP 도구는 워커 도구
+   표면에서 제거됐다 — 어댑터·봇은 HTTP 경로를 쓴다. `--add-wait`로 도구를
+   다시 켤 수 있다 — 레거시·디버깅용.)
 2. **메시지 도착** — 다른 워커가 `InstA`에 `agora.dispatch`하면, 서버가 어댑터를
    깨운다.
 3. **`claude/channel` 알림 push** — 어댑터가 `notifications/claude/channel`을 emit한다.
@@ -148,7 +151,7 @@ agent-agora --dir . --port 8420 --no-tls --no-timeout
 ```
 [다른 워커]──agora.dispatch(InstA)──▶[서버]
                                         │
-                              agora.wait_notify 해제
+                              GET /channel/wait 해제
                                         │
                                  [어댑터 A]
                                         │

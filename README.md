@@ -232,7 +232,10 @@ ACL 데모. [`examples/README.md`](examples/README.md) 참조.
   - `sort="priority"`: comm-matrix weight가 큰 발신자부터.
 - **`agora.peek(targets=None)`** — 큐 길이·in-flight 카운트 등 비파괴 조회.
 - **`agora.wait_notify(instance_id, timeout_ms=None)`** — 채널 알림 long-poll.
-  `agora-channel` stdio 어댑터가 워커를 깨우려고 호출한다 — 워커가 직접 쓰지 않는다.
+  **기본 비등록** — 워커·봇 도구 표면에 노출되지 않는다. `agora-channel` stdio
+  어댑터와 `AgoraBot` SDK는 인박스 도착 감지에 `GET /channel/wait` HTTP
+  엔드포인트(always-on)를 쓴다. 이 MCP 도구가 필요하면(레거시·디버깅)
+  서버를 `--add-wait`로 기동한다.
 
 ### 대화
 
@@ -271,7 +274,7 @@ agent-agora [-h] [--port PORT] [--dir DIR] [--cert-dir CERT_DIR] [--no-tls]
             [--db-path DB_PATH] [--max-inbox-depth N]
             [--close-timeout-ms MS] [--dead-session-timeout-ms MS]
             [--gc-retention-days DAYS] [--gc-hour HOUR]
-            [--file-retention-days DAYS] [--restore]
+            [--file-retention-days DAYS] [--restore] [--add-wait]
             [--default-wait-timeout-ms MS | --no-timeout]
 ```
 
@@ -289,8 +292,9 @@ agent-agora [-h] [--port PORT] [--dir DIR] [--cert-dir CERT_DIR] [--no-tls]
 | `--gc-hour`                 | `3`                          | 일일 메시지 GC 실행 시각(UTC). |
 | `--file-retention-days`     | `7`                          | 공유 파일 보관 기간. |
 | `--restore`                 | (off)                        | 재시작 시 이전 미배달 메시지를 인박스로 복구. 미지정 시 클린 스타트. |
-| `--default-wait-timeout-ms` | `60000`                      | `agora.wait_notify`(채널 어댑터 long-poll) 디폴트 타임아웃. |
-| `--no-timeout`              | (off)                        | `agora.wait_notify` 무한 블록. `--default-wait-timeout-ms`와 상호 배타. |
+| `--add-wait`                | (off)                        | `agora.wait_notify` MCP 도구를 등록. 기본 미등록 — 채널 어댑터·봇 SDK는 `GET /channel/wait`를 쓴다. 레거시·디버깅용 옵트인. |
+| `--default-wait-timeout-ms` | `60000`                      | `GET /channel/wait`·`agora.wait_notify` long-poll 디폴트 타임아웃. |
+| `--no-timeout`              | (off)                        | long-poll 무한 블록. `--default-wait-timeout-ms`와 상호 배타. |
 
 운영자 전용 admin HTTP 엔드포인트(`/admin/comm-matrix`, `/admin/file-policy`)는
 서버를 `AGORA_ADMIN_TOKEN` 환경변수와 함께 기동하면 활성화된다.
