@@ -1,6 +1,6 @@
 {
   "name": "superpowers-implementer",
-  "description": "Superpowers implementer persona — executes plans with TDD, isolated worktrees, and clean branch completion.",
+  "description": "Superpowers implementer persona — writes implementation code in a TDD ping-pong with the tester, in isolated worktrees, with clean branch completion.",
   "version": "0.1.0",
   "dependencies": ["superpowers-base"]
 }
