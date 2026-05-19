@@ -295,6 +295,7 @@ def create_agora_app(
                 "instance_id": i.instance_id,
                 "role": i.role,
                 "description": i.description,
+                "cwd": i.cwd,
                 "registered_at": i.registered_at,
                 "inbox_depth": m.get("queue_depth", 0),
                 "in_flight": m.get("in_flight", 0),
@@ -331,6 +332,7 @@ def create_agora_app(
                 results.append({
                     "kind": "worker", "instance_id": i.instance_id,
                     "role": i.role, "description": i.description,
+                    "cwd": i.cwd,
                     "registered_at": i.registered_at,
                 })
         for b in bot_registry.list_bots():
@@ -344,6 +346,16 @@ def create_agora_app(
                     "registered_at": b.registered_at,
                 })
         return json.dumps({"results": results}, ensure_ascii=False)
+
+    @mcp.tool(name="agora.cwd")
+    async def agora_cwd(instance_id: str) -> str:
+        """Return the working directory (cwd) of a registered worker instance."""
+        try:
+            info = instance_registry.resolve_instance_id(instance_id)
+        except NotRegisteredError as e:
+            return json.dumps({"error": str(e)})
+        return json.dumps({"instance_id": info.instance_id, "cwd": info.cwd},
+                          ensure_ascii=False)
 
     @mcp.tool(name="agora.dispatch")
     async def agora_dispatch(
