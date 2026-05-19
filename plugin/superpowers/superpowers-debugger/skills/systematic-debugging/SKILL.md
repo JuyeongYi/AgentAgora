@@ -301,6 +301,6 @@ From debugging sessions:
 
 ## Handoff
 
-When root cause is identified and fix is ready, emit a `delegation_request` back to `sp-implementer`.
+When root cause is identified and fix is ready, emit a `delegation_request` back to `sp-tester`.
 Payload: `{ "fix": "<description or patch>", "root_cause": "<analysis>" }`.
 `context_summary`: what bug was found and what fix is proposed.
