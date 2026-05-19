@@ -12,5 +12,6 @@
   "sp-reviewer":  { "plugin": "superpowers-reviewer" },
   "sp-router":    { "plugin": "superpowers-router" },
   "sp-improver":  { "plugin": "superpowers-improver" },
+  "sp-tester":    { "plugin": "superpowers-tester" },
   "sp-base":      { "plugin": "superpowers-base" }
 }

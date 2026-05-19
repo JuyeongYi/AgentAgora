@@ -88,6 +88,11 @@
       "name": "superpowers-improver",
       "source": "./superpowers/superpowers-improver",
       "description": "Superpowers improver persona — improvement review and workflow loop-back."
+    },
+    {
+      "name": "superpowers-tester",
+      "source": "./superpowers/superpowers-tester",
+      "description": "Superpowers tester persona — owns and analyzes all test code."
     }
   ]
 }

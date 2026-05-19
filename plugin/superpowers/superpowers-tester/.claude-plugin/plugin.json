@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-tester",
+  "description": "Superpowers tester persona — owns all test code: writes, runs, and analyzes tests in a TDD ping-pong with the implementer.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}
