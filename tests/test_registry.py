@@ -51,3 +51,24 @@ def test_resolve_instance_id_returns_session():
     reg = InstanceRegistry()
     reg.register(session_id="s1", instance_id="A", role="r")
     assert reg.resolve_instance_id("A").session_id == "s1"
+
+
+def test_register_stores_cwd():
+    reg = InstanceRegistry()
+    info = reg.register(session_id="s1", instance_id="w1", cwd="C:/Users/x/source/Dep/w1")
+    assert info.cwd == "C:/Users/x/source/Dep/w1"
+    assert reg.resolve_instance_id("w1").cwd == "C:/Users/x/source/Dep/w1"
+
+
+def test_register_cwd_defaults_to_empty():
+    reg = InstanceRegistry()
+    reg.register(session_id="s2", instance_id="w2")
+    assert reg.resolve_instance_id("w2").cwd == ""
+
+
+def test_cwd_survives_replace_based_updates():
+    reg = InstanceRegistry()
+    reg.register(session_id="s3", instance_id="w3", cwd="C:/dep/w3")
+    reg.touch_last_seen("w3")
+    reg.set_accepting("w3", False)
+    assert reg.resolve_instance_id("w3").cwd == "C:/dep/w3"

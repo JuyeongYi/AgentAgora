@@ -18,6 +18,7 @@ class InstanceInfo:
     role: str
     registered_at: str
     description: str = ""
+    cwd: str = ""
     wait_mode: Literal["auto", "manual", "unknown"] = "unknown"
     last_seen_at: str | None = None
     accepting: bool = True
@@ -39,6 +40,7 @@ class InstanceRegistry:
         instance_id: str,
         role: str = "worker",
         description: str = "",
+        cwd: str = "",
         wait_mode: Literal["auto", "manual"] | None = None,
     ) -> InstanceInfo:
         info = InstanceInfo(
@@ -47,6 +49,7 @@ class InstanceRegistry:
             role=role,
             registered_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             description=description,
+            cwd=cwd,
             wait_mode=wait_mode if wait_mode is not None else "unknown",
         )
         with self._lock:
