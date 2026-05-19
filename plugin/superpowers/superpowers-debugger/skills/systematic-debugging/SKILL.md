@@ -3,7 +3,7 @@ name: systematic-debugging
 description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
 model: opus
 effort: high
-delegation-target: "sp-implementer"
+delegation-target: "sp-tester"
 delegation-schema: "delegation_request"
 ---
 
