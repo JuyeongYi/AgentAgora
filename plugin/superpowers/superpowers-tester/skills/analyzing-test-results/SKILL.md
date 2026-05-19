@@ -11,28 +11,28 @@ delegation-schema: "delegation_request"
 
 ## Overview
 
-테스트 실패는 종류가 다르다. 분류 없이 무작정 디버거로 넘기면 디버거가 과부하되고, 무작정 구현자에게 넘기면 구조적 문제가 패치로 가려진다. 이 스킬은 실패를 분류하고 다음 행선지를 정한다.
+Test failures are not all the same kind. Routing every failure to the debugger overloads it; routing every failure to the implementer lets structural problems get masked by patches. This skill classifies failures and decides where each one goes next.
 
-## 실패 분류
+## Failure classification
 
-각 실패를 네 범주 중 하나로 판정한다:
+Sort each failure into one of four categories:
 
-1. **실제 버그** — 구현 코드가 명세대로 동작하지 않는다. 재현 가능하고 결정적.
-2. **잘못된 테스트** — 테스트 자체가 틀렸다 (잘못된 기대값, 잘못된 셋업). 구현이 아니라 테스트를 고친다.
-3. **플래키** — 같은 코드에서 통과·실패가 갈린다. 타이밍·순서·격리 문제.
-4. **환경 요인** — 의존성 누락, 경로, 권한 등 코드 외부 원인.
+1. **Real bug** — the implementation code does not behave as specified. Reproducible and deterministic.
+2. **Wrong test** — the test itself is wrong (bad expected value, bad setup). Fix the test, not the implementation.
+3. **Flaky** — the same code passes and fails across runs. A timing, ordering, or isolation problem.
+4. **Environmental** — a missing dependency, path, permission, or other cause outside the code.
 
-## 행선지 결정
+## Routing decision
 
-- **잘못된 테스트** → 테스터 자신이 테스트를 수정한다 (위임 없음).
-- **단순한 실제 버그** (원인이 명확하고 국소적) → 구현자에게 `type=reply`로 반려, 실패 테스트·기대 동작·원인 추정을 포함.
-- **원인 불명·구조적 실제 버그**, 또는 **플래키** → 디버거에게 `agora.dispatch` `type=task`로 위임. 에러·재현 절차·시도한 것을 포함.
-- **환경 요인** → 구현자에게 보고하되 코드 문제 아님을 명시.
+- **Wrong test** → the tester fixes the test itself (no delegation).
+- **Simple real bug** (clear, local cause) → return to the implementer with `type=reply`, including the failing test, expected behavior, and the suspected cause.
+- **Real bug with an unclear or structural cause, or flaky** → delegate to the debugger via `agora.dispatch` `type=task`, including the error, reproduction steps, and what was tried.
+- **Environmental** → report to the implementer, stating clearly that it is not a code defect.
 
-## 출력 규약
+## Output convention
 
-분석 결과는 항상 분류와 근거를 함께 적는다. "테스트 3건 실패"가 아니라 "테스트 3건 — 2건 실제 버그(단순, 구현자), 1건 플래키(디버거)"처럼 행선지까지 명시한다.
+Always state the classification and the reasoning with the result. Not "3 tests failed" but "3 tests — 2 real bugs (simple, implementer), 1 flaky (debugger)" — name the destination too.
 
-## 검증
+## Verification
 
-`superpowers:verification-before-completion`을 따른다 — 실패를 분류했다고 주장하기 전에 실제 테스트 출력을 확인한다.
+Follow `superpowers:verification-before-completion` — confirm the actual test output before claiming a failure has been classified.
