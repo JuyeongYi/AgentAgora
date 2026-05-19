@@ -14,7 +14,7 @@ UeT3DRay 배포 테스트에서 드러난 문제:
 
 ## 2. 목표 / 비목표
 
-**목표** — 7번째 페르소나 `sp-tester` 추가, 디버거·리뷰어를 흐름에 안정적으로 배선, 리뷰어 책임 재정의(겹침 제거), 멤버별 사일런트/리액티브 모드, 에이전트 팀 분할 규칙.
+**목표** — 7번째 페르소나 `sp-tester` 추가, 디버거·리뷰어를 흐름에 안정적으로 배선, 리뷰어 책임 재정의(겹침 제거), 멤버별 사일런트/리액티브 모드, 에이전트 팀 분할 규칙. **신규 스킬 작성도 범위에 포함** — 기존 컴포넌트 이전·수정에 한정하지 않고, 새 역할이 요구하는 스킬을 페르소나별로 식별해 새로 작성한다.
 
 **비목표** — planner·router·improver의 핵심 책임 변경. `agora.dispatch`·라우팅 봇 메커니즘 변경. cc-agora(비-superpowers) 페르소나 변경.
 
@@ -41,7 +41,8 @@ TDD 핑퐁 한 사이클(task 단위): 테스터가 실패 테스트 작성·실
 ### 4.1 신규 — `sp-tester`
 
 - **미션**: 모든 테스트 코드의 작성·실행·결과 분석을 전담한다. 구현자와 핑퐁하며 TDD 사이클을 구동한다.
-- **소유 스킬**: `test-driven-development` — `superpowers-implementer`에서 **이전**한다. "실패하는 테스트를 먼저 쓰고 실패를 직접 확인한다"는 원칙의 주체가 테스터가 된다.
+- **이전 스킬**: `test-driven-development` — `superpowers-implementer`에서 **이전**한다. "실패하는 테스트를 먼저 쓰고 실패를 직접 확인한다"는 원칙의 주체가 테스터가 된다.
+- **신규 스킬**: `analyzing-test-results` — 테스트 실행 결과를 읽고 실패를 분류(실제 버그 / 잘못된 테스트 / 플래키 / 환경 요인)하며, 단순 수정(→ 구현자) vs 원인 추적 필요(→ 디버거)를 판단한다. 테스터의 디버거 라우팅 결정이 이 스킬에 근거한다. 이전받은 `test-driven-development`만으로는 결과 분석·트리아지 역량이 비어 있어 신규 작성한다.
 - **수신**: 구현자(테스트 요청·구현 완료 통보), 디버거(수정 후 재검증 요청).
 - **발신**: 구현자(실패 테스트 준비 통보·테스트 결과), 디버거(어려운 실패 — 원인 불명/구조적).
 - 디버거로 보낼지 판단하는 주체 = 테스터(실패 분석 주체). 이로써 디버거가 확실히 호출된다.
@@ -118,6 +119,7 @@ sp-planner-.*,sp-router-.*,sp-implementer-.*,sp-tester-.*,sp-debugger-.*,sp-revi
 |---|---|
 | `plugin/superpowers/superpowers-tester/` | **신규** 플러그인 — `.claude-plugin/plugin.json`, `README.md`, `skills/persona/SKILL.md` |
 | `plugin/superpowers/superpowers-implementer/skills/test-driven-development/` | `superpowers-tester/skills/`로 **이전** |
+| `plugin/superpowers/superpowers-tester/skills/analyzing-test-results/` | **신규** 스킬 — 테스트 결과 분석·실패 분류·디버거 에스컬레이션 판단 |
 | `plugin/superpowers/superpowers-implementer/skills/persona/SKILL.md` | TDD 소유 제거, 핸드오프 개정(⇄tester, →reviewer) |
 | `plugin/superpowers/superpowers-reviewer/skills/persona/SKILL.md` | 책임 재정의, →planner 엣지 추가 |
 | `plugin/superpowers/superpowers-debugger/skills/persona/SKILL.md` | 수신·복귀를 tester로, 구조 문제 →planner |
