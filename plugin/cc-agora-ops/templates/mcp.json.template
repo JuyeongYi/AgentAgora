@@ -6,7 +6,8 @@
       "headers": {
         "X-Agora-Instance-Id": "{{INSTANCE_ID}}",
         "X-Agora-Role": "{{ROLE}}",
-        "X-Agora-Description": "{{DESCRIPTION}}"
+        "X-Agora-Description": "{{DESCRIPTION}}",
+        "X-Agora-Cwd": "{{CWD}}"
       }
     },
     "agora-channel": {

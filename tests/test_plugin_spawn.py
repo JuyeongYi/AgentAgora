@@ -78,7 +78,8 @@ def test_spawn_mcp_json_two_servers(tmp_path: Path) -> None:
     assert set(servers) == {"agentagora", "agora-channel"}
     headers = servers["agentagora"]["headers"]
     assert set(headers) == {
-        "X-Agora-Instance-Id", "X-Agora-Role", "X-Agora-Description"}
+        "X-Agora-Instance-Id", "X-Agora-Role", "X-Agora-Description",
+        "X-Agora-Cwd"}
     assert headers["X-Agora-Instance-Id"] == "W2"
     assert headers["X-Agora-Role"] == "coder"
     ch = servers["agora-channel"]
@@ -86,6 +87,14 @@ def test_spawn_mcp_json_two_servers(tmp_path: Path) -> None:
     assert ch["command"] == "agora-channel"
     assert ch["args"] == [
         "--instance-id", "W2", "--broker", DEFAULT_SERVER_URL]
+
+
+def test_spawn_mcp_json_cwd_header(tmp_path: Path) -> None:
+    assert _call(tmp_path, instance_id="CwdW1", role="coder") == 0
+    mcp = json.loads((tmp_path / "CwdW1" / ".mcp.json").read_text(encoding="utf-8"))
+    headers = mcp["mcpServers"]["agentagora"]["headers"]
+    expected_cwd = (tmp_path / "CwdW1").resolve().as_posix()
+    assert headers["X-Agora-Cwd"] == expected_cwd
 
 
 def test_spawn_run_bat_launches_channel_mode(tmp_path: Path) -> None:

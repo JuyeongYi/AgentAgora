@@ -65,6 +65,7 @@ def _render_mcp_json(
     instance_id: str,
     role: str,
     description: str,
+    cwd: str,
 ) -> str:
     """2-서버 채널 템플릿을 렌더링한다. 렌더 결과가 유효 JSON인지 self-check."""
     text = template
@@ -73,6 +74,7 @@ def _render_mcp_json(
     text = text.replace("{{ROLE}}", role)
     text = text.replace(
         "{{DESCRIPTION}}", json.dumps(description, ensure_ascii=False)[1:-1])
+    text = text.replace("{{CWD}}", cwd)
     try:
         json.loads(text)
     except json.JSONDecodeError as exc:
@@ -210,7 +212,8 @@ def do_spawn(
         worker_dir / ".mcp.json",
         _render_mcp_json(
             template=mcp_template, server_url=server_url,
-            instance_id=instance_id, role=role, description=description),
+            instance_id=instance_id, role=role, description=description,
+            cwd=worker_dir.resolve().as_posix()),
     )
 
     # 3. run.bat — 비커스텀 모드만. 커스텀 모드 실행 스크립트는 agora-run-script.
