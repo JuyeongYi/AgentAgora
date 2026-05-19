@@ -67,7 +67,7 @@
     {
       "name": "superpowers-implementer",
       "source": "./superpowers/superpowers-implementer",
-      "description": "Superpowers implementer persona — TDD implementation and branch completion."
+      "description": "Superpowers implementer persona — implementation code in a TDD ping-pong with the tester, and branch completion."
     },
     {
       "name": "superpowers-debugger",
