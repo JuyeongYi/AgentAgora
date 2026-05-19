@@ -74,7 +74,7 @@ def _render_mcp_json(
     text = text.replace("{{ROLE}}", role)
     text = text.replace(
         "{{DESCRIPTION}}", json.dumps(description, ensure_ascii=False)[1:-1])
-    text = text.replace("{{CWD}}", cwd)
+    text = text.replace("{{CWD}}", json.dumps(cwd, ensure_ascii=False)[1:-1])
     try:
         json.loads(text)
     except json.JSONDecodeError as exc:

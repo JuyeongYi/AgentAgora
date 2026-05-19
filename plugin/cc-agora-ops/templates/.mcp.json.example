@@ -6,7 +6,8 @@
       "headers": {
         "X-Agora-Instance-Id": "Operator1",
         "X-Agora-Role": "orchestrator",
-        "X-Agora-Description": "operator control session"
+        "X-Agora-Description": "operator control session",
+        "X-Agora-Cwd": "C:/AgoraTeam/Operator1"
       }
     }
   }
