@@ -8,6 +8,7 @@ SESSION_ID_HEADER = b"mcp-session-id"
 INSTANCE_ID_HEADER = b"x-agora-instance-id"
 ROLE_HEADER = b"x-agora-role"
 DESCRIPTION_HEADER = b"x-agora-description"
+CWD_HEADER = b"x-agora-cwd"
 WAIT_MODE_HEADER = b"x-agora-wait-mode"
 DEFAULT_ROLE = "worker"
 
@@ -27,7 +28,7 @@ class AutoRegisterMiddleware:
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") == "http":
-            session_id, instance_id, role, description, wait_mode = self._extract(scope)
+            session_id, instance_id, role, description, cwd, wait_mode = self._extract(scope)
             if session_id and instance_id:
                 try:
                     existing = self._registry.resolve_session(session_id)
@@ -35,6 +36,7 @@ class AutoRegisterMiddleware:
                         existing.instance_id != instance_id
                         or existing.role != role
                         or existing.description != description
+                        or existing.cwd != cwd
                         or (wait_mode is not None and existing.wait_mode != wait_mode)
                     ):
                         self._registry.register(
@@ -42,6 +44,7 @@ class AutoRegisterMiddleware:
                             instance_id=instance_id,
                             role=role,
                             description=description,
+                            cwd=cwd,
                             wait_mode=wait_mode,
                         )
                 except NotRegisteredError:
@@ -50,15 +53,17 @@ class AutoRegisterMiddleware:
                         instance_id=instance_id,
                         role=role,
                         description=description,
+                        cwd=cwd,
                         wait_mode=wait_mode,
                     )
         await self._app(scope, receive, send)
 
-    def _extract(self, scope) -> tuple[str | None, str | None, str, str, str | None]:
+    def _extract(self, scope) -> tuple[str | None, str | None, str, str, str, str | None]:
         session_id: str | None = None
         instance_id: str | None = None
         role = DEFAULT_ROLE
         description = ""
+        cwd = ""
         wait_mode: str | None = None
         for name, value in scope.get("headers", []):
             lname = name.lower()
@@ -70,8 +75,10 @@ class AutoRegisterMiddleware:
                 role = value.decode("latin-1")
             elif lname == DESCRIPTION_HEADER:
                 description = value.decode("latin-1")
+            elif lname == CWD_HEADER:
+                cwd = value.decode("latin-1")
             elif lname == WAIT_MODE_HEADER:
                 wm = value.decode("latin-1")
                 if wm in ("auto", "manual"):
                     wait_mode = wm
-        return session_id, instance_id, role, description, wait_mode
+        return session_id, instance_id, role, description, cwd, wait_mode

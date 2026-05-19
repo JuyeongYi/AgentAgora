@@ -189,3 +189,50 @@ async def test_header_lookup_is_case_insensitive(reg):
     await mw(scope, _receive, _send)
     info = reg.resolve_session("sess-5")
     assert info.instance_id == "InstC"
+
+
+async def test_cwd_header_is_captured(reg):
+    mw = AutoRegisterMiddleware(app=_noop_app, registry=reg)
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"mcp-session-id", b"sess-cwd1"),
+            (b"x-agora-instance-id", b"Worker1"),
+            (b"x-agora-role", b"worker"),
+            (b"x-agora-cwd", b"/home/user/project"),
+        ],
+    }
+    await mw(scope, _receive, _send)
+    info = reg.resolve_session("sess-cwd1")
+    assert info.cwd == "/home/user/project"
+
+
+async def test_cwd_default_is_empty_when_header_missing(reg):
+    mw = AutoRegisterMiddleware(app=_noop_app, registry=reg)
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"mcp-session-id", b"sess-cwd2"),
+            (b"x-agora-instance-id", b"Worker2"),
+        ],
+    }
+    await mw(scope, _receive, _send)
+    info = reg.resolve_session("sess-cwd2")
+    assert info.cwd == ""
+
+
+async def test_cwd_change_triggers_update(reg):
+    reg.register(session_id="sess-cwd3", instance_id="A", role="r", cwd="/old/path")
+    mw = AutoRegisterMiddleware(app=_noop_app, registry=reg)
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"mcp-session-id", b"sess-cwd3"),
+            (b"x-agora-instance-id", b"A"),
+            (b"x-agora-role", b"r"),
+            (b"x-agora-cwd", b"/new/path"),
+        ],
+    }
+    await mw(scope, _receive, _send)
+    info = reg.resolve_session("sess-cwd3")
+    assert info.cwd == "/new/path"
