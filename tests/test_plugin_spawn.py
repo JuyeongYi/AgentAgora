@@ -224,3 +224,13 @@ def test_spawn_run_bat_lowers_autocompact_threshold(tmp_path: Path) -> None:
     assert _call(tmp_path, instance_id="AC1", role="coder") == 0
     run_bat = (tmp_path / "AC1" / "run.bat").read_text(encoding="utf-8")
     assert "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60" in run_bat
+
+
+def test_spawn_run_bat_passes_name_from_cwd(tmp_path: Path) -> None:
+    """run.bat must derive --name from the script's own folder basename
+    (instance_id) so Claude Code session is labeled per worker."""
+    assert _call(tmp_path, instance_id="Named1", role="coder") == 0
+    run_bat = (tmp_path / "Named1" / "run.bat").read_text(encoding="utf-8")
+    # batch one-liner that captures folder basename into AGORA_NAME
+    assert 'for %%I in ("%~dp0.") do set "AGORA_NAME=%%~nxI"' in run_bat
+    assert '--name "%AGORA_NAME%"' in run_bat

@@ -26,7 +26,9 @@ _RUN_BAT = (
     "REM --dangerously-load-development-channels 플래그가 필요하다.\n"
     "REM autoCompact 임계값을 60%로 낮춰 워커가 컨텍스트 wall 전에 자주 compact하게 한다.\n"
     "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60\n"
-    "claude --dangerously-load-development-channels server:agora-channel %*\n"
+    "REM 워커 이름 = run.bat 위치한 폴더 basename (instance_id와 일치).\n"
+    "for %%I in (\"%~dp0.\") do set \"AGORA_NAME=%%~nxI\"\n"
+    "claude --name \"%AGORA_NAME%\" --dangerously-load-development-channels server:agora-channel %*\n"
 )
 
 

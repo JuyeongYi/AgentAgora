@@ -395,3 +395,24 @@ def test_render_run_bat_lowers_autocompact_threshold(tmp_path, templates_dir, sa
     )
     run_bat = (staging / "run.bat").read_text(encoding="utf-8")
     assert "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60" in run_bat
+
+
+def test_render_run_bat_passes_name_from_cwd(tmp_path, templates_dir, sample_partition):
+    """The rendered run.bat must derive --name from the script's own folder
+    basename so Claude Code session is labeled per partition."""
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    render_staging(
+        partition=sample_partition,
+        staging_dir=staging,
+        worktree_path=worktree,
+        repo_path=repo,
+        server_url="http://127.0.0.1:8420/mcp",
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        templates_dir=templates_dir,
+    )
+    run_bat = (staging / "run.bat").read_text(encoding="utf-8")
+    assert 'for %%I in ("%~dp0.") do set "AGORA_NAME=%%~nxI"' in run_bat
+    assert '--name "%AGORA_NAME%"' in run_bat
