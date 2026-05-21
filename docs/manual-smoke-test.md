@@ -109,6 +109,22 @@ B에서:
 종료되면, 서버의 dead-session sweep이 `--dead-session-timeout-ms`(기본 30분)
 경과 후 정리한다 — 즉시 사라지지는 않는다.
 
+### 9. 대시보드 확인 (선택)
+
+브라우저에서 `http://127.0.0.1:8420/dashboard` 접속. username 입력해 로그인 후
+확인:
+
+- **인스턴스 테이블** — A·B 양쪽 등재, role·last_seen 갱신 중.
+- **대화 테이블** — 위 단계 4~6에서 생긴 conversation이 한 줄로 나타남. 행 클릭
+  → 메시지 thread 드릴다운 모달에서 A→B task, B→A reply가 시간순으로 보임.
+- **운영자 dispatch** — 우하단 "+ 보내기" → 단일 워커 B 선택 → schema
+  `worker_freeform` → payload 입력 → 전송. 직후 B의 다음 `agora.flush`에서
+  `source="operator:<username>"`로 수신되는지 확인.
+- **운영자 인박스** — B가 `target="operator:<username>"`으로 답신하면 좌측 인박스
+  패널에 카드로 즉시 도착 (SSE).
+
+자세한 대시보드 사용은 [`docs/dashboard.md`](dashboard.md).
+
 ## 합격 기준
 
 - 2: A 등록.
@@ -118,6 +134,7 @@ B에서:
 - 6: A가 결과 수신.
 - 7: broadcast가 B에 도달, A에는 미도달.
 - 8: `agora.unregister` 후 B가 목록에서 사라짐.
+- 9 (선택): 대시보드에서 인스턴스·대화·운영자 dispatch·답신 인박스 모두 가시.
 
 ## 자주 보는 실패
 
