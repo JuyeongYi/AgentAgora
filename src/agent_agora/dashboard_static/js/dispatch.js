@@ -106,6 +106,7 @@ window.agoraDispatch = (function() {
     editor = null;
   }
 
-  document.getElementById('open-dispatch').onclick = open;
+  const fab = document.getElementById('open-dispatch');
+  if (fab) fab.onclick = open;
   return {open, close};
 })();

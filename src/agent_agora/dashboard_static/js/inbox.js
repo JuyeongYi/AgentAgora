@@ -52,8 +52,5 @@ window.agoraInbox = (function() {
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  // 페이지 부팅 직후 1회 호출
-  setTimeout(refresh, 200);
-
   return {refresh, push};
 })();

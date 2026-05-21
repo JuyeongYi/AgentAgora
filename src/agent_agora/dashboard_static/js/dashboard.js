@@ -16,6 +16,7 @@
     window.agoraStream.on('instance_unregistered', () => refresh());
     window.agoraStream.on('message_dispatched', () => refresh());
     window.agoraStream.on('operator_inbox_message', (evt) => window.agoraInbox.push(evt));
+    window.agoraInbox.refresh();
     window.agoraStream.connect();
   });
 
@@ -119,7 +120,7 @@
           const x2 = b.x - ux * 22, y2 = b.y - uy * 22;
           const mx = (x1 + x2) / 2 - uy * 18, my = (y1 + y2) / 2 + ux * 18;
           edges += `<path class="edge" marker-end="url(#arr)" d="M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}"/>` +
-                   `<text class="edgelabel" x="${mx}" y="${my}">${w}</text>`;
+                   `<text class="edgelabel" x="${mx}" y="${my}">${escape(String(w))}</text>`;
         }
       }
     }
@@ -134,14 +135,15 @@
   }
 
   function escape(s) {
-    return String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
   async function refresh() {
     try {
       const snap = await window.agoraApi.get('/dashboard/data');
       renderSnapshot(snap);
-    } catch (e) { /* indicator already shows fallback */ }
+    } catch (e) { console.error('refresh failed', e); }
   }
 
   window._refresh = refresh;

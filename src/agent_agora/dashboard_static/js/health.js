@@ -29,8 +29,8 @@ window.agoraHealth = (function() {
     if (!lastSnap) return;
     const drift = Math.floor((Date.now() - lastSyncMs) / 1000);
     const uptime = (lastSnap.uptime_seconds || 0) + drift;
-    document.getElementById('health-summary').textContent =
-      `uptime ${fmtDuration(uptime)} | db ${fmtBytes(lastSnap.db_size_bytes)}`;
+    const summary = document.getElementById('health-summary');
+    if (summary) summary.textContent = `uptime ${fmtDuration(uptime)} | db ${fmtBytes(lastSnap.db_size_bytes)}`;
 
     const detail = document.getElementById('health-detail');
     if (detail) {
