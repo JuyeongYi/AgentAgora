@@ -15,7 +15,6 @@ def test_vendor_libraries_present():
     assert (STATIC_DIR / "vendor" / "jsoneditor.min.css").is_file()
 
 
-@pytest.mark.xfail(reason="Tasks 13-18 populate JS modules")
 def test_js_modules_present():
     for name in ("api.js", "stream.js", "login.js", "dashboard.js",
                  "health.js", "dispatch.js", "inbox.js", "drilldown.js"):
