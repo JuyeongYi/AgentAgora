@@ -17,7 +17,8 @@ _VALID_MODES = ("trust", "token")
 
 class DashboardAuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, *, mode: str, tokens: dict[str, str],
-                 protected_paths: list[str]) -> None:
+                 protected_paths: list[str],
+                 query_param_paths: list[str] | None = None) -> None:
         if mode not in _VALID_MODES:
             raise ValueError(
                 f"unknown auth mode {mode!r}; expected one of {_VALID_MODES}"
@@ -33,6 +34,7 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
                 )
             self._token_to_user[token] = user
         self._protected = tuple(protected_paths)
+        self._query_param_paths = tuple(query_param_paths or [])
 
     async def dispatch(self, request: Request, call_next):
         if not self._is_protected(request.url.path):
@@ -48,15 +50,33 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
     def _is_protected(self, path: str) -> bool:
         return any(path == p or path.startswith(p + "/") for p in self._protected)
 
+    def _is_query_param_path(self, path: str) -> bool:
+        return any(path == p or path.startswith(p + "/") for p in self._query_param_paths)
+
     def _resolve_user(self, request: Request) -> str | None:
+        allow_query = self._is_query_param_path(request.url.path)
+
         if self._mode == "token":
+            # Authorization 헤더 우선
             auth = request.headers.get("authorization", "")
-            if not auth.startswith("Bearer "):
-                return None
-            token = auth[len("Bearer "):].strip()
-            return self._token_to_user.get(token)
+            if auth.startswith("Bearer "):
+                token = auth[len("Bearer "):].strip()
+                return self._token_to_user.get(token)
+            # query fallback (EventSource 등 헤더 미지원 클라이언트)
+            if allow_query:
+                token = request.query_params.get("t")
+                if token:
+                    return self._token_to_user.get(token)
+            return None
+
         # trust mode — mode는 __init__에서 _VALID_MODES로 검증됨
-        return (request.headers.get("x-agora-operator-user") or "").strip() or None
+        user = (request.headers.get("x-agora-operator-user") or "").strip()
+        if user:
+            return user
+        if allow_query:
+            user = (request.query_params.get("u") or "").strip()
+            return user or None
+        return None
 
 
 def parse_tokens(env_value: str) -> dict[str, str]:

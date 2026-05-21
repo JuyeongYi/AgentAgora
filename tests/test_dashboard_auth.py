@@ -113,3 +113,43 @@ def test_parse_tokens_rejects_empty_user():
 def test_parse_tokens_rejects_empty_token():
     with pytest.raises(ValueError, match="empty user or token"):
         parse_tokens("alice:")
+
+
+def test_trust_mode_query_param_fallback_for_sse():
+    """EventSource는 헤더 첨부 못함 — stream 경로는 ?u=<user> query 허용."""
+    client = TestClient(_make_app("trust"))
+    # 헤더 없이 query param만으로 — /whoami는 query fallback path가 아니므로 401
+    r = client.get("/whoami?u=alice")
+    assert r.status_code == 401
+
+
+def test_trust_mode_stream_path_allows_query():
+    """미들웨어 빌드 시 query_param_paths로 지정한 path는 query fallback."""
+    from agent_agora.dashboard_auth import DashboardAuthMiddleware
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    async def stream(req): return JSONResponse({"user": req.state.operator_user})
+    app = Starlette(routes=[Route("/stream", stream)])
+    app.add_middleware(DashboardAuthMiddleware, mode="trust", tokens={},
+                       protected_paths=["/stream"], query_param_paths=["/stream"])
+    r = TestClient(app).get("/stream?u=alice")
+    assert r.status_code == 200
+    assert r.json() == {"user": "alice"}
+
+
+def test_token_mode_stream_path_allows_token_query():
+    from agent_agora.dashboard_auth import DashboardAuthMiddleware
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    async def stream(req): return JSONResponse({"user": req.state.operator_user})
+    app = Starlette(routes=[Route("/stream", stream)])
+    app.add_middleware(DashboardAuthMiddleware, mode="token",
+                       tokens={"alice": "tok-A"},
+                       protected_paths=["/stream"], query_param_paths=["/stream"])
+    r = TestClient(app).get("/stream?t=tok-A")
+    assert r.status_code == 200
+    assert r.json() == {"user": "alice"}

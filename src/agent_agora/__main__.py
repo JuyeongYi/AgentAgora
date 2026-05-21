@@ -279,6 +279,7 @@ async def run_server(args: argparse.Namespace) -> None:
             mode=_dash_auth_mode,
             tokens=_dash_tokens,
             protected_paths=_DASHBOARD_PROTECTED_PATHS,
+            query_param_paths=["/dashboard/stream"],
         )
 
         register_dashboard(
