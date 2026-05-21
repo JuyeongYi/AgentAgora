@@ -98,6 +98,21 @@
       "name": "cc-agora-structure",
       "source": "./cc-agora-structure",
       "description": "AgentAgora structure-based spawn — partition codebase by folder structure with code-review-graph overlay, spawn scoped workers per partition."
+    },
+    {
+      "name": "superpowers-model",
+      "source": "./superpowers/superpowers-model",
+      "description": "Superpowers model persona — owns data structures, persistence, domain rules, validation."
+    },
+    {
+      "name": "superpowers-view",
+      "source": "./superpowers/superpowers-view",
+      "description": "Superpowers view persona — owns presentation, templates, CSS, UI rendering."
+    },
+    {
+      "name": "superpowers-controller",
+      "source": "./superpowers/superpowers-controller",
+      "description": "Superpowers controller persona — owns routing, request handling, model-view coordination."
     }
   ]
 }

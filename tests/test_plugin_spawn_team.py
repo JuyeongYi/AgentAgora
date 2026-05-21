@@ -18,6 +18,7 @@ import spawn_team
 from spawn_team import _validate_manifest
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent / "plugin" / "cc-agora-ops"
+MVC_TEMPLATE = PLUGIN_ROOT / "templates" / "team-mvc.json.example"
 
 
 def _good_entry(**overrides) -> dict:
@@ -89,6 +90,28 @@ def test_validate_manifest_invalid_root() -> None:
     assert cleaned == []
     assert errors
     assert any("객체" in e for e in errors)
+
+
+def test_team_mvc_example_is_parseable() -> None:
+    """team-mvc.json.example must be valid JSON and parse as a valid 3-entry manifest."""
+    data = json.loads(MVC_TEMPLATE.read_text(encoding="utf-8"))
+    cleaned, errors = _validate_manifest(data)
+    assert errors == [], f"team-mvc.json.example validation errors: {errors}"
+    assert len(cleaned) == 3
+
+
+def test_team_mvc_example_has_expected_roles() -> None:
+    data = json.loads(MVC_TEMPLATE.read_text(encoding="utf-8"))
+    cleaned, _ = _validate_manifest(data)
+    roles = [e["role"] for e in cleaned]
+    assert roles == ["sp-model", "sp-view", "sp-controller"]
+
+
+def test_team_mvc_example_has_expected_ids() -> None:
+    data = json.loads(MVC_TEMPLATE.read_text(encoding="utf-8"))
+    cleaned, _ = _validate_manifest(data)
+    ids = [e["id"] for e in cleaned]
+    assert ids == ["Model1", "View1", "Controller1"]
 
 
 def test_validate_manifest_bad_entry_types() -> None:

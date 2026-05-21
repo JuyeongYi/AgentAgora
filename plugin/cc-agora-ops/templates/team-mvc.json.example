@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "team": [
+    {"id": "Model1", "role": "sp-model", "description": "데이터·상태·persistence·도메인 규칙 전담"},
+    {"id": "View1", "role": "sp-view", "description": "프레젠테이션·UI·템플릿 전담"},
+    {"id": "Controller1", "role": "sp-controller", "description": "라우팅·요청 처리·model-view 조율 전담"}
+  ]
+}

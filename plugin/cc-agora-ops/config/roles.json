@@ -13,5 +13,8 @@
   "sp-router":    { "plugin": "superpowers-router" },
   "sp-improver":  { "plugin": "superpowers-improver" },
   "sp-tester":    { "plugin": "superpowers-tester" },
-  "sp-base":      { "plugin": "superpowers-base" }
+  "sp-base":      { "plugin": "superpowers-base" },
+  "sp-model":     { "plugin": "superpowers-model" },
+  "sp-view":      { "plugin": "superpowers-view" },
+  "sp-controller": { "plugin": "superpowers-controller" }
 }
