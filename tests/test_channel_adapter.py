@@ -282,3 +282,100 @@ def test_cli_entrypoint_registered():
     pyproject = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
     text = pyproject.read_text(encoding="utf-8")
     assert 'agora-channel = "agent_agora.channel_adapter:cli"' in text
+
+
+# ---------------------------------------------------------------------------
+# lifespan cleanup: _unregister_from_broker
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_unregister_calls_agora_unregister(monkeypatch):
+    """_unregister_from_broker가 브로커 MCP 세션으로 agora.unregister를 호출한다."""
+    from agent_agora.channel_adapter import _unregister_from_broker
+
+    calls: list[dict] = []
+
+    class _FakeBrokerSession:
+        async def initialize(self):
+            pass
+
+        async def call_tool(self, name: str, args: dict):
+            calls.append({"name": name, "args": args})
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    _read_obj = object()
+    _write_obj = object()
+
+    class _FakeConn:
+        def __getitem__(self, idx):
+            return (_read_obj, _write_obj)[idx]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    _conn = _FakeConn()
+    _session = _FakeBrokerSession()
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _fake_http_client(url):
+        yield _conn
+
+    monkeypatch.setattr(
+        "agent_agora.channel_adapter.streamable_http_client", _fake_http_client)
+    monkeypatch.setattr(
+        "agent_agora.channel_adapter.ClientSession",
+        lambda *_: _session)
+
+    await _unregister_from_broker("http://127.0.0.1:8420/mcp", "InstA")
+
+    assert len(calls) == 1
+    assert calls[0]["name"] == "agora.unregister"
+    assert calls[0]["args"]["instance_id"] == "InstA"
+
+
+@pytest.mark.asyncio
+async def test_unregister_does_not_raise_on_broker_error(monkeypatch):
+    """브로커 연결 실패 시 _unregister_from_broker가 예외를 전파하지 않는다."""
+    from agent_agora.channel_adapter import _unregister_from_broker
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _boom(*_):
+        raise RuntimeError("broker is down")
+        yield  # noqa: unreachable — makes this an asynccontextmanager
+
+    monkeypatch.setattr(
+        "agent_agora.channel_adapter.streamable_http_client", _boom)
+
+    # 예외가 전파되지 않아야 한다
+    await _unregister_from_broker("http://127.0.0.1:8420/mcp", "InstA")
+
+
+@pytest.mark.asyncio
+async def test_unregister_timeout_does_not_hang(monkeypatch):
+    """느린 브로커가 _unregister_from_broker를 무한 hang시키지 않는다 — timeout 발동."""
+    import agent_agora.channel_adapter as ca
+
+    async def _slow(broker, instance_id):
+        await asyncio.sleep(10.0)                # timeout(5s)보다 훨씬 김
+
+    # _do_unregister를 느린 버전으로 교체하고 timeout을 짧게 줄여 테스트 가속.
+    monkeypatch.setattr(ca, "_do_unregister", _slow)
+    monkeypatch.setattr(ca, "_UNREGISTER_TIMEOUT_S", 0.05)
+
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    await ca._unregister_from_broker("http://x", "W1")     # 예외 없이 반환해야
+    elapsed = loop.time() - start
+    # timeout=0.05s + 여유. 10s sleep을 끝까지 기다리면 안 됨.
+    assert elapsed < 1.0
