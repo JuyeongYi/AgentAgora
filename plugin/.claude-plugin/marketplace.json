@@ -93,6 +93,11 @@
       "name": "superpowers-tester",
       "source": "./superpowers/superpowers-tester",
       "description": "Superpowers tester persona — owns and analyzes all test code."
+    },
+    {
+      "name": "cc-agora-structure",
+      "source": "./cc-agora-structure",
+      "description": "AgentAgora structure-based spawn — partition codebase by folder structure with code-review-graph overlay, spawn scoped workers per partition."
     }
   ]
 }

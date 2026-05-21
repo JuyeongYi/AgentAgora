@@ -1,0 +1,6 @@
+{
+  "name": "cc-agora-structure",
+  "description": "AgentAgora structure-based spawn — partition the codebase by folder structure with code-review-graph edge overlay, spawn scoped workers per partition.",
+  "version": "0.1.0",
+  "dependencies": ["cc-agora"]
+}
