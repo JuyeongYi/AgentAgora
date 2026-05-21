@@ -654,7 +654,7 @@ class HealthCollector:
             "sweeper_last_run_at": self._sweeper_last(),
         }
 
-    def _uptime(self) -> int:
+    def _uptime(self) -> int | None:
         try:
             return int(time.time() - self.started_at)
         except Exception:
