@@ -46,3 +46,13 @@ FIFO.
   `/cc-agora:agora-close` slash.
 - Do not call `agora.register` / `agora.unregister` — registration is automatic
   via the `.mcp.json` `X-Agora-*` headers.
+
+## reply_only 규칙
+
+받은 메시지의 `envelope.reply_only`가 `true`이면 — 운영자(`operator:<username>`) 또는 다른 워커가 "답변만 받고 forward는 하지 말라"고 명시한 것이다. 이 경우:
+
+- 받은 메시지를 다른 워커에 forward 금지.
+- 답신은 sender(`operator:<username>` 등)에게만 직접 dispatch.
+- 작업이 다른 워커의 협력이 필요해 보여도, 운영자에게 "이 작업은 다른 워커 도움이 필요합니다 — 어떻게 진행할까요?" 같은 답신으로 결정을 위임한다.
+
+`reply_only`가 `false`(기본)이면 평소대로 자유롭게 dispatch.
