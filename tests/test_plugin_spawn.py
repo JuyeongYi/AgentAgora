@@ -216,3 +216,11 @@ def test_main_without_persona_file_stays_non_custom(tmp_path, monkeypatch):
     assert rc == 0
     assert (tmp_path / "Cli2" / "run.bat").is_file()
     assert not (tmp_path / "Cli2" / ".claude" / "CLAUDE.md").exists()
+
+
+def test_spawn_run_bat_lowers_autocompact_threshold(tmp_path: Path) -> None:
+    """run.bat must set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60 so the worker
+    compacts well before the context wall (worker cannot self-trigger /compact)."""
+    assert _call(tmp_path, instance_id="AC1", role="coder") == 0
+    run_bat = (tmp_path / "AC1" / "run.bat").read_text(encoding="utf-8")
+    assert "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60" in run_bat

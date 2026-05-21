@@ -375,3 +375,23 @@ def test_main_returns_1_on_bad_manifest(tmp_path, capsys):
     assert rc == 1
     captured = capsys.readouterr()
     assert "bad manifest" in captured.err
+
+
+def test_render_run_bat_lowers_autocompact_threshold(tmp_path, templates_dir, sample_partition):
+    """The rendered run.bat must set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60 so the
+    worker compacts well before the context wall (worker cannot self-trigger /compact)."""
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    render_staging(
+        partition=sample_partition,
+        staging_dir=staging,
+        worktree_path=worktree,
+        repo_path=repo,
+        server_url="http://127.0.0.1:8420/mcp",
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        templates_dir=templates_dir,
+    )
+    run_bat = (staging / "run.bat").read_text(encoding="utf-8")
+    assert "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60" in run_bat

@@ -24,6 +24,8 @@ _RUN_BAT = (
     "@echo off\n"
     "REM 채널 모드 워커 기동. agora-channel은 공식 allowlist에 없는 자작 채널이라\n"
     "REM --dangerously-load-development-channels 플래그가 필요하다.\n"
+    "REM autoCompact 임계값을 60%로 낮춰 워커가 컨텍스트 wall 전에 자주 compact하게 한다.\n"
+    "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60\n"
     "claude --dangerously-load-development-channels server:agora-channel %*\n"
 )
 
