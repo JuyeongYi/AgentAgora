@@ -90,6 +90,7 @@ class Dispatcher:
             gc_retention_days=gc_retention_days,
             file_store=file_store,
             file_retention_days=file_retention_days,
+            dispatcher=self,
         )
         from agent_agora.dispatch_persistence import DispatchPersistence
         self._dispatch_persistence = DispatchPersistence(persistence, write_queue)

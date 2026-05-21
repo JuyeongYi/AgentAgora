@@ -22,14 +22,18 @@ class AutoRegisterMiddleware:
     those headers would be wrongly mirrored into InstanceRegistry as a worker.
     """
 
-    def __init__(self, app, registry: InstanceRegistry) -> None:
+    def __init__(self, app, registry: InstanceRegistry, dispatcher=None) -> None:
         self._app = app
         self._registry = registry
+        # dispatcher는 register hook 트리거 용도. Optional — 테스트나 stand-alone
+        # 미들웨어 사용 시 None이어도 동작한다 (hook 만 비활성).
+        self._dispatcher = dispatcher
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") == "http":
             session_id, instance_id, role, description, cwd, wait_mode = self._extract(scope)
             if session_id and instance_id:
+                fired_info = None
                 try:
                     existing = self._registry.resolve_session(session_id)
                     if (
@@ -39,7 +43,7 @@ class AutoRegisterMiddleware:
                         or existing.cwd != cwd
                         or (wait_mode is not None and existing.wait_mode != wait_mode)
                     ):
-                        self._registry.register(
+                        fired_info = self._registry.register(
                             session_id=session_id,
                             instance_id=instance_id,
                             role=role,
@@ -48,7 +52,7 @@ class AutoRegisterMiddleware:
                             wait_mode=wait_mode,
                         )
                 except NotRegisteredError:
-                    self._registry.register(
+                    fired_info = self._registry.register(
                         session_id=session_id,
                         instance_id=instance_id,
                         role=role,
@@ -56,6 +60,8 @@ class AutoRegisterMiddleware:
                         cwd=cwd,
                         wait_mode=wait_mode,
                     )
+                if fired_info is not None and self._dispatcher is not None:
+                    self._dispatcher._fire_register_hooks(fired_info)
         await self._app(scope, receive, send)
 
     def _extract(self, scope) -> tuple[str | None, str | None, str, str, str, str | None]:

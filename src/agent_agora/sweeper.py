@@ -28,6 +28,7 @@ class Sweeper:
         gc_retention_days: int,
         file_store=None,
         file_retention_days: int = 7,
+        dispatcher=None,
     ) -> None:
         self._conv = conversation_store
         self._instance_registry = instance_registry
@@ -39,6 +40,9 @@ class Sweeper:
         self._gc_retention_days = gc_retention_days
         self._file_store = file_store
         self._file_retention_days = file_retention_days
+        # dispatcher는 dead_session_sweep 후 unregister hook 호출 용도.
+        # Optional — 테스트나 hook 비사용 시 None 안전.
+        self._dispatcher = dispatcher
 
         # 실행 통계 — dashboard_health.py (Task 7)에서 읽는다.
         # dead_session_sweep 호출만 카운트한다 (다른 sweep 메서드는 별도 통계 없음).
@@ -88,6 +92,8 @@ class Sweeper:
                 removed.append(info.instance_id)
         for iid in removed:
             self._schema_registry.release_holder(iid)
+            if self._dispatcher is not None:
+                self._dispatcher._fire_unregister_hooks(iid)
         self.dead_session_sweep_runs_total += 1
         self.dead_session_sweep_last_run_at = time.time()
         return removed

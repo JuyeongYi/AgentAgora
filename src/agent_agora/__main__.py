@@ -217,7 +217,11 @@ async def run_server(args: argparse.Namespace) -> None:
         gc_task = asyncio.create_task(_message_gc_loop(dispatcher, args.gc_hour))
 
         starlette_app = mcp.streamable_http_app()
-        starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
+        starlette_app.add_middleware(
+            AutoRegisterMiddleware,
+            registry=instance_registry,
+            dispatcher=dispatcher,
+        )
         from agent_agora.admin_routes import maybe_register, make_file_policy_route
         _admin_token = os.environ.get("AGORA_ADMIN_TOKEN")
         if maybe_register(
