@@ -192,7 +192,9 @@ def render_staging(
         "REM Channel-mode worker. agora-channel needs the development-channels flag.\r\n"
         "REM Lower autoCompact threshold to 60% so the worker compacts well before the context wall.\r\n"
         "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60\r\n"
-        "claude --dangerously-load-development-channels server:agora-channel %*\r\n"
+        "REM Worker name = run.bat's containing folder basename (matches partition id).\r\n"
+        "for %%I in (\"%~dp0.\") do set \"AGORA_NAME=%%~nxI\"\r\n"
+        "claude --name \"%AGORA_NAME%\" --dangerously-load-development-channels server:agora-channel %*\r\n"
     )
     (staging_dir / "run.bat").write_text(run_bat, encoding="utf-8", newline="")
 
