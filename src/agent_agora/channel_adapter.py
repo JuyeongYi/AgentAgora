@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 
 import anyio
@@ -24,6 +25,8 @@ from mcp.server.session import ServerSession
 from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCNotification
+
+logger = logging.getLogger(__name__)
 
 CHANNEL_INSTRUCTIONS = (
     "AgentAgora channel adapter. When an inbox notification arrives as a "
@@ -191,6 +194,48 @@ def _make_broker_callables(broker_session: ClientSession, broker_mcp_url: str):
     return wait_notify, peek_pending
 
 
+# --- 브로커 등록 해제 -------------------------------------------------------
+
+# 종료 시 브로커 호출 상한 — 브로커가 느릴 때(죽지는 않은 경우) shutdown
+# finally가 무한 hang하지 않도록. 초과하면 sweeper TTL이 GC한다.
+_UNREGISTER_TIMEOUT_S = 5.0
+
+
+async def _do_unregister(broker: str, instance_id: str) -> None:
+    """브로커에 agora.unregister를 실제로 호출한다 (timeout 없음).
+
+    _unregister_from_broker가 asyncio.wait_for로 감싼다."""
+    async with streamable_http_client(broker) as conn:
+        async with ClientSession(conn[0], conn[1]) as session:
+            await session.initialize()
+            await session.call_tool(
+                "agora.unregister", {"instance_id": instance_id})
+
+
+async def _unregister_from_broker(broker: str, instance_id: str) -> None:
+    """종료 시 브로커에 agora.unregister를 호출한다 (best-effort, timeout 5s).
+
+    실패해도 예외를 전파하지 않는다 — sweeper TTL이 최종 안전망이다.
+    브로커가 느릴 경우 5초 후 포기하고 종료한다 (shutdown hang 방지)."""
+    try:
+        await asyncio.wait_for(
+            _do_unregister(broker, instance_id),
+            timeout=_UNREGISTER_TIMEOUT_S,
+        )
+        logger.info("agora.unregister sent for %s", instance_id)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "agora.unregister timed out for %s after %.1fs "
+            "(sweeper TTL이 GC함)",
+            instance_id, _UNREGISTER_TIMEOUT_S,
+        )
+    except Exception:
+        logger.exception(
+            "agora.unregister 호출 실패 (sweeper TTL이 GC함): instance_id=%s",
+            instance_id,
+        )
+
+
 # --- 채널(stdio MCP 서버) 글루 ----------------------------------------------
 
 async def _emit(session: ServerSession, content: str, meta: dict[str, str]) -> None:
@@ -291,6 +336,10 @@ async def _serve_channel(
                             f"[agora-channel] watch task 종료 중 예외: {exc!r}",
                             file=sys.stderr, flush=True,
                         )
+                # lifespan cleanup: 종료 시 브로커에 등록 해제 요청.
+                # stdin EOF(정상 종료)·KeyboardInterrupt·SIGINT 모두 이 경로를 탄다.
+                # SIGKILL/강제 종료는 sweeper TTL이 GC한다.
+                await _unregister_from_broker(broker, instance_id)
 
 
 async def main(argv: list[str] | None = None) -> None:
