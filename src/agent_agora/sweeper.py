@@ -5,11 +5,12 @@
 from __future__ import annotations
 
 import datetime
+import time
 
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.conversation_store import ConversationStore
 from agent_agora.persistence import Persistence
-from agent_agora.registry import InstanceRegistry
+from agent_agora.registry import InstanceRegistry, is_operator
 from agent_agora.schemas import SchemaRegistry
 
 
@@ -27,6 +28,7 @@ class Sweeper:
         gc_retention_days: int,
         file_store=None,
         file_retention_days: int = 7,
+        dispatcher=None,
     ) -> None:
         self._conv = conversation_store
         self._instance_registry = instance_registry
@@ -38,6 +40,14 @@ class Sweeper:
         self._gc_retention_days = gc_retention_days
         self._file_store = file_store
         self._file_retention_days = file_retention_days
+        # dispatcher는 dead_session_sweep 후 unregister hook 호출 용도.
+        # Optional — 테스트나 hook 비사용 시 None 안전.
+        self._dispatcher = dispatcher
+
+        # 실행 통계 — dashboard_health.py (Task 7)에서 읽는다.
+        # dead_session_sweep 호출만 카운트한다 (다른 sweep 메서드는 별도 통계 없음).
+        self.dead_session_sweep_runs_total: int = 0
+        self.dead_session_sweep_last_run_at: float | None = None
 
     def close_ttl_sweep(self, now: datetime.datetime | None = None) -> list[str]:
         """Auto-transition half_closed conversations to closed after timeout.
@@ -65,12 +75,15 @@ class Sweeper:
 
     def dead_session_sweep(self, now: datetime.datetime | None = None) -> list[str]:
         """Unregister instances whose last_seen_at exceeded dead_session_timeout.
-        In-flight queues are preserved (a re-registered instance will see them)."""
+        In-flight queues are preserved (a re-registered instance will see them).
+        operator: 접두사 인스턴스는 TTL에 관계없이 면제된다."""
         if now is None:
             now = datetime.datetime.now(datetime.timezone.utc)
         cutoff = now - datetime.timedelta(milliseconds=self._dead_session_timeout_ms)
         removed: list[str] = []
         for info in self._instance_registry.list_instances():
+            if is_operator(info.instance_id):
+                continue  # 운영자 pseudo-instance는 GC 면제
             if info.last_seen_at is None:
                 continue
             seen = datetime.datetime.fromisoformat(info.last_seen_at)
@@ -79,6 +92,10 @@ class Sweeper:
                 removed.append(info.instance_id)
         for iid in removed:
             self._schema_registry.release_holder(iid)
+            if self._dispatcher is not None:
+                self._dispatcher._fire_unregister_hooks(iid)
+        self.dead_session_sweep_runs_total += 1
+        self.dead_session_sweep_last_run_at = time.time()
         return removed
 
     def dead_bot_sweep(self, now: datetime.datetime | None = None) -> list[str]:

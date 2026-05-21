@@ -11,6 +11,20 @@ class NotRegisteredError(Exception):
     pass
 
 
+OPERATOR_PREFIX = "operator:"
+
+
+def is_operator(instance_id: str) -> bool:
+    """True iff instance_id is a dashboard operator pseudo-instance.
+
+    Pseudo-instances use the `operator:<username>` namespace and are
+    exempt from sweeper GC and comm-matrix ACL.
+    """
+    if not instance_id.startswith(OPERATOR_PREFIX):
+        return False
+    return len(instance_id) > len(OPERATOR_PREFIX)
+
+
 @dataclass(frozen=True)
 class InstanceInfo:
     instance_id: str

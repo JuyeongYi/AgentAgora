@@ -172,6 +172,7 @@ def create_agora_app(
             description=description,
             wait_mode=wait_mode,
         )
+        dispatcher._fire_register_hooks(info)
         return json.dumps({
             "status": "ok",
             "instance_id": info.instance_id,
@@ -273,15 +274,19 @@ def create_agora_app(
             session_id = _session_id_from_ctx(ctx)
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
-        # 해제 전에 holder id를 잡아 스키마 ref를 해제한다.
+        # 해제 전에 holder id를 잡아 스키마 ref를 해제하고 unregister hook을 발화한다.
+        fired_ids: list[str] = []
         for reg in (instance_registry, bot_registry):
             try:
                 holder = reg.resolve_session(session_id).instance_id
                 schema_registry.release_holder(holder)
+                fired_ids.append(holder)
             except NotRegisteredError:
                 pass
         instance_registry.unregister_session(session_id)
         bot_registry.unregister_session(session_id)
+        for iid in fired_ids:
+            dispatcher._fire_unregister_hooks(iid)
         return json.dumps({"status": "ok"})
 
     @mcp.tool(name="agora.instances")

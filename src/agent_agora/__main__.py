@@ -199,6 +199,7 @@ async def run_server(args: argparse.Namespace) -> None:
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
     persistence = mcp._agora_persistence  # type: ignore[attr-defined]
     write_queue = mcp._agora_write_queue  # type: ignore[attr-defined]
+    schema_registry = mcp._agora_schema_registry  # type: ignore[attr-defined]
 
     scheme = "http" if args.no_tls else "https"
     print(f"AgentAgora starting on {scheme}://127.0.0.1:{args.port}/mcp")
@@ -217,7 +218,11 @@ async def run_server(args: argparse.Namespace) -> None:
         gc_task = asyncio.create_task(_message_gc_loop(dispatcher, args.gc_hour))
 
         starlette_app = mcp.streamable_http_app()
-        starlette_app.add_middleware(AutoRegisterMiddleware, registry=instance_registry)
+        starlette_app.add_middleware(
+            AutoRegisterMiddleware,
+            registry=instance_registry,
+            dispatcher=dispatcher,
+        )
         from agent_agora.admin_routes import maybe_register, make_file_policy_route
         _admin_token = os.environ.get("AGORA_ADMIN_TOKEN")
         if maybe_register(
@@ -229,15 +234,72 @@ async def run_server(args: argparse.Namespace) -> None:
             starlette_app.router.routes.append(
                 make_file_policy_route(mcp._agora_file_policy, _admin_token))  # type: ignore[attr-defined]
             print("  Admin    : POST/GET /admin/file-policy (AGORA_ADMIN_TOKEN set)")
+        import time as _time
+        from agent_agora.dashboard_health import HealthCollector
+        from agent_agora.dashboard_events import EventBroker
+        from agent_agora.dashboard_auth import DashboardAuthMiddleware, parse_tokens
         from agent_agora.dashboard_routes import register as register_dashboard
+
+        _dash_auth_mode = os.environ.get("AGORA_DASHBOARD_AUTH_MODE", "trust")
+        try:
+            _dash_tokens = parse_tokens(os.environ.get("AGORA_DASHBOARD_TOKENS", ""))
+        except ValueError as e:
+            print(
+                f"[agent_agora] error: AGORA_DASHBOARD_TOKENS is malformed: {e}",
+                file=sys.stderr,
+            )
+            print(
+                "  Expected format: 'user1:token1,user2:token2'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        _health = HealthCollector(
+            started_at=_time.time(),
+            db_path=db_path,
+            persistence=write_queue,
+            sweeper=dispatcher.sweeper,
+        )
+        _event_broker = EventBroker(max_queue=1000)
+        _event_broker.attach_to_dispatcher(dispatcher)
+
+        _DASHBOARD_PROTECTED_PATHS = [
+            "/dashboard/data",
+            "/dashboard/dispatch",
+            "/dashboard/broadcast",
+            "/dashboard/operator",
+            "/dashboard/conversation",
+            "/dashboard/instance",
+            "/dashboard/schemas",
+            "/dashboard/stream",
+        ]
+
+        starlette_app.add_middleware(
+            DashboardAuthMiddleware,
+            mode=_dash_auth_mode,
+            tokens=_dash_tokens,
+            protected_paths=_DASHBOARD_PROTECTED_PATHS,
+            query_param_paths=["/dashboard/stream"],
+        )
+
         register_dashboard(
             starlette_app,
             dispatcher=dispatcher,
             instance_registry=instance_registry,
             bot_registry=mcp._agora_bot_registry,  # type: ignore[attr-defined]
             comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
+            persistence=persistence,
+            write_queue=write_queue,
+            schema_registry=schema_registry,
+            health_collector=_health,
+            event_broker=_event_broker,
+            auth_mode=_dash_auth_mode,
         )
-        print("  Dashboard: GET /dashboard")
+        print("  Dashboard: GET /dashboard, GET /dashboard/data, GET /dashboard/auth-mode")
+        print("  Dashboard: GET /dashboard/stream (SSE)")
+        print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")
+        print("  Dashboard: GET /dashboard/operator/inbox, POST /dashboard/operator/inbox/ack")
+        print(f"  Dashboard: auth mode = {_dash_auth_mode}")
         from agent_agora.file_routes import register as register_files
         register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
                        file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]

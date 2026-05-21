@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS messages (
   payload TEXT NOT NULL,
   drained_at TEXT,
   drop_reason TEXT CHECK (drop_reason IS NULL OR drop_reason IN ('server_restart','manual')),
+  reply_only INTEGER NOT NULL DEFAULT 0,
+  acked_at REAL,
   PRIMARY KEY (command_id, target),
   FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
 );
@@ -109,6 +111,14 @@ class Persistence:
     def migrate(self, target_version: int = 1) -> None:
         cur = self._conn.cursor()
         cur.executescript(_SCHEMA_V1)
+        # Idempotent column adds for older DBs that pre-date these fields.
+        # Use PRAGMA pre-check rather than catching OperationalError — narrow
+        # the failure surface so disk/lock/syntax errors still surface.
+        existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(messages)").fetchall()}
+        if "reply_only" not in existing_cols:
+            cur.execute("ALTER TABLE messages ADD COLUMN reply_only INTEGER NOT NULL DEFAULT 0")
+        if "acked_at" not in existing_cols:
+            cur.execute("ALTER TABLE messages ADD COLUMN acked_at REAL")
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cur.execute("INSERT OR IGNORE INTO schema_version VALUES (?, ?)", (target_version, now))
 
@@ -126,7 +136,7 @@ class Persistence:
             SELECT m.command_id, m.target, m.conversation_id, m.source, m.created_at,
                    m.expect_result, m.reply_to, m.cc, m.delivered_as, m.dispatch_kind,
                    m.in_reply_to, m.closing, m.priority, m.priority_rank, m.deadline_ts,
-                   m.payload
+                   m.payload, m.reply_only
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.conversation_id
             WHERE m.drained_at IS NULL AND c.status != 'closed'
@@ -135,8 +145,12 @@ class Persistence:
         ).fetchall()
         cols = ("command_id","target","conversation_id","source","created_at",
                 "expect_result","reply_to","cc","delivered_as","dispatch_kind",
-                "in_reply_to","closing","priority","priority_rank","deadline_ts","payload")
-        return [dict(zip(cols, r)) for r in rows]
+                "in_reply_to","closing","priority","priority_rank","deadline_ts","payload",
+                "reply_only")
+        out = [dict(zip(cols, r)) for r in rows]
+        for row in out:
+            row["reply_only"] = bool(row["reply_only"])
+        return out
 
     def restore_in_flight_pending(self) -> dict[str, dict[str, set[str]]]:
         """Inst4 우려3 — _in_flight 재시작 복구."""
@@ -239,6 +253,81 @@ class Persistence:
     def delete_file(self, file_id: str) -> None:
         self._conn.execute("DELETE FROM files WHERE file_id=?", (file_id,))
 
+    def fetch_messages_for(
+        self,
+        *,
+        recipient: str | None = None,
+        conversation_id: str | None = None,
+        include_acked: bool = False,
+    ) -> list[dict]:
+        """Fetch messages from the messages table filtered by recipient or conversation_id.
+
+        By default, only messages with acked_at IS NULL are returned (unless include_acked=True).
+        Returns list of dicts with keys: message_id, sender, source, target, payload,
+        conversation_id, created_at, delivered_as, in_reply_to, reply_only, acked_at.
+        (`sender` and `source` are aliases — `sender` is the canonical UI-facing name,
+        `source` matches the DB column name for code that introspects by SQL identifier.)
+        """
+        conditions: list[str] = []
+        params: list = []
+
+        if recipient is not None:
+            conditions.append("target = ?")
+            params.append(recipient)
+        if conversation_id is not None:
+            conditions.append("conversation_id = ?")
+            params.append(conversation_id)
+        if not include_acked:
+            conditions.append("acked_at IS NULL")
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        sql = (
+            f"SELECT command_id, source, target, payload, conversation_id, "
+            f"created_at, delivered_as, in_reply_to, acked_at, reply_only "
+            f"FROM messages {where} "
+            f"ORDER BY created_at ASC, command_id ASC"
+        )
+        rows = self._conn.execute(sql, params).fetchall()
+        out = []
+        for row in rows:
+            payload_raw = row[3]
+            try:
+                payload_val = json.loads(payload_raw)
+            except (TypeError, ValueError):
+                payload_val = payload_raw
+            out.append({
+                "message_id": row[0],
+                "sender": row[1],
+                "source": row[1],
+                "target": row[2],
+                "payload": payload_val,
+                "conversation_id": row[4],
+                "created_at": row[5],
+                "delivered_as": row[6],
+                "in_reply_to": row[7],
+                "acked_at": row[8],
+                "reply_only": bool(row[9]),
+            })
+        return out
+
+    async def mark_messages_acked(
+        self, message_ids: list[str], *, write_queue: "AsyncWriteQueue",
+    ) -> int:
+        """Set acked_at = current unix timestamp for the given message_ids.
+
+        Routes the UPDATE through the AsyncWriteQueue to preserve the codebase
+        invariant "hot path never calls writes directly" (Persistence docstring).
+        Returns the number of message_ids submitted (not the SQLite rowcount —
+        the queue worker does not surface rowcount through submit_transaction).
+        """
+        if not message_ids:
+            return 0
+        now_ts = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        placeholders = ",".join("?" * len(message_ids))
+        sql = f"UPDATE messages SET acked_at = ? WHERE command_id IN ({placeholders})"
+        await write_queue.submit_transaction([(sql, (now_ts, *message_ids))])
+        return len(message_ids)
+
 
 @dataclass
 class _TxnRequest:
@@ -291,3 +380,7 @@ class AsyncWriteQueue:
         await self._queue.put(_TxnRequest(stmts=stmts, future=future))
         if future is not None:
             await future
+
+    def write_queue_depth(self) -> int:
+        """Current async write queue depth — operator dashboard health metric."""
+        return self._queue.qsize()

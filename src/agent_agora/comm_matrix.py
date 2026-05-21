@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from agent_agora.errors import AgoraError
+from agent_agora.registry import is_operator
 
 
 class CommMatrix:
@@ -87,7 +88,11 @@ class CommMatrix:
 
     def is_allowed(self, from_: str, to: str) -> bool:
         """from_→to dispatch가 허용되는가. 비활성이면 항상 True.
-        활성이면 weight_of > 0 — strict whitelist."""
+        활성이면 weight_of > 0 — strict whitelist.
+        operator:<x> 엔드포인트(송신 또는 수신)는 매트릭스 활성 여부와 무관하게 항상 allow."""
+        # operator bypass takes precedence over ACL — works regardless of matrix activation.
+        if is_operator(from_) or is_operator(to):
+            return True
         if not self.active:
             return True
         return self.weight_of(from_, to) > 0

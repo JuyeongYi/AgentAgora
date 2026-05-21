@@ -1,0 +1,48 @@
+/* 다크 테마. 기존 dashboard.html의 색을 유지하면서 다중 패널 레이아웃. */
+* { box-sizing: border-box; }
+body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; margin:0; padding:0; }
+.hidden { display: none !important; }
+
+#login-modal { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:100; }
+.login-card { background:#252542; padding:24px; border-radius:8px; min-width:300px; }
+.login-card label { display:block; margin:12px 0; }
+.login-card input { width:100%; padding:6px; background:#1a1a2e; border:1px solid #33334d; color:#e8e8e8; }
+.login-card button { width:100%; padding:8px; margin-top:12px; background:#3d3d6b; color:#e8e8e8; border:none; border-radius:4px; cursor:pointer; }
+
+#header { display:flex; align-items:center; gap:16px; padding:8px 16px; background:#252542; border-bottom:1px solid #33334d; }
+#header .title { font-weight:600; flex:1; }
+#conn-indicator { font-size:14px; }
+#conn-indicator.connected { color:#7ed321; }
+#conn-indicator.fallback { color:#f5a623; }
+#health-summary { font-size:12px; color:#9aa; }
+#logout { background:none; border:1px solid #33334d; color:#e8e8e8; padding:4px 10px; cursor:pointer; border-radius:4px; }
+
+#main { display:grid; grid-template-columns:280px 1fr; gap:12px; padding:12px; }
+#left-panel section { background:#252542; padding:12px; border-radius:6px; margin-bottom:12px; }
+#summary-cards { display:flex; gap:12px; margin-bottom:12px; }
+#summary-cards .card { background:#252542; padding:12px 18px; border-radius:6px; flex:1; }
+#summary-cards .card b { font-size:22px; display:block; }
+
+.fab { position:fixed; right:24px; bottom:24px; background:#3d3d6b; color:#e8e8e8; border:none; padding:12px 20px; border-radius:30px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.4); font-size:14px; }
+.fab:hover { background:#4d4d80; }
+
+.modal { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:50; }
+.modal .modal-card { background:#252542; padding:24px; border-radius:8px; max-width:90vw; max-height:90vh; overflow:auto; min-width:500px; }
+
+.tabulator { background:#252542; }
+.tabulator .tabulator-header { background:#1a1a2e; color:#9aa; }
+
+.message-card { padding:8px; border-bottom:1px solid #33334d; }
+.message-card .sender { color:#bbf; font-weight:600; }
+.message-card .timestamp { color:#9aa; font-size:11px; }
+.message-card .payload { background:#1a1a2e; padding:6px; border-radius:4px; font-family:monospace; font-size:11px; white-space:pre-wrap; }
+.message-card .reply-only { color:#f5a623; font-size:10px; }
+
+.hot { color:#ff9; font-weight:700; }
+
+/* comm-matrix SVG (기존 dashboard.html에서 그대로) */
+#comm-matrix svg { background:#252542; border-radius:6px; }
+.node { fill:#3d3d6b; stroke:#8888c0; }
+.nodelabel { fill:#e8e8e8; font-size:11px; text-anchor:middle; }
+.edge { stroke:#7a7ad0; fill:none; }
+.edgelabel { fill:#bbf; font-size:10px; text-anchor:middle; }

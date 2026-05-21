@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import datetime
 import json
+import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal
+from typing import Any, Callable, Literal
+
+logger = logging.getLogger(__name__)
 
 from agent_agora.envelope import (
     Envelope,
     _PRIORITY_RANK,
+    envelope_to_dict,
     make_envelope,
     validate_payload_size,
     validate_priority,
@@ -30,7 +33,8 @@ def _now_iso() -> str:
 
 
 def _envelope_to_dict(env: Envelope) -> dict[str, Any]:
-    return dataclasses.asdict(env)
+    # Single canonical serializer — delegates to envelope.envelope_to_dict.
+    return envelope_to_dict(env)
 
 
 class DispatcherClosed(Exception):
@@ -86,9 +90,57 @@ class Dispatcher:
             gc_retention_days=gc_retention_days,
             file_store=file_store,
             file_retention_days=file_retention_days,
+            dispatcher=self,
         )
         from agent_agora.dispatch_persistence import DispatchPersistence
         self._dispatch_persistence = DispatchPersistence(persistence, write_queue)
+
+        # event hooks — dashboard_events(Task 9) 등에서 구독
+        self._dispatch_hooks: list[Callable[[Envelope], None]] = []
+        self._register_hooks: list[Callable[[Any], None]] = []  # InstanceInfo once Task 9 wires
+        self._unregister_hooks: list[Callable[[str], None]] = []
+
+    # ------------------------------------------------------------------
+    # event hook registration (public API)
+    # ------------------------------------------------------------------
+
+    def register_dispatch_hook(self, callback: Callable) -> None:
+        """callback(envelope: Envelope) — dispatch 발생 시 호출."""
+        self._dispatch_hooks.append(callback)
+
+    def register_register_hook(self, callback: Callable) -> None:
+        """callback(info: InstanceInfo) — 인스턴스 등록 시 호출.
+        실제 wiring은 Task 9에서 auto_register.py / dashboard_events가 담당한다."""
+        self._register_hooks.append(callback)
+
+    def register_unregister_hook(self, callback: Callable) -> None:
+        """callback(instance_id: str) — 인스턴스 해제 시 호출."""
+        self._unregister_hooks.append(callback)
+
+    # ------------------------------------------------------------------
+    # internal hook fire helpers (exception-safe)
+    # ------------------------------------------------------------------
+
+    def _fire_dispatch_hooks(self, envelope: Envelope) -> None:
+        for cb in list(self._dispatch_hooks):  # snapshot: mutation-during-iter safe
+            try:
+                cb(envelope)
+            except Exception:
+                logger.exception("dispatch hook raised")
+
+    def _fire_register_hooks(self, info: Any) -> None:
+        for cb in list(self._register_hooks):  # snapshot: mutation-during-iter safe
+            try:
+                cb(info)
+            except Exception:
+                logger.exception("register hook raised")
+
+    def _fire_unregister_hooks(self, instance_id: str) -> None:
+        for cb in list(self._unregister_hooks):  # snapshot: mutation-during-iter safe
+            try:
+                cb(instance_id)
+            except Exception:
+                logger.exception("unregister hook raised")
 
     @property
     def default_timeout_ms(self) -> int:
@@ -128,6 +180,7 @@ class Dispatcher:
         closing: bool = False,
         priority: Literal["low", "normal", "high"] = "normal",
         deadline_ts: str | None = None,
+        reply_only: bool = False,
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
@@ -210,6 +263,7 @@ class Dispatcher:
                     in_reply_to=in_reply_to,
                     closing=cl,
                     priority=priority, deadline_ts=deadline_ts,
+                    reply_only=reply_only,
                 )
 
             # primary envelope (target 있을 때만). primary/cc observer는 closing 플래그를
@@ -305,6 +359,17 @@ class Dispatcher:
         dispatched_to += [{"instance_id": c, "as": "cc"} for c in cc_deliver]
         dispatched_to += [{"instance_id": b, "as": "subscribed"}
                           for b in subscriber_bots if b != target]
+
+        # fire dispatch hooks for each delivered envelope (exception-safe)
+        all_envs: list[Envelope] = []
+        if primary_env is not None:
+            all_envs.append(primary_env)
+        all_envs.extend(cc_envs)
+        all_envs.extend(sub_envs)
+        all_envs.extend(obs_envs)
+        for env in all_envs:
+            self._fire_dispatch_hooks(env)
+
         return {
             "command_id": cmd_id,
             "created_at": now,
@@ -812,6 +877,7 @@ class Dispatcher:
                 delivered_as=row["delivered_as"], dispatch_kind=row["dispatch_kind"],
                 in_reply_to=row["in_reply_to"], closing=bool(row["closing"]),
                 priority=row["priority"], deadline_ts=row["deadline_ts"],
+                reply_only=bool(row.get("reply_only", False)),
             )
             self._queues[row["target"]].append(env)
             self._conv.set_conv_of(row["command_id"], row["conversation_id"])
