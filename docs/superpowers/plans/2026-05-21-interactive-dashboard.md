@@ -560,8 +560,8 @@ class _FakePersistence:
 
 
 class _FakeSweeper:
-    runs_total = 5
-    last_run_at = 1700000000.0
+    dead_session_sweep_runs_total = 5
+    dead_session_sweep_last_run_at = 1700000000.0
 
 
 def test_uptime_seconds_increases(tmp_path):
@@ -674,13 +674,13 @@ class HealthCollector:
 
     def _sweeper_runs(self) -> int | None:
         try:
-            return int(self.sweeper.runs_total)
+            return int(self.sweeper.dead_session_sweep_runs_total)
         except Exception:
             return None
 
     def _sweeper_last(self) -> float | None:
         try:
-            return self.sweeper.last_run_at
+            return self.sweeper.dead_session_sweep_last_run_at
         except Exception:
             return None
 ```
