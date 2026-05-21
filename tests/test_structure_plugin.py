@@ -38,3 +38,43 @@ def test_marketplace_contains_structure_plugin():
 
 def test_readme_exists():
     assert (PLUGIN_DIR / "README.md").is_file()
+
+
+def test_slash_commands_exist():
+    cmd_dir = PLUGIN_DIR / "commands"
+    for name in ("agora-structure-analyze.md", "agora-structure-spawn.md"):
+        assert (cmd_dir / name).is_file(), f"missing slash command: {cmd_dir / name}"
+
+
+def test_scripts_exist():
+    sc = PLUGIN_DIR / "scripts"
+    for name in ("partition.py", "structure_spawn.py"):
+        assert (sc / name).is_file(), f"missing script: {sc / name}"
+
+
+def test_templates_exist():
+    t = PLUGIN_DIR / "templates"
+    for name in (
+        "worker-claude.md.template",
+        "worker-mcp.json.template",
+        "worker-settings.local.json.template",
+        "structure-manifest.json.example",
+    ):
+        assert (t / name).is_file(), f"missing template: {name}"
+
+
+def test_manifest_example_is_valid_json_and_loads_via_load_manifest(tmp_path):
+    import sys
+    SCRIPTS = PLUGIN_DIR / "scripts"
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
+    from structure_spawn import load_manifest  # type: ignore
+    example = PLUGIN_DIR / "templates" / "structure-manifest.json.example"
+    data = json.loads(example.read_text(encoding="utf-8"))
+    # The example uses a placeholder repo path — patch it for load_manifest.
+    data["repo"] = "C:/x"
+    p = tmp_path / "manifest.json"
+    p.write_text(json.dumps(data), encoding="utf-8")
+    m = load_manifest(p)
+    assert m.version == 1
+    assert len(m.partitions) >= 1
