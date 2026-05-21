@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "repo": "C:/path/to/your/repo",
+  "target_size": 80,
+  "generated": "2026-05-20T12:34:56Z",
+  "partitions": [
+    {
+      "id": "src-agent-agora",
+      "root": "src/agent_agora",
+      "weight": 412,
+      "files": [
+        "src/agent_agora/server.py",
+        "src/agent_agora/dispatcher.py"
+      ],
+      "suggested_role": "implementer",
+      "coupling": [
+        {"to": "tests", "edges": 30, "kinds": {"calls": 28, "inherits": 2}}
+      ]
+    },
+    {
+      "id": "tests",
+      "root": "tests",
+      "weight": 95,
+      "files": [
+        "tests/test_v4_dispatcher.py",
+        "tests/test_registry.py"
+      ],
+      "suggested_role": "tester",
+      "coupling": []
+    }
+  ],
+  "warnings": [
+    "partition 'src-agent-agora' weight 412 > target 80 — leaf folder, cannot split further",
+    "inherits edge crosses partition boundary: tests -> src-agent-agora"
+  ]
+}

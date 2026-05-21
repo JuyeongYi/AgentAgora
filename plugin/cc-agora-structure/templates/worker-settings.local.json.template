@@ -1,0 +1,19 @@
+{
+  "extraKnownMarketplaces": {
+    "agentagora": {"source": "directory", "path": "{{MARKETPLACE_PATH}}"}
+  },
+  "enabledPlugins": {
+    "{{PERSONA_PLUGIN}}@agentagora": true,
+    "cc-agora-structure@agentagora": true
+  },
+  "permissions": {
+    "allow": [
+      "Edit({{STAGING_GLOB}})",
+      "Write({{STAGING_GLOB}})",
+      "NotebookEdit({{STAGING_GLOB}})",
+      "Edit({{WORKTREE_GLOB}})",
+      "Write({{WORKTREE_GLOB}})",
+      "NotebookEdit({{WORKTREE_GLOB}})"
+    ]
+  }
+}

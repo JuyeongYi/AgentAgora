@@ -1,0 +1,48 @@
+# {{INSTANCE_ID}} ({{ROLE}}) — Partition {{PARTITION_ID}}
+
+이 인스턴스는 **{{INSTANCE_ID}}** 워커이다. 역할: **{{ROLE}}**. 책임: {{DESCRIPTION}}.
+
+## 페르소나
+
+본인의 역할 페르소나는 `cc-agora-{{ROLE}}` 플러그인이 제공하는 `persona` 스킬에 있다. 기동 시 그 스킬을 적용해 역할을 수행한다.
+
+## 통신
+
+채널 모드 메시징은 `agora-protocol` 스킬을 따른다 — 채널 알림으로 깨어나 `agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. 등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/`agora.unregister`를 호출하지 않는다.
+
+## 파티션 배정
+
+- **id:** `{{PARTITION_ID}}`
+- **root:** `{{PARTITION_ROOT}}`
+- **예약 worktree 경로:** `{{WORKTREE_PATH}}`
+- **담당 파일:**
+{{PARTITION_FILES}}
+
+## 범위 규칙
+
+네 편집 범위는 `{{PARTITION_ROOT}}` 폴더 내부다. 범위 밖 편집은 금지된다.
+
+**크로스파티션 읽기** — 다른 파티션의 코드는 네 디스크에 없다. 시그니처·구조·호출관계·상속은 `code-review-graph` MCP 도구로 조회한다:
+- `mcp__code-review-graph__query_graph_tool` (`pattern`은 `callers_of`·`callees_of`·`imports_of`·`importers_of`·`children_of`·`tests_for`·`inheritors_of`·`file_summary` 중 하나)
+- `mcp__code-review-graph__semantic_search_nodes_tool`
+
+**크로스파티션 쓰기** — 다른 파티션 파일의 수정이 필요하면 agora로 그 파티션 담당 워커에 task를 디스패치한다 (`agora.dispatch`).
+
+## worktree 절차
+
+구현 task를 받으면 다음 순서로 작업 공간을 준비한다:
+
+1. superpowers `using-git-worktrees` 스킬을 적용한다.
+2. 타깃 레포(`{{REPO_PATH}}`)에서 예약된 경로에 worktree를 만든다:
+   ```
+   git -C "{{REPO_PATH}}" worktree add "{{WORKTREE_PATH}}" -b structure/{{PARTITION_ID}}
+   ```
+3. worktree에서 콘 모드 sparse-checkout으로 파티션 폴더만 머티리얼라이즈한다:
+   ```
+   git -C "{{WORKTREE_PATH}}" sparse-checkout init --cone
+   git -C "{{WORKTREE_PATH}}" sparse-checkout set "{{PARTITION_ROOT}}"
+   ```
+4. `cd {{WORKTREE_PATH}}/{{PARTITION_ROOT}}`로 들어가 거기서 모든 구현 작업을 수행한다.
+5. 후속 task는 같은 worktree를 재사용한다 (브랜치 분기는 워크트리 스킬 책임).
+
+worktree 경로가 이미 채워져 있거나 git 명령이 실패하면, task를 중단하고 agora로 운영자에게 에러를 보고한다.

@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "agentagora": {
+      "type": "http",
+      "url": "{{SERVER_URL}}",
+      "headers": {
+        "X-Agora-Instance-Id": "{{INSTANCE_ID}}",
+        "X-Agora-Role": "{{ROLE}}",
+        "X-Agora-Description": "{{DESCRIPTION}}",
+        "X-Agora-Cwd": "{{CWD}}"
+      }
+    },
+    "agora-channel": {
+      "type": "stdio",
+      "command": "agora-channel",
+      "args": ["--instance-id", "{{INSTANCE_ID}}", "--broker", "{{SERVER_URL}}"]
+    },
+    "code-review-graph": {
+      "type": "stdio",
+      "command": "code-review-graph",
+      "args": ["serve"]
+    }
+  }
+}
