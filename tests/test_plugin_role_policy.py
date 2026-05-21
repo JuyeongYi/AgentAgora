@@ -65,3 +65,16 @@ def test_load_roles_invalid_root(tmp_path: Path) -> None:
     bad.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
     with pytest.raises(ValueError, match="object at top level"):
         load_roles(bad)
+
+
+def test_mvc_roles_exist_in_roles_json() -> None:
+    roles = load_roles(ROLES_PATH)
+    for role in ("sp-model", "sp-view", "sp-controller"):
+        assert is_defined(role, roles), f"{role} not in roles.json"
+
+
+def test_mvc_roles_map_to_correct_plugins() -> None:
+    roles = load_roles(ROLES_PATH)
+    assert plugin_for("sp-model", roles) == "superpowers-model"
+    assert plugin_for("sp-view", roles) == "superpowers-view"
+    assert plugin_for("sp-controller", roles) == "superpowers-controller"

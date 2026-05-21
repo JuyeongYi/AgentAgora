@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-model",
+  "description": "Superpowers model persona — owns data structures, persistence, domain rules, validation.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}

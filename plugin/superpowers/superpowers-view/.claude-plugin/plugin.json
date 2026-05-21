@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-view",
+  "description": "Superpowers view persona — owns presentation, templates, CSS, UI rendering.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}

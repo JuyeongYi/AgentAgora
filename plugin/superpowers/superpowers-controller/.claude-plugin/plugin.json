@@ -1,0 +1,6 @@
+{
+  "name": "superpowers-controller",
+  "description": "Superpowers controller persona — owns routing, request handling, model↔view coordination.",
+  "version": "0.1.0",
+  "dependencies": ["superpowers-base"]
+}
