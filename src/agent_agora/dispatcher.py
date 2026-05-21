@@ -180,6 +180,7 @@ class Dispatcher:
         closing: bool = False,
         priority: Literal["low", "normal", "high"] = "normal",
         deadline_ts: str | None = None,
+        reply_only: bool = False,
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
@@ -262,6 +263,7 @@ class Dispatcher:
                     in_reply_to=in_reply_to,
                     closing=cl,
                     priority=priority, deadline_ts=deadline_ts,
+                    reply_only=reply_only,
                 )
 
             # primary envelope (target 있을 때만). primary/cc observer는 closing 플래그를

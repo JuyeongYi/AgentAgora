@@ -7,12 +7,17 @@ spec: docs/superpowers/specs/2026-05-17-team-dashboard-design.md.
 from __future__ import annotations
 
 import datetime
+import logging
 from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
+
+from agent_agora.registry import NotRegisteredError
+
+logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).with_name("dashboard.html")
 
@@ -61,8 +66,22 @@ def build_dashboard_data(*, dispatcher, instance_registry, bot_registry, comm_ma
     }
 
 
-def register(app: Starlette, *, dispatcher, instance_registry, bot_registry, comm_matrix) -> None:
-    """app에 대시보드 라우트 2개를 등록한다."""
+def register(
+    app: Starlette,
+    *,
+    dispatcher,
+    instance_registry,
+    bot_registry,
+    comm_matrix,
+    persistence=None,
+    write_queue=None,
+) -> None:
+    """app에 대시보드 라우트를 등록한다.
+
+    persistence + write_queue가 모두 제공된 경우 /dispatch, /broadcast,
+    /operator/inbox 엔드포인트도 추가된다. write_queue는 ack 경로의 sync 쓰기
+    회피용으로 필요하다 (Persistence 클래스 invariant: 쓰기는 큐를 경유).
+    """
 
     async def data_endpoint(request: Request) -> JSONResponse:
         return JSONResponse(build_dashboard_data(
@@ -74,3 +93,139 @@ def register(app: Starlette, *, dispatcher, instance_registry, bot_registry, com
 
     app.router.routes.append(Route("/dashboard", page_endpoint, methods=["GET"]))
     app.router.routes.append(Route("/dashboard/data", data_endpoint, methods=["GET"]))
+
+    # ------------------------------------------------------------------
+    # operator action endpoints (require persistence + write_queue)
+    # ------------------------------------------------------------------
+    if persistence is None or write_queue is None:
+        return
+
+    def _lazy_register_operator(user: str) -> None:
+        """operator:<user> 가 레지스트리에 없으면 pseudo-instance로 등록한다."""
+        sender = f"operator:{user}"
+        try:
+            instance_registry.resolve_instance_id(sender)
+        except NotRegisteredError:
+            instance_registry.register(
+                session_id=f"dashboard:{user}",
+                instance_id=sender,
+                role="operator",
+                description=f"Dashboard operator {user}",
+            )
+
+    async def dispatch_endpoint(request: Request) -> JSONResponse:
+        """POST /dashboard/dispatch — 운영자 → 특정 워커."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=422)
+
+        to = body.get("to")
+        schema = body.get("schema")
+        payload = body.get("payload", {})
+        reply_only = bool(body.get("reply_only", False))
+        conv = body.get("conversation_id")
+
+        if not to:
+            return JSONResponse({"error": "to required"}, status_code=422)
+        if not schema:
+            return JSONResponse({"error": "schema required"}, status_code=422)
+
+        user = request.state.operator_user
+        sender = f"operator:{user}"
+        _lazy_register_operator(user)
+
+        # 워커 존재 확인
+        try:
+            instance_registry.resolve_instance_id(to)
+        except NotRegisteredError:
+            return JSONResponse({"error": "recipient not registered"}, status_code=404)
+
+        # msgtype을 payload에 주입
+        if isinstance(payload, dict) and "msgtype" not in payload:
+            payload = {**payload, "msgtype": schema}
+
+        try:
+            result = await dispatcher.dispatch(
+                source=sender,
+                target=to,
+                payload=payload,
+                conversation_id=conv,
+                reply_only=reply_only,
+            )
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+
+        return JSONResponse(
+            {
+                "message_id": result["command_id"],
+                "conversation_id": result["conversation_id"],
+            },
+            status_code=201,
+        )
+
+    async def broadcast_endpoint(request: Request) -> JSONResponse:
+        """POST /dashboard/broadcast — 운영자 → 여러 워커."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=422)
+
+        targets = body.get("targets") or []
+        schema = body.get("schema")
+        payload = body.get("payload", {})
+        reply_only = bool(body.get("reply_only", False))
+
+        if not targets:
+            return JSONResponse({"error": "targets required"}, status_code=422)
+        if not schema:
+            return JSONResponse({"error": "schema required"}, status_code=422)
+
+        user = request.state.operator_user
+        sender = f"operator:{user}"
+        _lazy_register_operator(user)
+
+        results = []
+        for to in targets:
+            msg_payload = dict(payload) if isinstance(payload, dict) else payload
+            if isinstance(msg_payload, dict) and "msgtype" not in msg_payload:
+                msg_payload = {**msg_payload, "msgtype": schema}
+            try:
+                r = await dispatcher.dispatch(
+                    source=sender, target=to, payload=msg_payload,
+                    reply_only=reply_only,
+                )
+                results.append({"to": to, "message_id": r["command_id"],
+                                 "conversation_id": r["conversation_id"]})
+            except Exception as exc:
+                results.append({"to": to, "error": str(exc)})
+
+        return JSONResponse({"results": results})
+
+    async def operator_inbox_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/operator/inbox — 운영자 인박스 조회."""
+        user = request.state.operator_user
+        recipient = f"operator:{user}"
+        include_acked = request.query_params.get("include_acked") == "true"
+        msgs = persistence.fetch_messages_for(recipient=recipient, include_acked=include_acked)
+        return JSONResponse({"messages": msgs})
+
+    async def operator_inbox_ack_endpoint(request: Request) -> JSONResponse:
+        """POST /dashboard/operator/inbox/ack — 메시지 acked_at 설정."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=422)
+
+        ids = body.get("message_ids") or []
+        count = await persistence.mark_messages_acked(ids, write_queue=write_queue)
+        return JSONResponse({"acked": count})
+
+    app.router.routes.append(Route("/dashboard/dispatch", dispatch_endpoint, methods=["POST"]))
+    app.router.routes.append(Route("/dashboard/broadcast", broadcast_endpoint, methods=["POST"]))
+    app.router.routes.append(
+        Route("/dashboard/operator/inbox", operator_inbox_endpoint, methods=["GET"])
+    )
+    app.router.routes.append(
+        Route("/dashboard/operator/inbox/ack", operator_inbox_ack_endpoint, methods=["POST"])
+    )

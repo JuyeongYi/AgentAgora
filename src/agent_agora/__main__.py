@@ -240,8 +240,12 @@ async def run_server(args: argparse.Namespace) -> None:
             instance_registry=instance_registry,
             bot_registry=mcp._agora_bot_registry,  # type: ignore[attr-defined]
             comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
+            persistence=persistence,
+            write_queue=write_queue,
         )
-        print("  Dashboard: GET /dashboard")
+        print("  Dashboard: GET /dashboard, GET /dashboard/data")
+        print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")
+        print("  Dashboard: GET /dashboard/operator/inbox, POST /dashboard/operator/inbox/ack")
         from agent_agora.file_routes import register as register_files
         register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
                        file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]
