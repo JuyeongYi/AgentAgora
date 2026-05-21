@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS messages (
   payload TEXT NOT NULL,
   drained_at TEXT,
   drop_reason TEXT CHECK (drop_reason IS NULL OR drop_reason IN ('server_restart','manual')),
+  reply_only INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (command_id, target),
   FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
 );
@@ -109,6 +110,12 @@ class Persistence:
     def migrate(self, target_version: int = 1) -> None:
         cur = self._conn.cursor()
         cur.executescript(_SCHEMA_V1)
+        # Idempotent column adds for older DBs that pre-date these fields.
+        # Use PRAGMA pre-check rather than catching OperationalError — narrow
+        # the failure surface so disk/lock/syntax errors still surface.
+        existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(messages)").fetchall()}
+        if "reply_only" not in existing_cols:
+            cur.execute("ALTER TABLE messages ADD COLUMN reply_only INTEGER NOT NULL DEFAULT 0")
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cur.execute("INSERT OR IGNORE INTO schema_version VALUES (?, ?)", (target_version, now))
 
@@ -126,7 +133,7 @@ class Persistence:
             SELECT m.command_id, m.target, m.conversation_id, m.source, m.created_at,
                    m.expect_result, m.reply_to, m.cc, m.delivered_as, m.dispatch_kind,
                    m.in_reply_to, m.closing, m.priority, m.priority_rank, m.deadline_ts,
-                   m.payload
+                   m.payload, m.reply_only
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.conversation_id
             WHERE m.drained_at IS NULL AND c.status != 'closed'
@@ -135,8 +142,12 @@ class Persistence:
         ).fetchall()
         cols = ("command_id","target","conversation_id","source","created_at",
                 "expect_result","reply_to","cc","delivered_as","dispatch_kind",
-                "in_reply_to","closing","priority","priority_rank","deadline_ts","payload")
-        return [dict(zip(cols, r)) for r in rows]
+                "in_reply_to","closing","priority","priority_rank","deadline_ts","payload",
+                "reply_only")
+        out = [dict(zip(cols, r)) for r in rows]
+        for row in out:
+            row["reply_only"] = bool(row["reply_only"])
+        return out
 
     def restore_in_flight_pending(self) -> dict[str, dict[str, set[str]]]:
         """Inst4 우려3 — _in_flight 재시작 복구."""

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import datetime
 import json
 import uuid
@@ -12,6 +11,7 @@ from typing import Any, Literal
 from agent_agora.envelope import (
     Envelope,
     _PRIORITY_RANK,
+    envelope_to_dict,
     make_envelope,
     validate_payload_size,
     validate_priority,
@@ -30,7 +30,8 @@ def _now_iso() -> str:
 
 
 def _envelope_to_dict(env: Envelope) -> dict[str, Any]:
-    return dataclasses.asdict(env)
+    # Single canonical serializer — delegates to envelope.envelope_to_dict.
+    return envelope_to_dict(env)
 
 
 class DispatcherClosed(Exception):
@@ -812,6 +813,7 @@ class Dispatcher:
                 delivered_as=row["delivered_as"], dispatch_kind=row["dispatch_kind"],
                 in_reply_to=row["in_reply_to"], closing=bool(row["closing"]),
                 priority=row["priority"], deadline_ts=row["deadline_ts"],
+                reply_only=bool(row.get("reply_only", False)),
             )
             self._queues[row["target"]].append(env)
             self._conv.set_conv_of(row["command_id"], row["conversation_id"])

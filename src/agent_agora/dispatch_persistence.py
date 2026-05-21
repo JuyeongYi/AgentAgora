@@ -52,14 +52,15 @@ class DispatchPersistence:
                 "INSERT INTO messages "
                 "(command_id, target, conversation_id, source, in_reply_to, created_at, "
                 "expect_result, reply_to, cc, delivered_as, dispatch_kind, closing, "
-                "priority, priority_rank, deadline_ts, payload) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "priority, priority_rank, deadline_ts, payload, reply_only) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     e.id, e.target, e.conversation_id, e.source, e.in_reply_to, e.created_at,
                     1 if e.expect_result else 0, e.reply_to,
                     json.dumps(e.cc) if e.cc else None,
                     e.delivered_as, e.dispatch_kind, 1 if e.closing else 0,
                     e.priority, priority_rank, e.deadline_ts, payload_json,
+                    1 if e.reply_only else 0,
                 ),
             ))
         # update conversation last_message_at + count + status

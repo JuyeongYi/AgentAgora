@@ -204,6 +204,87 @@ def test_save_bot_subscriptions_replaces_prior_rows(tmp_path):
     assert subs["bot_x"]["subscribe"] == ["new"]
 
 
+def test_messages_has_reply_only_column(tmp_path):
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    cols = [r[1] for r in p.conn.execute("PRAGMA table_info(messages)").fetchall()]
+    assert "reply_only" in cols
+
+
+def test_migrate_idempotent_reply_only_column_add(tmp_path):
+    """Older DBs that pre-date reply_only should get the column added without error."""
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    # second migrate must not raise even though ALTER TABLE would error a second time
+    p.migrate()
+    cols = [r[1] for r in p.conn.execute("PRAGMA table_info(messages)").fetchall()]
+    assert "reply_only" in cols
+
+
+@pytest.mark.asyncio
+async def test_reply_only_survives_persistence_roundtrip(tmp_path):
+    """Envelope.reply_only=True should round-trip through SQLite via dispatch INSERT + restore_inflight."""
+    from agent_agora.persistence import AsyncWriteQueue
+    from agent_agora.dispatch_persistence import DispatchPersistence
+    from agent_agora.envelope import make_envelope, validate_payload_size, validate_priority
+
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    queue = AsyncWriteQueue(p)
+
+    env_true = make_envelope(
+        cmd_id="cmd-true", source="operator:alice", target="worker1",
+        payload={"q": 1}, created_at="2026-05-21T00:00:00Z",
+        conversation_id="conv-1",
+        reply_only=True,
+    )
+    env_false = make_envelope(
+        cmd_id="cmd-false", source="operator:alice", target="worker2",
+        payload={"q": 2}, created_at="2026-05-21T00:00:01Z",
+        conversation_id="conv-1",
+        # reply_only defaults to False
+    )
+
+    async with queue:
+        dp = DispatchPersistence(p, queue)
+        state = {
+            "status": "open",
+            "started_at": "2026-05-21T00:00:00Z",
+            "last_message_at": "2026-05-21T00:00:00Z",
+            "kind": "direct",
+            "participants": {
+                "operator:alice": {"role": "primary", "delivered": True},
+                "worker1": {"role": "primary", "delivered": True},
+            },
+            "closed_at": None,
+            "closed_by": [],
+        }
+        payload_bytes_true = validate_payload_size(env_true.payload)
+        rank = validate_priority(env_true.priority)
+        await dp.persist_dispatch_txn(
+            state=state, conv_id="conv-1", is_new_conv=True,
+            env=env_true, cc_envs=[], skipped_full=[],
+            payload_bytes=payload_bytes_true, priority_rank=rank,
+        )
+
+        state["participants"]["worker2"] = {"role": "primary", "delivered": True}
+        state["last_message_at"] = "2026-05-21T00:00:01Z"
+        payload_bytes_false = validate_payload_size(env_false.payload)
+        await dp.persist_dispatch_txn(
+            state=state, conv_id="conv-1", is_new_conv=False,
+            env=env_false, cc_envs=[], skipped_full=[],
+            payload_bytes=payload_bytes_false, priority_rank=rank,
+        )
+
+    restored = p.restore_inflight()
+    by_cmd = {r["command_id"]: r for r in restored}
+    assert by_cmd["cmd-true"]["reply_only"] is True
+    assert by_cmd["cmd-false"]["reply_only"] is False
+
+
 def test_lookup_source_for_returns_message_source(tmp_path):
     db = tmp_path / "agora.db"
     p = Persistence(db)
