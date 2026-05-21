@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import time
 import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -10,6 +11,8 @@ from starlette.testclient import TestClient
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dashboard_auth import DashboardAuthMiddleware
+from agent_agora.dashboard_events import EventBroker
+from agent_agora.dashboard_health import HealthCollector
 from agent_agora.dashboard_routes import register
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
@@ -24,6 +27,18 @@ def _auth(user: str) -> dict:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+_PROTECTED_PATHS = [
+    "/dashboard/data",
+    "/dashboard/dispatch",
+    "/dashboard/broadcast",
+    "/dashboard/operator",
+    "/dashboard/conversation",
+    "/dashboard/instance",
+    "/dashboard/schemas",
+    "/dashboard/stream",
+]
+
 
 @pytest.fixture
 def real_server_app(tmp_path):
@@ -48,6 +63,15 @@ def real_server_app(tmp_path):
         comm_matrix=cm,
     )
 
+    health = HealthCollector(
+        started_at=time.time(),
+        db_path=db_path,
+        persistence=write_queue,
+        sweeper=dispatcher.sweeper,
+    )
+    event_broker = EventBroker(max_queue=100)
+    event_broker.attach_to_dispatcher(dispatcher)
+
     @contextlib.asynccontextmanager
     async def lifespan(app):
         async with write_queue:
@@ -60,11 +84,7 @@ def real_server_app(tmp_path):
                 DashboardAuthMiddleware,
                 mode="trust",
                 tokens={},
-                protected_paths=["/dashboard/dispatch", "/dashboard/broadcast",
-                                  "/dashboard/operator",
-                                  "/dashboard/conversation",
-                                  "/dashboard/instance",
-                                  "/dashboard/schemas"],
+                protected_paths=_PROTECTED_PATHS,
             )
         ]
     )
@@ -77,6 +97,9 @@ def real_server_app(tmp_path):
         persistence=persistence,
         write_queue=write_queue,
         schema_registry=schema_reg,
+        health_collector=health,
+        event_broker=event_broker,
+        auth_mode="trust",
     )
 
     # Expose internals on the app for fixtures to use
@@ -335,3 +358,156 @@ def test_schemas_catalog(dashboard_client):
     assert len(body["schemas"]) > 0
     assert "id" in body["schemas"][0]
     assert "schema" in body["schemas"][0]
+
+
+def test_data_includes_server_health(dashboard_client):
+    r = dashboard_client.get("/dashboard/data", headers=_auth("alice"))
+    assert r.status_code == 200
+    body = r.json()
+    assert "server" in body
+    health = body["server"]
+    assert "uptime_seconds" in health
+    assert "db_size_bytes" in health
+    assert "write_queue_depth" in health
+    assert "sweeper_runs_total" in health
+
+
+def test_auth_mode_returns_current_mode(dashboard_client):
+    """/dashboard/auth-mode는 인증 없이 접근 가능."""
+    # 헤더 없이도 200
+    r = dashboard_client.get("/dashboard/auth-mode")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] in ("trust", "token")
+
+
+def test_stream_endpoint_emits_initial_snapshot(tmp_path):
+    """SSE 첫 응답으로 data_snapshot 이벤트 1회 push.
+
+    httpx.ASGITransport은 응답 바디를 전부 버퍼링하므로 무한 SSE 스트림과 호환되지 않는다.
+    대신 ASGI 레벨에서 생성기를 직접 구동해 첫 이벤트를 검증한다.
+
+    검증 항목:
+    1. /dashboard/stream 라우트가 등록됐는지 확인
+    2. build_dashboard_data 스냅샷이 SSE data: 형식으로 emit되는지 확인
+    3. 첫 이벤트 type이 "data_snapshot"인지 확인
+    """
+    import asyncio
+    import json as _json
+    import time as _time
+
+    async def _run_asgi_direct():
+        reg = InstanceRegistry()
+        bot_reg = BotRegistry()
+        cm = CommMatrix()
+        schema_reg = make_schema_registry()
+        db_path = tmp_path / "sse_test.db"
+        persistence = Persistence(db_path)
+        persistence.migrate()
+        write_queue = AsyncWriteQueue(persistence)
+
+        dispatcher = Dispatcher(
+            reg, persistence, write_queue,
+            schema_registry=schema_reg,
+            bot_registry=bot_reg,
+            comm_matrix=cm,
+        )
+
+        health = HealthCollector(
+            started_at=_time.time(),
+            db_path=db_path,
+            persistence=write_queue,
+            sweeper=dispatcher.sweeper,
+        )
+        event_broker = EventBroker(max_queue=100)
+
+        app = Starlette(
+            middleware=[
+                Middleware(
+                    DashboardAuthMiddleware,
+                    mode="trust",
+                    tokens={},
+                    protected_paths=["/dashboard/stream"],
+                )
+            ]
+        )
+        register(
+            app,
+            dispatcher=dispatcher,
+            instance_registry=reg,
+            bot_registry=bot_reg,
+            comm_matrix=cm,
+            health_collector=health,
+            event_broker=event_broker,
+            auth_mode="trust",
+        )
+
+        # /dashboard/stream 라우트가 등록됐는지 확인
+        route_paths = [getattr(r, "path", None) for r in app.router.routes]
+        assert "/dashboard/stream" in route_paths, f"stream route missing: {route_paths}"
+
+        # ASGI 스코프를 직접 구성해 SSE 생성기를 구동
+        # httpx.ASGITransport 대신 직접 ASGI 레이어를 호출한다
+        chunks_received = []
+        stop_event = asyncio.Event()
+        status_code_holder = []
+        headers_holder = []
+
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "headers": [(b"x-agora-operator-user", b"alice")],
+            "scheme": "http",
+            "path": "/dashboard/stream",
+            "raw_path": b"/dashboard/stream",
+            "query_string": b"",
+            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 12345),
+            "root_path": "",
+        }
+
+        request_complete = False
+
+        async def receive():
+            nonlocal request_complete
+            if not request_complete:
+                request_complete = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            # 첫 이벤트 수신 후 disconnect 신호를 반환한다
+            await stop_event.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            if message["type"] == "http.response.start":
+                status_code_holder.append(message["status"])
+                headers_holder.append(dict(message.get("headers", [])))
+            elif message["type"] == "http.response.body":
+                body = message.get("body", b"")
+                if body:
+                    chunks_received.append(body.decode("utf-8"))
+                    combined = "".join(chunks_received)
+                    if "\n\n" in combined:
+                        stop_event.set()  # 첫 완전한 이벤트 수신 → disconnect 신호
+
+        try:
+            await asyncio.wait_for(app(scope, receive, send), timeout=5.0)
+        except asyncio.TimeoutError:
+            pass  # 정상 — SSE 스트림은 무한하므로 timeout이 예상됨
+
+        return {
+            "status": status_code_holder[0] if status_code_holder else None,
+            "body": "".join(chunks_received),
+        }
+
+    result = asyncio.run(_run_asgi_direct())
+
+    assert result["status"] == 200
+    first_event = result["body"]
+    assert "data:" in first_event
+    data_line = next((line for line in first_event.split("\n")
+                      if line.startswith("data:")), None)
+    assert data_line is not None
+    parsed = _json.loads(data_line[len("data:"):].strip())
+    assert parsed["type"] == "data_snapshot"
