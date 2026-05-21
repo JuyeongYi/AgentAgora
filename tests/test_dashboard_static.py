@@ -8,7 +8,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = REPO_ROOT / "src" / "agent_agora" / "dashboard_static"
 
 
-@pytest.mark.xfail(reason="Tasks 13-18 populate vendor libraries")
 def test_vendor_libraries_present():
     assert (STATIC_DIR / "vendor" / "tabulator.min.js").is_file()
     assert (STATIC_DIR / "vendor" / "tabulator.min.css").is_file()
@@ -23,7 +22,6 @@ def test_js_modules_present():
         assert (STATIC_DIR / "js" / name).is_file(), f"missing js/{name}"
 
 
-@pytest.mark.xfail(reason="Tasks 13-18 populate CSS")
 def test_dashboard_css_present():
     assert (STATIC_DIR / "css" / "dashboard.css").is_file()
 

@@ -70,4 +70,5 @@ def test_dashboard_route_serves_html(tmp_path):
     r = TestClient(app).get("/dashboard")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "/dashboard/data" in r.text  # JS가 폴링하는 엔드포인트
+    assert "AgentAgora" in r.text  # 페이지 제목 포함
+    assert "/dashboard/static/" in r.text  # 정적 애셋 참조 포함 (shell HTML)
