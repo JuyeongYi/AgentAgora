@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "plugin" / "cc-agora-structure" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from structure_spawn import Manifest, PartitionSpec, load_manifest, render_staging  # noqa: E402
+from structure_spawn import Manifest, PartitionSpec, load_manifest, render_staging, spawn, main  # noqa: E402
 
 
 def _write_manifest(tmp_path: Path, data: dict) -> Path:
@@ -252,3 +252,126 @@ def test_render_rejects_non_ascii_description(tmp_path, templates_dir):
             marketplace_path=str(REPO_ROOT / "plugin"),
             templates_dir=templates_dir,
         )
+
+
+def test_spawn_creates_all_staging_dirs(tmp_path, templates_dir):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()  # mark as git
+    manifest = Manifest(
+        version=1, repo=repo.as_posix(), target_size=80,
+        partitions=(
+            PartitionSpec(id="a", root="a", weight=10, files=("a/x.py",),
+                          suggested_role="implementer", coupling=()),
+            PartitionSpec(id="b", root="b", weight=10, files=("b/y.py",),
+                          suggested_role="tester", coupling=()),
+        ),
+        warnings=(),
+    )
+    out = tmp_path / "workers"
+    wt_base = tmp_path / "worktrees"
+    dirs = spawn(
+        manifest=manifest,
+        out=out,
+        worktree_base=wt_base,
+        server_url="http://127.0.0.1:8420/mcp",
+        launch="off",
+        templates_dir=templates_dir,
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        force=False,
+    )
+    assert len(dirs) == 2
+    assert (out / "a" / "CLAUDE.md").is_file()
+    assert (out / "b" / "CLAUDE.md").is_file()
+
+
+def test_spawn_skips_empty_partition(tmp_path, templates_dir, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    manifest = Manifest(
+        version=1, repo=repo.as_posix(), target_size=80,
+        partitions=(
+            PartitionSpec(id="empty", root="empty", weight=0, files=(),
+                          suggested_role="implementer", coupling=()),
+            PartitionSpec(id="good", root="good", weight=5, files=("good/x.py",),
+                          suggested_role="implementer", coupling=()),
+        ),
+        warnings=(),
+    )
+    out = tmp_path / "workers"
+    wt_base = tmp_path / "worktrees"
+    dirs = spawn(
+        manifest=manifest,
+        out=out, worktree_base=wt_base,
+        server_url="http://127.0.0.1:8420/mcp",
+        launch="off", templates_dir=templates_dir,
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        force=False,
+    )
+    assert len(dirs) == 1
+    assert dirs[0].name == "good"
+    captured = capsys.readouterr()
+    assert "empty" in captured.err
+    assert "skip" in captured.err.lower()
+
+
+def test_spawn_rejects_existing_staging_without_force(tmp_path, templates_dir):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    out = tmp_path / "workers"
+    (out / "a").mkdir(parents=True)
+    (out / "a" / "marker").write_text("x")
+
+    manifest = Manifest(
+        version=1, repo=repo.as_posix(), target_size=80,
+        partitions=(
+            PartitionSpec(id="a", root="a", weight=5, files=("a/x.py",),
+                          suggested_role="implementer", coupling=()),
+        ),
+        warnings=(),
+    )
+    with pytest.raises(FileExistsError):
+        spawn(
+            manifest=manifest, out=out,
+            worktree_base=tmp_path / "worktrees",
+            server_url="http://127.0.0.1:8420/mcp",
+            launch="off", templates_dir=templates_dir,
+            marketplace_path=str(REPO_ROOT / "plugin"),
+            force=False,
+        )
+
+
+def test_main_rejects_non_git_repo(tmp_path, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()  # no .git
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "version": 1, "repo": repo.as_posix(), "target_size": 80,
+        "partitions": [
+            {"id": "a", "root": "a", "weight": 5,
+             "files": ["a/x.py"], "suggested_role": "implementer", "coupling": []}
+        ],
+        "warnings": [],
+    }))
+    rc = main(["--manifest", str(manifest_path), "--launch", "off",
+               "--out", str(tmp_path / "workers"),
+               "--worktree-base", str(tmp_path / "worktrees")])
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "not a git repo" in captured.err
+
+
+def test_main_returns_1_on_bad_manifest(tmp_path, capsys):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "version": 2,  # wrong version
+        "repo": "C:/x", "target_size": 80,
+        "partitions": [], "warnings": [],
+    }))
+    rc = main(["--manifest", str(manifest_path), "--launch", "off"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "bad manifest" in captured.err

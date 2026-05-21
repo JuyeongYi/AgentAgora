@@ -193,3 +193,165 @@ def render_staging(
         "claude --dangerously-load-development-channels server:agora-channel %*\r\n"
     )
     (staging_dir / "run.bat").write_text(run_bat, encoding="utf-8", newline="")
+
+
+# ---------------------------------------------------------------------------
+# Orchestration: spawn() iterates partitions and optionally launches
+# ---------------------------------------------------------------------------
+
+DEFAULT_SERVER_URL = "http://127.0.0.1:8420/mcp"
+
+
+def spawn(
+    *,
+    manifest: Manifest,
+    out: Path,
+    worktree_base: Path,
+    server_url: str,
+    launch: str,
+    templates_dir: Path,
+    marketplace_path: str,
+    force: bool,
+) -> list[Path]:
+    """Create staging dirs for all non-empty partitions and optionally launch.
+
+    Returns the list of created staging dirs (in manifest order, skipped
+    partitions excluded).
+    """
+    staging_dirs: list[Path] = []
+    repo = Path(manifest.repo)
+
+    for partition in manifest.partitions:
+        if not partition.files:
+            print(
+                f"[cc-agora-structure] partition {partition.id!r} has no files — skipping",
+                file=sys.stderr,
+            )
+            continue
+
+        staging_dir = out / partition.id
+        worktree_path = worktree_base / partition.id
+
+        if staging_dir.exists() and not force:
+            raise FileExistsError(
+                f"staging dir already exists: {staging_dir} (use --force to overwrite)"
+            )
+        if worktree_path.exists() and not force:
+            print(
+                f"[cc-agora-structure] warning: worktree reserved path "
+                f"{worktree_path} already exists — worker may fail to create worktree",
+                file=sys.stderr,
+            )
+
+        render_staging(
+            partition=partition,
+            staging_dir=staging_dir,
+            worktree_path=worktree_path,
+            repo_path=repo,
+            server_url=server_url,
+            marketplace_path=marketplace_path,
+            templates_dir=templates_dir,
+        )
+        staging_dirs.append(staging_dir)
+
+    if launch == "manual":
+        print("# Launch commands:")
+        for d in staging_dirs:
+            print(f'wt.exe -d "{d}" cmd /k run.bat')
+    elif launch == "auto":
+        _launch_auto(staging_dirs)
+    # launch == "off" — silent
+
+    return staging_dirs
+
+
+def _launch_auto(staging_dirs: list[Path]) -> None:
+    """Open wt.exe tabs for each staging dir."""
+    import subprocess
+    if not staging_dirs:
+        return
+    args = ["wt.exe"]
+    for i, d in enumerate(staging_dirs):
+        if i > 0:
+            args.append(";")
+            args.append("new-tab")
+        args += ["-d", str(d), "cmd", "/k", "run.bat"]
+    subprocess.Popen(args)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="agora-structure-spawn",
+        description="Spawn channel-mode workers per structure-manifest partition.",
+    )
+    p.add_argument("--manifest", required=True, type=Path,
+                   help="Path to structure-manifest.json")
+    p.add_argument("--out", type=Path, default=None,
+                   help="Staging-dir parent (default: <repo>/.agora-structure/workers)")
+    p.add_argument("--worktree-base", type=Path, default=None,
+                   help="Reserved worktree base (default: <repo-parent>/<repo>.structure-worktrees)")
+    p.add_argument("--server-url", default=DEFAULT_SERVER_URL,
+                   help=f"MCP server URL (default: {DEFAULT_SERVER_URL})")
+    p.add_argument("--launch", choices=["off", "manual", "auto"], default="manual",
+                   help="Launch mode: 'off' (no launch), 'manual' (print wt.exe commands), 'auto' (Popen wt.exe). Default: manual.")
+    p.add_argument("--force", action="store_true",
+                   help="Overwrite existing staging dirs")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    # Exit codes:
+    #   0 — success
+    #   1 — bad manifest or staging-dir collision (use --force to overwrite)
+    #   2 — repo is not a git repo
+    args = _build_arg_parser().parse_args(argv)
+
+    try:
+        manifest = load_manifest(args.manifest)
+    except (ValueError, json.JSONDecodeError) as e:
+        print(f"[cc-agora-structure] error: bad manifest: {e}", file=sys.stderr)
+        return 1
+    repo = Path(manifest.repo)
+
+    if not (repo / ".git").exists():
+        print(
+            f"[cc-agora-structure] error: {repo} is not a git repo — "
+            "workers cannot create worktrees",
+            file=sys.stderr,
+        )
+        return 2
+
+    out = args.out or (repo / ".agora-structure" / "workers")
+    worktree_base = args.worktree_base or (
+        repo.parent / f"{repo.name}.structure-worktrees"
+    )
+
+    if manifest.warnings:
+        print("# Manifest warnings:", file=sys.stderr)
+        for w in manifest.warnings:
+            print(f"  - {w}", file=sys.stderr)
+
+    templates_dir = Path(__file__).resolve().parent.parent / "templates"
+    marketplace_path = Path(__file__).resolve().parent.parent.parent.as_posix()
+
+    try:
+        staging_dirs = spawn(
+            manifest=manifest,
+            out=out,
+            worktree_base=worktree_base,
+            server_url=args.server_url,
+            launch=args.launch,
+            templates_dir=templates_dir,
+            marketplace_path=marketplace_path,
+            force=args.force,
+        )
+    except FileExistsError as e:
+        print(f"[cc-agora-structure] error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"[cc-agora-structure] created {len(staging_dirs)} staging dirs under {out.as_posix()}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
