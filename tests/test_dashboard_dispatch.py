@@ -61,7 +61,10 @@ def real_server_app(tmp_path):
                 mode="trust",
                 tokens={},
                 protected_paths=["/dashboard/dispatch", "/dashboard/broadcast",
-                                  "/dashboard/operator"],
+                                  "/dashboard/operator",
+                                  "/dashboard/conversation",
+                                  "/dashboard/instance",
+                                  "/dashboard/schemas"],
             )
         ]
     )
@@ -73,6 +76,7 @@ def real_server_app(tmp_path):
         comm_matrix=cm,
         persistence=persistence,
         write_queue=write_queue,
+        schema_registry=schema_reg,
     )
 
     # Expose internals on the app for fixtures to use
@@ -288,3 +292,46 @@ def test_dispatch_reply_only_persisted(dashboard_client, register_worker, persis
     assert len(matching) >= 1
     # fetch_messages_for converts INTEGER reply_only to bool — assert both forms.
     assert matching[0]["reply_only"] is True or matching[0]["reply_only"] == 1
+
+
+def test_conversation_thread_returns_all_messages(dashboard_client, register_worker, post_reply_from_worker):
+    register_worker("W1")
+    sent = dashboard_client.post("/dashboard/dispatch", headers=_auth("alice"), json={
+        "to": "W1", "schema": "operator_message", "payload": {"q": 1},
+        "reply_only": False,
+    }).json()
+    conv_id = sent["conversation_id"]
+    post_reply_from_worker("W1", "operator:alice", {"answer": 42}, conversation_id=conv_id)
+
+    r = dashboard_client.get(f"/dashboard/conversation/{conv_id}", headers=_auth("alice"))
+    assert r.status_code == 200
+    thread = r.json()["messages"]
+    assert len(thread) == 2
+    assert thread[0]["payload"]["q"] == 1
+    assert thread[1]["payload"]["answer"] == 42
+
+
+def test_instance_inbox_returns_worker_inbox(dashboard_client, register_worker):
+    register_worker("W1")
+    dashboard_client.post("/dashboard/dispatch", headers=_auth("alice"), json={
+        "to": "W1", "schema": "operator_message", "payload": {"task": "x"},
+        "reply_only": False,
+    })
+    r = dashboard_client.get("/dashboard/instance/W1/inbox", headers=_auth("alice"))
+    assert r.status_code == 200
+    msgs = r.json()["messages"]
+    assert len(msgs) >= 1
+    # The dispatched message's payload has msgtype injected by dispatch_endpoint.
+    assert any(m.get("payload", {}).get("task") == "x" for m in msgs)
+
+
+def test_schemas_catalog(dashboard_client):
+    r = dashboard_client.get("/dashboard/schemas", headers=_auth("alice"))
+    assert r.status_code == 200
+    body = r.json()
+    assert "schemas" in body
+    assert isinstance(body["schemas"], list)
+    # At least one default schema must be registered.
+    assert len(body["schemas"]) > 0
+    assert "id" in body["schemas"][0]
+    assert "schema" in body["schemas"][0]

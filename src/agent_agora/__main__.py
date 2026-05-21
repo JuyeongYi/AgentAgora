@@ -199,6 +199,7 @@ async def run_server(args: argparse.Namespace) -> None:
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
     persistence = mcp._agora_persistence  # type: ignore[attr-defined]
     write_queue = mcp._agora_write_queue  # type: ignore[attr-defined]
+    schema_registry = mcp._agora_schema_registry  # type: ignore[attr-defined]
 
     scheme = "http" if args.no_tls else "https"
     print(f"AgentAgora starting on {scheme}://127.0.0.1:{args.port}/mcp")
@@ -242,6 +243,7 @@ async def run_server(args: argparse.Namespace) -> None:
             comm_matrix=mcp._agora_comm_matrix,  # type: ignore[attr-defined]
             persistence=persistence,
             write_queue=write_queue,
+            schema_registry=schema_registry,
         )
         print("  Dashboard: GET /dashboard, GET /dashboard/data")
         print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")

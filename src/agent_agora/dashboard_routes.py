@@ -75,6 +75,7 @@ def register(
     comm_matrix,
     persistence=None,
     write_queue=None,
+    schema_registry=None,
 ) -> None:
     """app에 대시보드 라우트를 등록한다.
 
@@ -229,3 +230,37 @@ def register(
     app.router.routes.append(
         Route("/dashboard/operator/inbox/ack", operator_inbox_ack_endpoint, methods=["POST"])
     )
+
+    # ------------------------------------------------------------------
+    # drilldown endpoints (conversation thread, instance inbox, schemas)
+    # ------------------------------------------------------------------
+
+    async def conversation_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/conversation/{conversation_id} — 대화 스레드 전체."""
+        conv_id = request.path_params["conversation_id"]
+        msgs = persistence.fetch_messages_for(conversation_id=conv_id, include_acked=True)
+        return JSONResponse({"messages": msgs})
+
+    async def instance_inbox_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/instance/{instance_id}/inbox — 워커 인박스 조회."""
+        instance_id = request.path_params["instance_id"]
+        msgs = persistence.fetch_messages_for(recipient=instance_id, include_acked=True)
+        return JSONResponse({"messages": msgs})
+
+    async def schemas_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/schemas — 등록된 스키마 카탈로그."""
+        if schema_registry is None:
+            return JSONResponse({"schemas": []})
+        items = [
+            {"id": entry.name, "schema": entry.body}
+            for entry in schema_registry.list_all()
+        ]
+        return JSONResponse({"schemas": items})
+
+    app.router.routes.append(
+        Route("/dashboard/conversation/{conversation_id}", conversation_endpoint, methods=["GET"])
+    )
+    app.router.routes.append(
+        Route("/dashboard/instance/{instance_id}/inbox", instance_inbox_endpoint, methods=["GET"])
+    )
+    app.router.routes.append(Route("/dashboard/schemas", schemas_endpoint, methods=["GET"]))
