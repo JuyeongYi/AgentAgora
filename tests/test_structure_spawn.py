@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "plugin" / "cc-agora-structure" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from structure_spawn import Manifest, PartitionSpec, load_manifest  # noqa: E402
+from structure_spawn import Manifest, PartitionSpec, load_manifest, render_staging  # noqa: E402
 
 
 def _write_manifest(tmp_path: Path, data: dict) -> Path:
@@ -116,3 +116,139 @@ def test_reject_non_list_files(tmp_path):
     path = _write_manifest(tmp_path, data)
     with pytest.raises(ValueError, match="files"):
         load_manifest(path)
+
+
+@pytest.fixture
+def templates_dir():
+    return REPO_ROOT / "plugin" / "cc-agora-structure" / "templates"
+
+
+@pytest.fixture
+def sample_partition():
+    return PartitionSpec(
+        id="src-foo",
+        root="src/foo",
+        weight=50,
+        files=("src/foo/a.py", "src/foo/b.py"),
+        suggested_role="implementer",
+        coupling=(),
+    )
+
+
+def test_render_creates_expected_files(tmp_path, templates_dir, sample_partition):
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    render_staging(
+        partition=sample_partition,
+        staging_dir=staging,
+        worktree_path=worktree,
+        repo_path=repo,
+        server_url="http://127.0.0.1:8420/mcp",
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        templates_dir=templates_dir,
+    )
+    assert (staging / "CLAUDE.md").is_file()
+    assert (staging / ".mcp.json").is_file()
+    assert (staging / ".claude" / "settings.local.json").is_file()
+    assert (staging / "run.bat").is_file()
+
+
+def test_render_claude_md_contains_partition_details(tmp_path, templates_dir, sample_partition):
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    render_staging(
+        partition=sample_partition,
+        staging_dir=staging,
+        worktree_path=worktree,
+        repo_path=repo,
+        server_url="http://127.0.0.1:8420/mcp",
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        templates_dir=templates_dir,
+    )
+    body = (staging / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "src-foo" in body
+    assert "src/foo" in body
+    assert "src/foo/a.py" in body
+    assert "src/foo/b.py" in body
+    assert "using-git-worktrees" in body
+    assert "code-review-graph" in body
+    assert "sparse-checkout" in body
+    assert worktree.as_posix() in body
+
+
+def test_render_mcp_json_has_three_servers_and_ascii_headers(tmp_path, templates_dir, sample_partition):
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    render_staging(
+        partition=sample_partition,
+        staging_dir=staging,
+        worktree_path=worktree,
+        repo_path=repo,
+        server_url="http://127.0.0.1:8420/mcp",
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        templates_dir=templates_dir,
+    )
+    data = json.loads((staging / ".mcp.json").read_text(encoding="utf-8"))
+    servers = data["mcpServers"]
+    assert set(servers.keys()) == {"agentagora", "agora-channel", "code-review-graph"}
+    headers = servers["agentagora"]["headers"]
+    assert headers["X-Agora-Cwd"] == staging.resolve().as_posix()
+    assert headers["X-Agora-Role"] == "implementer"
+    # ASCII check
+    for k, v in headers.items():
+        v.encode("latin-1")
+
+
+def test_render_settings_whitelist_includes_both_paths(tmp_path, templates_dir, sample_partition):
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    render_staging(
+        partition=sample_partition,
+        staging_dir=staging,
+        worktree_path=worktree,
+        repo_path=repo,
+        server_url="http://127.0.0.1:8420/mcp",
+        marketplace_path=str(REPO_ROOT / "plugin"),
+        templates_dir=templates_dir,
+    )
+    settings = json.loads((staging / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    allow = settings["permissions"]["allow"]
+    staging_glob = staging.resolve().as_posix() + "/**"
+    worktree_glob = worktree.as_posix() + "/**"
+    assert f"Edit({staging_glob})" in allow
+    assert f"Write({staging_glob})" in allow
+    assert f"Edit({worktree_glob})" in allow
+    assert f"Write({worktree_glob})" in allow
+
+
+def test_render_rejects_non_ascii_description(tmp_path, templates_dir):
+    p = PartitionSpec(
+        id="src-foo",
+        root="src/한글",  # non-ASCII root → description would contain it
+        weight=50,
+        files=("src/한글/a.py",),
+        suggested_role="implementer",
+        coupling=(),
+    )
+    staging = tmp_path / "workers" / "src-foo"
+    worktree = tmp_path / "worktrees" / "src-foo"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    with pytest.raises(ValueError, match="ASCII"):
+        render_staging(
+            partition=p,
+            staging_dir=staging,
+            worktree_path=worktree,
+            repo_path=repo,
+            server_url="http://127.0.0.1:8420/mcp",
+            marketplace_path=str(REPO_ROOT / "plugin"),
+            templates_dir=templates_dir,
+        )
