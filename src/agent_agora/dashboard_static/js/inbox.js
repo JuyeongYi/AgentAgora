@@ -15,8 +15,8 @@ window.agoraInbox = (function() {
     const lis = messages.map(m => `
       <div class="message-card" data-id="${m.message_id}">
         <div><span class="sender">${escape(m.sender)}</span>
-             <span class="timestamp">${escape(m.timestamp)}</span></div>
-        <div class="schema">schema: ${escape(m.schema)}</div>
+             <span class="timestamp">${escape(m.created_at)}</span></div>
+        <div class="schema">schema: ${escape((m.payload && m.payload.msgtype) || '')}</div>
         <div class="payload">${escape(JSON.stringify(m.payload).slice(0,200))}</div>
         ${m.reply_only ? '<div class="reply-only">reply_only</div>' : ''}
         <button class="ack-btn" data-id="${m.message_id}">ack</button>

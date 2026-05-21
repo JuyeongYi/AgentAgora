@@ -10,9 +10,9 @@ window.agoraDrilldown = (function() {
   function msgCard(m) {
     return `<div class="message-card">
       <div><span class="sender">${escape(m.sender)}</span>
-           → <span>${escape(m.recipient)}</span>
-           <span class="timestamp">${escape(m.timestamp)}</span></div>
-      <div>schema: ${escape(m.schema)}</div>
+           → <span>${escape(m.target)}</span>
+           <span class="timestamp">${escape(m.created_at)}</span></div>
+      <div>schema: ${escape((m.payload && m.payload.msgtype) || '')}</div>
       <pre class="payload">${escape(JSON.stringify(m.payload, null, 2))}</pre>
       ${m.reply_only ? '<div class="reply-only">reply_only</div>' : ''}
     </div>`;
