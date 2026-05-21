@@ -297,3 +297,30 @@ def test_lookup_source_for_returns_message_source(tmp_path):
         "VALUES ('cmd1', 'Inst2', 'c1', 'Inst1', '2026-01-01T00:00:00Z', '{}')")
     assert p.lookup_source_for("cmd1") == "Inst1"
     assert p.lookup_source_for("nonexistent") is None
+
+
+@pytest.mark.asyncio
+async def test_write_queue_depth_initially_zero(tmp_path):
+    """write_queue_depth() returns 0 when no writes are pending."""
+    from agent_agora.persistence import AsyncWriteQueue
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    # Do NOT enter context manager — worker task is not started, queue is empty.
+    queue = AsyncWriteQueue(p)
+    assert queue.write_queue_depth() == 0
+
+
+@pytest.mark.asyncio
+async def test_write_queue_depth_reports_queued_items(tmp_path):
+    """write_queue_depth() reflects pending writes when worker is not draining."""
+    from agent_agora.persistence import AsyncWriteQueue, _TxnRequest
+    db = tmp_path / "agora.db"
+    p = Persistence(db)
+    p.migrate()
+    # Do NOT start the worker (no async with) so items accumulate without draining.
+    queue = AsyncWriteQueue(p)
+    dummy = _TxnRequest(stmts=[], future=None)
+    queue._queue.put_nowait(dummy)
+    queue._queue.put_nowait(dummy)
+    assert queue.write_queue_depth() == 2

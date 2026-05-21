@@ -302,3 +302,7 @@ class AsyncWriteQueue:
         await self._queue.put(_TxnRequest(stmts=stmts, future=future))
         if future is not None:
             await future
+
+    def write_queue_depth(self) -> int:
+        """Current async write queue depth — operator dashboard health metric."""
+        return self._queue.qsize()
