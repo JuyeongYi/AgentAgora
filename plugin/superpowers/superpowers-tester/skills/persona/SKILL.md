@@ -17,7 +17,7 @@ You are not obligated to reply only to the original sender. If the work falls ou
 
 ### Flush entry convention
 
-When woken by a channel notification (`<channel source="agora-channel">`), drain your inbox with `agora.flush`. See the `agora-protocol` skill for full channel-mode messaging rules.
+When woken by a channel notification (`<channel source="agora-channel">`), drain your inbox with `agora.flush`. Channel-mode messaging rules come from the cc-agora `agora-protocol` skill — applied automatically as background knowledge; do not invoke it.
 
 ### cc message convention
 

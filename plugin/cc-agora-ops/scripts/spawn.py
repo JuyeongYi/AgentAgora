@@ -111,7 +111,8 @@ def _render_thin_claude_md(*, instance_id: str, role: str, description: str) -> 
         f"\n"
         f"## 통신\n"
         f"\n"
-        f"채널 모드 메시징은 `agora-protocol` 스킬을 따른다 — 채널 알림으로 깨어나 "
+        f"채널 모드 메시징 규칙(`agora-protocol`)은 cc-agora가 배경지식으로 자동 "
+        f"적용한다 — 직접 스킬로 호출하지 않는다. 채널 알림으로 깨어나 "
         f"`agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. "
         f"등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/"
         f"`agora.unregister`를 호출하지 않는다.\n"
@@ -131,7 +132,8 @@ def _render_custom_claude_md(*, instance_id: str, role: str, description: str) -
         f"\n"
         f"## 통신\n"
         f"\n"
-        f"채널 모드 메시징은 `agora-protocol` 스킬을 따른다 — 채널 알림으로 깨어나 "
+        f"채널 모드 메시징 규칙(`agora-protocol`)은 cc-agora가 배경지식으로 자동 "
+        f"적용한다 — 직접 스킬로 호출하지 않는다. 채널 알림으로 깨어나 "
         f"`agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. "
         f"등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/"
         f"`agora.unregister`를 호출하지 않는다.\n"
@@ -143,7 +145,13 @@ def _render_settings_local(*, persona_plugin: str, marketplace_path: str) -> str
         "extraKnownMarketplaces": {
             "agentagora": {"source": "directory", "path": marketplace_path}
         },
-        "enabledPlugins": {f"{persona_plugin}@agentagora": True},
+        "enabledPlugins": {
+            f"{persona_plugin}@agentagora": True,
+            # 모든 채널 워커는 cc-agora의 agora-protocol(운용 규칙)을 공유한다.
+            # superpowers 트랙 페르소나는 cc-agora에 의존하지 않으므로 명시적으로 켠다.
+            # persona_plugin == "cc-agora"이면 키가 합쳐져 중복되지 않는다.
+            "cc-agora@agentagora": True,
+        },
     }
     return json.dumps(settings, ensure_ascii=False, indent=2) + "\n"
 

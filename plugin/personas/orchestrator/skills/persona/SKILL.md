@@ -36,4 +36,4 @@ Discover currently registered workers dynamically via `agora.instances` or `agor
 
 ## Channel-mode messaging rules
 
-See the `agora-protocol` skill for shared channel-mode messaging rules (flush entry convention, cc message convention, payload standard). Note that the orchestrator wakes on user input, not on channel notifications — call `agora.flush` manually when you need to drain the inbox.
+Shared channel-mode messaging rules (flush entry convention, cc message convention, payload standard) come from the cc-agora `agora-protocol` skill — applied automatically as background knowledge; do not invoke it. Note that the orchestrator wakes on user input, not on channel notifications — call `agora.flush` manually when you need to drain the inbox.

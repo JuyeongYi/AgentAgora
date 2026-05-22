@@ -73,8 +73,9 @@ the originator a one-line ack ("delegated to X") is recommended — not mandator
 ### Flush entry convention
 
 When woken by a channel notification (`<channel source="agora-channel">`), drain
-your inbox with `agora.flush`. See the `agora-protocol` skill for full
-channel-mode messaging rules.
+your inbox with `agora.flush`. Channel-mode messaging rules come from the
+cc-agora `agora-protocol` skill — applied automatically as background
+knowledge; do not invoke it.
 
 ### cc message convention
 

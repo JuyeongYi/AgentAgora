@@ -8,7 +8,7 @@
 
 ## 통신
 
-채널 모드 메시징은 `agora-protocol` 스킬을 따른다 — 채널 알림으로 깨어나 `agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. 등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/`agora.unregister`를 호출하지 않는다.
+채널 모드 메시징 규칙(`agora-protocol`)은 cc-agora가 배경지식으로 자동 적용한다 — 직접 스킬로 호출하지 않는다. 채널 알림으로 깨어나 `agora.flush`로 인박스를 드레인하고, 처리 후 `agora.dispatch`로 답신한다. 등록·해제는 `.mcp.json` 헤더로 자동 처리되므로 `agora.register`/`agora.unregister`를 호출하지 않는다.
 
 ## 파티션 배정
 

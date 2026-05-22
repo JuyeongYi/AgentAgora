@@ -63,6 +63,22 @@ def test_spawn_creates_settings_local_json(tmp_path):
     assert s["enabledPlugins"].get("cc-agora-coder@agentagora") is True
 
 
+def test_spawn_always_enables_cc_agora(tmp_path):
+    """모든 워커는 페르소나와 함께 cc-agora를 켠다 — agora-protocol(운용 규칙) 공유.
+
+    superpowers 트랙 페르소나는 cc-agora에 의존하지 않으므로, 명시적으로 켜지
+    않으면 agora-protocol 스킬이 없어 워커가 채널 메시징 규칙을 못 받는다
+    (Skill(agora-protocol) 호출 시 "Unknown skill").
+    """
+    rc = _call(tmp_path, instance_id="Coder1", role="coder", description="d")
+    assert rc == 0
+    s = json.loads(
+        (tmp_path / "Coder1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert s["enabledPlugins"].get("cc-agora@agentagora") is True
+    # 페르소나 플러그인도 함께 켜져 있어야 한다 (cc-agora가 대체하지 않는다).
+    assert s["enabledPlugins"].get("cc-agora-coder@agentagora") is True
+
+
 def test_spawn_undefined_role_enables_general_persona(tmp_path):
     rc = _call(tmp_path, instance_id="X1", role="phantom", description="d")
     assert rc == 0
