@@ -137,6 +137,7 @@ async def test_register_bot_schema_diff_preflight_blocks(app):
         bot_mode="handler", subscribe_schemas=["build_run"],
         schemas={"build_run": {"kind": "bot-task", "purpose": "v2", "body": body_v2}}))
     assert "이미 등록됨" in res["error"]
+    assert res["code"] == "schema_immutable"
 
 
 @pytest.mark.asyncio
