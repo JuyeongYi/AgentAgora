@@ -18,7 +18,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--bind-host",
         default=os.environ.get("AGORA_BIND_HOST", "127.0.0.1"),
         help="uvicorn이 바인딩할 호스트. 기본 127.0.0.1(로컬 전용). "
-             "여러 PC에서 접속하는 테스트는 0.0.0.0(전 인터페이스)으로 둔다 — "
+             "여러 PC에서 접속하는 테스트는 0.0.0.0(전 인터페이스)으로 둔다. "
              "인증이 없으므로 신뢰된 사설망에서만. 환경변수 AGORA_BIND_HOST로도 "
              "지정 가능(플래그가 우선). 정식 remote 배포는 별도 spec 참조.",
     )
@@ -46,12 +46,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--restore",
         action="store_true",
         help="재시작 시 이전 미배달 메시지를 인박스로 복구한다 "
-             "(크래시 내구성). 미지정 시 클린 스타트 — 미배달 메시지는 drop된다.",
+             "(크래시 내구성). 미지정 시 클린 스타트 - 미배달 메시지는 drop된다.",
     )
     parser.add_argument(
         "--add-wait",
         action="store_true",
-        help="레거시·디버깅용 — agora.wait_notify MCP 도구를 등록한다. "
+        help="레거시·디버깅용 - agora.wait_notify MCP 도구를 등록한다. "
              "기본 미등록. 채널 어댑터·봇 SDK는 GET /channel/wait를 쓴다.",
     )
     return parser.parse_args(argv)
@@ -61,7 +61,7 @@ def _warn_legacy_schemas_json(agora_dir: Path) -> None:
     legacy = agora_dir / "schemas.json"
     if legacy.exists():
         print(
-            f"[agora] WARNING: detected legacy v1 schemas.json at {legacy} — "
+            f"[agora] WARNING: detected legacy v1 schemas.json at {legacy} - "
             f"v3 ignores it (KV removed). You may delete or rename this file.",
             file=sys.stderr,
         )
@@ -212,8 +212,8 @@ async def run_server(args: argparse.Namespace) -> None:
     scheme = "http" if args.no_tls else "https"
     print(f"AgentAgora starting on {scheme}://{args.bind_host}:{args.port}/mcp")
     if args.bind_host not in ("127.0.0.1", "localhost"):
-        print(f"  Bind     : {args.bind_host} (비-로컬 바인딩 — 인증 없음, "
-              f"신뢰된 사설망에서만 사용)")
+        print(f"  Bind     : {args.bind_host} (non-local bind - no auth, "
+              f"trusted private network only)")
     print(f"  Data dir : {agora_dir.resolve()}")
     print(f"  DB       : {db_path.resolve()}")
     print(f"  Cert     : {cert_path if cert_path else '(none -- HTTP mode, localhost only)'}")
