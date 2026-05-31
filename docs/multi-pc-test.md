@@ -17,9 +17,11 @@ HTTP 클라이언트다.
 
 ## ⚠️ 현재 제약 — cross-PC는 아직 정식 지원 전
 
-오늘 기준 서버는 **`127.0.0.1`에만 바인딩**한다(`__main__.py`의 uvicorn
-`host="127.0.0.1"` 하드코딩). 따라서 **다른 PC에서 보낸 패킷은 도달하지 못한다.**
-원격 배포(`--remote`/`--host`/Bearer 인증/TLS SAN)는 설계만 끝났고 미구현이다 —
+서버는 기본적으로 **`127.0.0.1`에만 바인딩**한다(로컬 전용). `--bind-host 0.0.0.0`
+(또는 환경변수 `AGORA_BIND_HOST`)으로 바인딩을 넓혀 다른 PC에서 접속하게 할 수
+있지만, **인증·TLS SAN은 여전히 없다** — `/mcp`·`/channel/wait`·`/files`는 무인증이다.
+즉 cross-PC는 *테스트용 우회*로만 가능하고, 정식 secure 원격 배포
+(`--remote`/`--host`/Bearer 인증/TLS SAN)는 설계만 끝났고 미구현이다 —
 [`docs/superpowers/specs/2026-05-18-local-remote-deployment-design.md`](superpowers/specs/2026-05-18-local-remote-deployment-design.md).
 
 그래서 이 문서는 세 갈래로 나눈다.
@@ -64,28 +66,20 @@ end-to-end 스모크 테스트와 동일하다 — [`docs/manual-smoke-test.md`]
 - 모든 PC에 저장소 클론 + `pip install -e .` (워커는 `agora-channel` stdio
   어댑터를 쓰므로 패키지 설치 필요).
 
-### B-1. broker 바인딩 넓히기 (한 줄 임시 수정)
+### B-1. broker 기동 (LAN 바인딩) + 방화벽 인바운드 허용
 
-`src/agent_agora/__main__.py`의 uvicorn config에서 host를 LAN에 노출한다:
-
-```python
-config_kwargs = {
-    "host": "0.0.0.0",   # 임시: 127.0.0.1 → 0.0.0.0 (모든 인터페이스)
-    "port": args.port,
-    "log_level": "info",
-}
-```
-
-> 이건 테스트용 로컬 패치다 — 커밋하지 않는다. 정식 경로는 시나리오 C(`--host`
-> 플래그)다. 시작 배너의 `127.0.0.1` 출력은 바뀌지 않지만(별도 하드코딩), 실제
-> 바인딩은 `0.0.0.0`이 된다.
-
-### B-2. broker 기동 + 방화벽 인바운드 허용
-
-broker PC에서:
+broker PC에서 `--bind-host 0.0.0.0`으로 전 인터페이스에 바인딩한다:
 
 ```
-agent-agora --dir . --port 8420 --no-tls
+agent-agora --dir . --port 8420 --no-tls --bind-host 0.0.0.0
+```
+
+환경변수로도 같다 — `set AGORA_BIND_HOST=0.0.0.0` 후 기동(플래그가 우선).
+비-로컬 바인딩이면 시작 배너에 경고가 함께 출력된다:
+
+```
+AgentAgora starting on http://0.0.0.0:8420/mcp
+  Bind     : 0.0.0.0 (비-로컬 바인딩 — 인증 없음, 신뢰된 사설망에서만 사용)
 ```
 
 Windows 방화벽에서 8420 인바운드를 허용한다(관리자 PowerShell):
@@ -101,7 +95,7 @@ New-NetFirewallRule -DisplayName "AgentAgora 8420" -Direction Inbound `
 Test-NetConnection 192.168.0.10 -Port 8420   # TcpTestSucceeded : True 면 도달 OK
 ```
 
-### B-3. 워커 PC의 `.mcp.json` 구성
+### B-2. 워커 PC의 `.mcp.json` 구성
 
 각 워커 PC의 Claude Code MCP 설정에서 broker URL을 **broker의 LAN IP**로 둔다.
 플러그인 spawn을 쓴다면 `--server-url`을 LAN IP로 넘긴다:
@@ -137,7 +131,7 @@ agora-spawn --id B --role worker --server-url http://192.168.0.10:8420/mcp
 `agora-channel`의 `--broker`도 같은 LAN URL을 가리켜야 한다 — 채널 어댑터의 인박스
 long-poll(`GET /channel/wait`)이 이 주소로 붙는다.
 
-### B-4. 검증
+### B-3. 검증
 
 1. 각 워커 PC의 Claude Code에서 `agora.register` 호출 → `{"status":"ok"}`.
 2. broker PC(또는 임의 워커)에서 `agora.instances` → 모든 PC의 워커가 등재.
@@ -149,10 +143,10 @@ long-poll(`GET /channel/wait`)이 이 주소로 붙는다.
 
 ### 합격 기준 (B)
 
-- B-2: 워커 PC에서 `Test-NetConnection`이 성공.
-- B-4-1·2: 모든 PC 워커가 등록되고 `agora.instances`에 전부 나열.
-- B-4-3·4: cross-PC task→reply 왕복 성공.
-- B-4-5: broadcast가 다른 PC 워커에 도달.
+- B-1: 워커 PC에서 `Test-NetConnection`이 성공(방화벽·바인딩 OK).
+- B-3-1·2: 모든 PC 워커가 등록되고 `agora.instances`에 전부 나열.
+- B-3-3·4: cross-PC task→reply 왕복 성공.
+- B-3-5: broadcast가 다른 PC 워커에 도달.
 
 ---
 
@@ -178,9 +172,9 @@ agora-spawn --id B --role worker   # (remote 배포 자동 감지)
 
 ## 자주 보는 실패
 
-- **워커 PC에서 연결 타임아웃 / 거부:** ① broker가 아직 `127.0.0.1` 바인딩(B-1
-  패치 누락), ② 방화벽 8420 인바운드 차단(B-2), ③ URL이 broker LAN IP가 아님.
-  `Test-NetConnection`으로 도달부터 끊어 확인.
+- **워커 PC에서 연결 타임아웃 / 거부:** ① broker가 아직 `127.0.0.1` 바인딩
+  (`--bind-host 0.0.0.0` 누락), ② 방화벽 8420 인바운드 차단, ③ URL이 broker LAN
+  IP가 아님. `Test-NetConnection`으로 도달부터 끊어 확인.
 - **`agora.register`는 되는데 메시지 수신이 안 됨:** `agora-channel`의 `--broker`가
   로컬호스트를 가리킨다. 채널 어댑터 URL도 LAN IP여야 한다(B-3).
 - **`Mcp-Session-Id` 헤더 누락:** 클라이언트가 Streamable HTTP transport를 안 쓴다.
