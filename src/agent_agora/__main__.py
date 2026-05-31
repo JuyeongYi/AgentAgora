@@ -14,6 +14,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="AgentAgora -- multi-agent message-routing MCP server",
     )
     parser.add_argument("--port", type=int, default=8420)
+    parser.add_argument(
+        "--bind-host",
+        default=os.environ.get("AGORA_BIND_HOST", "127.0.0.1"),
+        help="uvicorn이 바인딩할 호스트. 기본 127.0.0.1(로컬 전용). "
+             "여러 PC에서 접속하는 테스트는 0.0.0.0(전 인터페이스)으로 둔다 — "
+             "인증이 없으므로 신뢰된 사설망에서만. 환경변수 AGORA_BIND_HOST로도 "
+             "지정 가능(플래그가 우선). 정식 remote 배포는 별도 spec 참조.",
+    )
     parser.add_argument("--dir", type=Path, default=Path("."))
     parser.add_argument(
         "--cert-dir",
@@ -202,7 +210,10 @@ async def run_server(args: argparse.Namespace) -> None:
     schema_registry = mcp._agora_schema_registry  # type: ignore[attr-defined]
 
     scheme = "http" if args.no_tls else "https"
-    print(f"AgentAgora starting on {scheme}://127.0.0.1:{args.port}/mcp")
+    print(f"AgentAgora starting on {scheme}://{args.bind_host}:{args.port}/mcp")
+    if args.bind_host not in ("127.0.0.1", "localhost"):
+        print(f"  Bind     : {args.bind_host} (비-로컬 바인딩 — 인증 없음, "
+              f"신뢰된 사설망에서만 사용)")
     print(f"  Data dir : {agora_dir.resolve()}")
     print(f"  DB       : {db_path.resolve()}")
     print(f"  Cert     : {cert_path if cert_path else '(none -- HTTP mode, localhost only)'}")
@@ -310,7 +321,7 @@ async def run_server(args: argparse.Namespace) -> None:
         register_channel(starlette_app, dispatcher=dispatcher)
         print("  Channel  : GET /channel/wait")
         config_kwargs = {
-            "host": "127.0.0.1",
+            "host": args.bind_host,
             "port": args.port,
             "log_level": "info",
         }

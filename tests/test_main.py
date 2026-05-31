@@ -73,3 +73,22 @@ def test_add_wait_flag_defaults_false():
 
 def test_add_wait_flag_true_when_given():
     assert parse_args(["--add-wait"]).add_wait is True
+
+
+def test_bind_host_default_localhost(monkeypatch):
+    monkeypatch.delenv("AGORA_BIND_HOST", raising=False)
+    assert parse_args([]).bind_host == "127.0.0.1"
+
+
+def test_bind_host_flag_overrides():
+    assert parse_args(["--bind-host", "0.0.0.0"]).bind_host == "0.0.0.0"
+
+
+def test_bind_host_env_fallback(monkeypatch):
+    monkeypatch.setenv("AGORA_BIND_HOST", "192.168.0.10")
+    assert parse_args([]).bind_host == "192.168.0.10"
+
+
+def test_bind_host_flag_beats_env(monkeypatch):
+    monkeypatch.setenv("AGORA_BIND_HOST", "192.168.0.10")
+    assert parse_args(["--bind-host", "0.0.0.0"]).bind_host == "0.0.0.0"
