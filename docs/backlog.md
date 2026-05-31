@@ -10,6 +10,74 @@
   어댑터·`AgoraBot` SDK를 HTTP로 전환, MCP `agora.wait_notify`는 기본 비등록 +
   `--add-wait` 플래그로만 등록.
 
+## MCP 표준 추적 — 2026-07-28 RC
+
+MCP가 2026-07-28 릴리스 후보를 발표했다(RC 잠금 2026-05-21, 최종 2026-07-28).
+프로토콜 버전 `2026-07-28`(이전 `2025-11-25`). **아직 최종 릴리스 전이므로 지금은
+영향 파악·추적만 한다.** 출처: blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate
+
+**설계 입장 — stateless transport는 채택하지 않는다 (의도).** RC의 핵심은 무상태
+전환(handshake `initialize` 제거 SEP-2575, 세션 `Mcp-Session-Id` 제거 SEP-2567,
+round-robin LB 지원)이지만, AgentAgora는 본질적으로 **장기 유지되는 워커 프로세스
+간 통신을 중개하는 stateful broker**다. instance↔session 매핑, `agora.instances`/
+`agora.bots` 같은 엔트리 리스트 기능은 stateful 상태를 전제로 하며 무상태성과
+상충한다. 따라서 RC가 세션을 프로토콜에서 들어내더라도 AgentAgora는 stateful
+transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 stateful(streamable-HTTP
++ 세션) 모드를 계속 지원하는지** 추적하는 것이며, 우리 정체성 모델 자체를 바꿀
+필요는 없다. (`auto_register.py`의 `mcp-session-id` 헤더 의존은 라이브러리가
+세션 헤더를 계속 제공하는 한 유지 가능.)
+
+호환성 관점에서 최종 릴리스 전 점검할 항목(우선순위순):
+
+- **mcp 라이브러리 버전 핀** — `pyproject.toml`의 `mcp>=1.0`. RC 지원 버전이
+  나오면 stateful 모드가 계속 동작하는지 확인 후 핀 갱신. (가장 먼저 영향)
+- **JSON Schema 2020-12 지원 (SEP-2106)** — `oneOf`/`anyOf`/`$ref`/`$defs` 허용.
+  `schemas.py` 카탈로그의 표현력을 넓힐 기회. 단 외부 `$ref` URI 자동 역참조 금지·
+  스키마 깊이/검증시간 제한 필요.
+- **에러코드 `-32002`→`-32602` (SEP-2164)** — 우리 코드엔 리터럴 JSON-RPC 코드
+  매칭이 없어(확인됨) 직접 영향 적음. 라이브러리 레벨에서 흡수.
+- **Tasks extension (SEP-2663)** — `tools/call→task handle`, `tasks/get/update/cancel`.
+  우리 `dispatch(expect_result)→reply→close_thread`와 개념적 동형. 표준 MCP
+  클라이언트 호환 표면을 한 겹 입히는 기회(선택). 단 RC가 `tasks/list`를
+  무상태성 때문에 제거한 점은 우리와 무관(우리는 stateful 유지).
+- **신규 헤더 `Mcp-Method`/`Mcp-Name` (SEP-2243)** — 라이브러리가 처리. 우리
+  ASGI 미들웨어 체인이 통과시키는지만 확인.
+- **플러그인 워커 `.mcp.json`은 이미 RC-friendly** — `cc-agora-ops`·
+  `cc-agora-structure`의 워커 템플릿(`mcp.json.template`, `worker-mcp.json.template`)은
+  워커 정체성을 표준 MCP 세션이 아니라 **매 HTTP 요청에 실리는 커스텀 헤더
+  `X-Agora-Instance-Id`(+Role/Description/Cwd)**로 전달한다. RC가 세션을 없애도
+  이 헤더는 매 요청 가므로 클라이언트 측은 무상태에 안정적이다. **유일한 결합점은
+  서버측 `auto_register.py`가 등록 트리거로 `mcp-session-id` AND `X-Agora-Instance-Id`
+  둘 다 요구하는 것**(`auto_register.py:34`). RC 클라이언트(미래의 Claude Code)가
+  session-id를 안 보내면 등록이 안 된다. stateful 유지가 의도여도, auto-register를
+  "`X-Agora-Instance-Id` 우선, session-id 보조"로 견고화하면 RC 클라이언트 호환 +
+  stateful 의도를 둘 다 만족. (지금은 라이브러리·CC 클라이언트가 RC로 올라간 뒤
+  대응; 추적만.) `type:http`/`type:stdio`(agora-channel)는 RC에서 계속 유효.
+- **SSE 폐지→Multi-RTP** — MCP transport의 SSE 얘기. 대시보드 자체 SSE
+  (`dashboard_events.py`, 일반 웹 UI)와는 무관 — 영향 없음.
+- **Roots/Sampling/Logging deprecated (SEP-2577)** — 미사용. 영향 없음.
+
+## 기술부채 — 2026-05-31 아키텍처 분석에서 식별
+
+서브시스템 전수 분석에서 나온 미해결 항목. (에러 코드 직렬화 #4는 해결됨 —
+`server.py` `_error_json` + `bot.py` code 기반 분류. conversation 캐시 evict는
+`sweeper.message_gc_sweep`가 이미 호출 중.)
+
+- **재시작 복구의 fragile trick** — `persistence.restore_from_persistence()`가
+  closed 대화 메시지를 JOIN으로 제외하는 'Inst4 함정5' 주석의 취약한 쿼리에
+  의존하고, 명시 호출 안 하면 in-memory 상태가 빈다(`dispatcher.py` '우려3').
+  런타임 등록 schema는 재시작 시 복원되지 않아 orphan 가능. 복구를 부팅 시 명시
+  단계로 승격 + schema 영속 복원 검토.
+- **불완전 전송이 조용히 진행** — target 인박스가 `max_inbox_depth`(기본 100)
+  도달 시 dispatch는 거부하지만 cc·봇 fan-out 대상은 `skipped_full[]`에 기록만
+  하고 진행. dispatch 결과에 per-target 전달 상태(delivered/skipped/throttled)를
+  1급 반환값으로 노출하는 것을 검토. `peek()`·`dispatched_to`는 TOCTOU 권고치.
+- **routing-bot ACL 우회** — `agora.bot_emit(target=...)`이 comm-matrix를
+  재검사하지 않는다(고정 워크플로 신뢰 인프라 전제). 선택적 재검사 플래그 추가
+  후보. (README에 강화 후보로 명시됨)
+- **수동 VACUUM** — `gc_retention_days` 설정 후 SQLite VACUUM은 수동. sweeper
+  일일 GC 루프에 주기적 VACUUM 통합 검토.
+
 ## 기능 후보 — observability · 편의 도구
 
 2026-05-15 워커 brainstorming에서 나온 미구현 제안. 6명의 워커 중 5명이
