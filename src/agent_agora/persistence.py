@@ -310,6 +310,32 @@ class Persistence:
             })
         return out
 
+    def fetch_transcript(self, conversation_id: str, since_ts: str | None = None) -> list[dict]:
+        """conversation의 논리 메시지를 시간순으로. cmd_id별 1행(primary 우선)으로 dedup."""
+        params: list = [conversation_id]
+        sql = ("SELECT command_id, source, target, payload, conversation_id, created_at, "
+               "delivered_as, in_reply_to FROM messages WHERE conversation_id = ?")
+        if since_ts is not None:
+            sql += " AND created_at > ?"
+            params.append(since_ts)
+        sql += " ORDER BY created_at ASC, command_id ASC"
+        rows = self._conn.execute(sql, params).fetchall()
+        seen: dict[str, dict] = {}
+        for r in rows:
+            cmd = r[0]
+            if cmd in seen and r[6] != "primary":
+                continue  # primary 행을 우선 보존
+            try:
+                payload_val = json.loads(r[3])
+            except (TypeError, ValueError):
+                payload_val = r[3]
+            seen[cmd] = {
+                "command_id": cmd, "source": r[1], "target": r[2], "payload": payload_val,
+                "conversation_id": r[4], "created_at": r[5],
+                "delivered_as": r[6], "in_reply_to": r[7],
+            }
+        return sorted(seen.values(), key=lambda m: (m["created_at"], m["command_id"]))
+
     async def mark_messages_acked(
         self, message_ids: list[str], *, write_queue: "AsyncWriteQueue",
     ) -> int:

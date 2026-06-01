@@ -385,12 +385,22 @@ class Dispatcher:
         for env in all_envs:
             self._fire_dispatch_hooks(env)
 
+        deliveries: list[dict[str, str]] = []
+        if target is not None:
+            deliveries.append({"target": target, "role": "primary", "status": "delivered"})
+        deliveries += [{"target": c, "role": "cc", "status": "delivered"} for c in cc_deliver]
+        deliveries += [{"target": b, "role": "subscribed", "status": "delivered"}
+                       for b in subscriber_bots if b != target]
+        deliveries += [{"target": s, "role": "cc", "status": "skipped_full"}
+                       for s in skipped_full]
+
         return {
             "command_id": cmd_id,
             "created_at": now,
             "conversation_id": conv_id,
             "conversation_id_substituted": substituted,
             "dispatched_to": dispatched_to,
+            "deliveries": deliveries,
             "target_inbox_depth_after": (
                 {target: len(self._queues[target])} if target is not None else {}),
             "skipped_full": skipped_full,
@@ -717,6 +727,15 @@ class Dispatcher:
         else:
             drained.sort(key=lambda e: (e.created_at, e.id))
 
+        # _last_inbound: 회신 컨텍스트 (primary 수신 중 created_at 최신) — agora.reply용
+        repliable = [e for e in drained if e.delivered_as == "primary"]
+        if repliable:
+            latest = max(repliable, key=lambda e: (e.created_at, e.id))
+            self._last_inbound[instance_id] = {
+                "cmd_id": latest.id, "source": latest.source,
+                "conversation_id": latest.conversation_id,
+            }
+
         # last_seen + wait_age_ms
         self._touch_last_seen(instance_id)
         now_dt = datetime.datetime.now(datetime.timezone.utc)
@@ -883,6 +902,90 @@ class Dispatcher:
 
     def conversation_status(self, conv_id: str) -> dict:
         return self._conv.status(conv_id)
+
+    def transcript(self, conversation_id: str, since_ts: str | None = None) -> dict:
+        """conversation 메시지를 시간순 배열로. 영속(SQLite)이 정본 — 막 dispatch한
+        메시지는 비동기 영속 지연으로 누락될 수 있어 as_of_ts 경계를 함께 반환."""
+        msgs = self._persistence.fetch_transcript(conversation_id, since_ts)
+        return {"conversation_id": conversation_id, "as_of_ts": _now_iso(), "messages": msgs}
+
+    def coverage(self, command_id: str) -> dict:
+        """expect_result 명령의 응답 커버리지. pending=아직 미응답 target,
+        responded=원래 기대했으나 응답 완료한 target, expired=deadline 초과 여부."""
+        conv_id = self._conv.conv_id_of(command_id)
+        if conv_id is None:
+            conv_id = self._persistence.lookup_conversation_for(command_id)
+        pending: list[str] = []
+        for _src, pmap in self._in_flight.items():
+            tset = pmap.get(command_id)
+            if tset:
+                pending.extend(sorted(tset))
+        deadline_ts = self._deadlines.get(command_id)
+        src = self._conv.source_of(command_id)
+        responded: list[str] = []
+        state = self._conv.get(conv_id) if conv_id else None
+        if state is not None:
+            for iid, info in state["participants"].items():
+                if info.get("role") == "primary" and iid != src and iid not in pending:
+                    responded.append(iid)
+        now = _now_iso()
+        return {
+            "command_id": command_id, "conversation_id": conv_id,
+            "pending": pending, "responded": sorted(responded),
+            "deadline_ts": deadline_ts,
+            "expired": bool(deadline_ts and deadline_ts < now),
+        }
+
+    async def reply(self, caller: str, payload: Any,
+                    in_reply_to: str | None = None, target: str | None = None,
+                    conversation_id: str | None = None) -> dict:
+        """직전 수신 명령을 컨텍스트로 회신. 명시 인자가 자동충전을 덮어쓴다."""
+        ctx = self._last_inbound.get(caller)
+        if ctx is None and (in_reply_to is None or target is None):
+            raise AgoraError("no_inbound_to_reply")
+        eff_in_reply_to = in_reply_to or (ctx["cmd_id"] if ctx else None)
+        eff_target = target or (ctx["source"] if ctx else None)
+        eff_conv = conversation_id or (ctx["conversation_id"] if ctx else None)
+        return await self.dispatch(
+            source=caller, target=eff_target, payload=payload,
+            in_reply_to=eff_in_reply_to, conversation_id=eff_conv,
+        )
+
+    async def cancel(self, caller: str, command_id: str) -> dict:
+        """발신자가 아직 소비되지 않은 in-flight 명령을 회수한다.
+        caller가 원 source가 아니면 거부. 큐에서 envelope 제거 + in_flight/_deadlines 정리."""
+        src = self._conv.source_of(command_id)
+        if src is None:
+            src = self._persistence.lookup_source_for(command_id)
+        if src is None:
+            raise AgoraError("unknown_command", detail=command_id)
+        if src != caller:
+            raise AgoraError("not_command_owner", detail=command_id)
+        cancelled: list[str] = []
+        already: list[str] = []
+        async with self._lock:
+            pmap = self._in_flight.get(caller, {})
+            targets = sorted(pmap.get(command_id, set()))
+            for t in targets:
+                q = self._queues.get(t, [])
+                idx = next((i for i, e in enumerate(q) if e.id == command_id), None)
+                if idx is not None:
+                    q.pop(idx)
+                    cancelled.append(t)
+                else:
+                    already.append(t)
+            pmap.pop(command_id, None)
+            self._deadlines.pop(command_id, None)
+        if cancelled:
+            now = _now_iso()
+            stmts = [("UPDATE messages SET drained_at=?, drop_reason='manual' "
+                      "WHERE command_id=? AND target=?", (now, command_id, t))
+                     for t in cancelled]
+            try:
+                await self._write_queue.submit_transaction(stmts)
+            except Exception:
+                pass
+        return {"command_id": command_id, "cancelled": cancelled, "already_consumed": already}
 
     def conversations_list(
         self,

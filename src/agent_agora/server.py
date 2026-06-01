@@ -468,6 +468,60 @@ def create_agora_app(
         """Query the status, kind, participants, and message_count of a conversation."""
         return json.dumps(dispatcher.conversation_status(conversation_id), ensure_ascii=False)
 
+    @mcp.tool(name="agora.transcript")
+    async def agora_transcript(conversation_id: str, since_ts: str | None = None) -> str:
+        """Time-ordered envelope array for a conversation (SQLite is source of truth).
+        since_ts: ISO timestamp — only messages created after it. Advisory (peek-grade)."""
+        return json.dumps(dispatcher.transcript(conversation_id, since_ts), ensure_ascii=False)
+
+    @mcp.tool(name="agora.coverage")
+    async def agora_coverage(command_id: str) -> str:
+        """Response coverage of an expect_result command: responded/pending/expired."""
+        return json.dumps(dispatcher.coverage(command_id), ensure_ascii=False)
+
+    @mcp.tool(name="agora.reply")
+    async def agora_reply(ctx: Context, payload: Any, in_reply_to: str | None = None,
+                          target: str | None = None, conversation_id: str | None = None) -> str:
+        """Reply to the most recently received command — auto-fills in_reply_to, target,
+        conversation_id from your last drained inbound. Explicit args win."""
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        try:
+            caller = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError as e:
+            return _error_json(e)
+        try:
+            result = await dispatcher.reply(
+                caller=caller, payload=payload, in_reply_to=in_reply_to,
+                target=target, conversation_id=conversation_id)
+            return json.dumps({"status": "ok", **result}, ensure_ascii=False)
+        except (AgoraError, NotRegisteredError, ValueError) as e:
+            return _error_json(e)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
+
+    @mcp.tool(name="agora.cancel")
+    async def agora_cancel(ctx: Context, command_id: str) -> str:
+        """Recall an in-flight command you sent that hasn't been consumed yet.
+        Already-consumed targets are reported, not recalled. Caller must be the sender."""
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        try:
+            caller = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError as e:
+            return _error_json(e)
+        try:
+            return json.dumps(await dispatcher.cancel(caller=caller, command_id=command_id),
+                              ensure_ascii=False)
+        except (AgoraError, NotRegisteredError, ValueError) as e:
+            return _error_json(e)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
+
     @mcp.tool(name="agora.conversations_list")
     async def agora_conversations_list(
         participant: str | None = None,
