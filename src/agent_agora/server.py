@@ -215,19 +215,17 @@ def create_agora_app(
         subscribe = list(subscribe_schemas or [])
         emit = list(emit_schemas or [])
         schemas = schemas or {}
-        # 봇 재등록이면 옛 스키마 ref를 먼저 해제 (새 inline/subscribe로 재획득).
-        try:
-            prior = bot_registry.resolve_instance_id(instance_id)
-            schema_registry.release_holder(prior.instance_id)
-        except NotRegisteredError:
-            pass
+        # BUG1: 검증(부수효과 없음)과 부수효과(ref 해제·등록·획득)를 분리한다.
+        # 옛 코드는 검증 *전*에 옛 ref를 해제해, 재등록이 검증 실패하면 옛 봇 등록은
+        # 살아있는데 스키마 ref만 날아가는 불일치가 생겼다. 검증을 먼저 끝내고
+        # 실패 시 아무 상태도 건드리지 않으면 옛 등록·옛 ref가 보존된다.
         try:
             if not description:
                 raise AgoraError("description_required")
             if bot_mode == "handler" and not subscribe:
                 raise AgoraError("subscribe_required")
 
-            # (1) inline schemas 사전 검증 — diff preflight (§3.3, §9.6)
+            # (1) inline schemas 사전 검증 — kind + diff preflight (§3.3, §9.6)
             for name, defn in schemas.items():
                 if defn.get("kind") != "bot-task":
                     raise AgoraError("schema_kind_not_bot_task", name=name)
@@ -239,7 +237,31 @@ def create_agora_app(
                             f"schema '{name}' already registered with a different body",
                             instance_id))
                     raise AgoraError("schema_immutable", name=name)
-            # (2) 일괄 등록 — 모두 검증 통과 후
+
+            # (2) 구독 schema 검증 — 기존 registry 또는 inline 정의 (부수효과 없음)
+            if bot_mode == "handler":
+                for s in subscribe:
+                    entry = schema_registry.get(s)
+                    if entry is not None:
+                        if entry.kind != "bot-task":
+                            raise AgoraError("cannot_subscribe_conversation", name=s)
+                    elif s not in schemas:
+                        raise AgoraError("unknown_msgtype", msgtype=s)
+                    # s in schemas: (1)에서 bot-task kind가 보장됨
+        except AgoraError as e:
+            # 검증 실패 — 옛 등록·옛 스키마 ref를 건드리지 않고 그대로 보존한다.
+            return _error_json(e)
+
+        # === 모든 검증 통과 — 이제 부수효과 시작 ===
+        try:
+            # 봇 재등록이면 옛 스키마 ref 해제 (새 inline/subscribe로 재획득).
+            try:
+                prior = bot_registry.resolve_instance_id(instance_id)
+                schema_registry.release_holder(prior.instance_id)
+            except NotRegisteredError:
+                pass
+
+            # (3) inline schemas 일괄 등록 — 모두 검증 통과 후
             for name, defn in schemas.items():
                 schema_registry.register(
                     name, defn["body"], kind="bot-task",
@@ -247,14 +269,6 @@ def create_agora_app(
                 persistence.save_schema(
                     name, defn["body"], kind="bot-task",
                     purpose=defn.get("purpose", ""), registered_by=instance_id)
-            # (3) 구독 schema 검증 — 존재 + bot-task kind
-            if bot_mode == "handler":
-                for s in subscribe:
-                    entry = schema_registry.get(s)
-                    if entry is None:
-                        raise AgoraError("unknown_msgtype", msgtype=s)
-                    if entry.kind != "bot-task":
-                        raise AgoraError("cannot_subscribe_conversation", name=s)
 
             info = bot_registry.register(
                 session_id=session_id, instance_id=instance_id,

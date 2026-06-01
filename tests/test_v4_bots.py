@@ -377,3 +377,25 @@ async def test_unregister_releases_schema_ref(bot_app):
     assert schema_registry.get("echo2") is not None
     await _tool(mcp, "agora.unregister")(FakeCtx("sess-bot1"))
     assert schema_registry.get("echo2") is None
+
+
+@pytest.mark.asyncio
+async def test_register_bot_revalidation_failure_preserves_old_schema_ref(bot_app):
+    """BUG1 — 재등록이 검증 실패하면 옛 봇의 스키마 ref가 보존되어야 한다.
+    옛 코드는 검증 전에 옛 ref를 해제해, 검증 실패 시 스키마가 잘못 해제됐다."""
+    mcp, dispatcher, schema_registry = bot_app
+    body = {"type": "object", "properties": {"msgtype": {"const": "job"}}}
+    res1 = json.loads(await _tool(mcp, "agora.register_bot")(
+        FakeCtx("sess-botj"), instance_id="bot_j", description="d",
+        bot_mode="handler", subscribe_schemas=["job"],
+        schemas={"job": {"kind": "bot-task", "purpose": "p", "body": body}}))
+    assert res1["status"] == "ok"
+    assert schema_registry.get("job") is not None
+    # 같은 봇이 검증 실패하는 재등록을 시도 (존재하지 않는 schema 구독)
+    res2 = json.loads(await _tool(mcp, "agora.register_bot")(
+        FakeCtx("sess-botj"), instance_id="bot_j", description="d",
+        bot_mode="handler", subscribe_schemas=["nonexistent_schema"]))
+    assert "error" in res2
+    # BUG1 수정: 옛 'job' 스키마 ref가 보존돼 schema가 살아있어야 한다
+    assert schema_registry.get("job") is not None
+    assert "bot_j" in schema_registry.refs_of("job")

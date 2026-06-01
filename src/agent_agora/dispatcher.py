@@ -61,6 +61,7 @@ class Dispatcher:
         gc_retention_days: int = 90,
         file_store=None,
         file_retention_days: int = 7,
+        bot_emit_recheck_acl: bool = False,
     ) -> None:
         self._registry = registry
         self._persistence = persistence
@@ -68,6 +69,7 @@ class Dispatcher:
         self._schema_registry = schema_registry
         self._bot_registry = bot_registry
         self._comm_matrix = comm_matrix
+        self._bot_emit_recheck_acl = bot_emit_recheck_acl
         self._default_timeout_ms = default_timeout_ms
         self._max_inbox_depth = max_inbox_depth
         # close_timeout_ms·dead_session_timeout_ms·gc_retention_days·file_store·
@@ -592,6 +594,9 @@ class Dispatcher:
             # target을 워커 또는 봇 레지스트리에서 검증 — 미등록이면 NotRegisteredError
             if not self._bot_registry.is_bot(target):
                 self._registry.resolve_instance_id(target)  # 워커 미등록 시 raise
+                # TD3: opt-in 시 봇의 직접 워커 전달도 comm-matrix ACL 재검사
+                if self._bot_emit_recheck_acl and not self._comm_matrix.is_allowed(source, target):
+                    raise AgoraError("comm_denied", from_=source, to=target)
             reply_target = target
         elif in_reply_to is not None:
             reply_target = self._conv.source_of(in_reply_to)
