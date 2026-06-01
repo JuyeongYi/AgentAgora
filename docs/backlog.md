@@ -68,29 +68,21 @@ transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 sta
   의존하고, 명시 호출 안 하면 in-memory 상태가 빈다(`dispatcher.py` '우려3').
   런타임 등록 schema는 재시작 시 복원되지 않아 orphan 가능. 복구를 부팅 시 명시
   단계로 승격 + schema 영속 복원 검토.
-- **불완전 전송이 조용히 진행** — target 인박스가 `max_inbox_depth`(기본 100)
-  도달 시 dispatch는 거부하지만 cc·봇 fan-out 대상은 `skipped_full[]`에 기록만
-  하고 진행. dispatch 결과에 per-target 전달 상태(delivered/skipped/throttled)를
-  1급 반환값으로 노출하는 것을 검토. `peek()`·`dispatched_to`는 TOCTOU 권고치.
 - **routing-bot ACL 우회** — `agora.bot_emit(target=...)`이 comm-matrix를
   재검사하지 않는다(고정 워크플로 신뢰 인프라 전제). 선택적 재검사 플래그 추가
   후보. (README에 강화 후보로 명시됨)
 - **수동 VACUUM** — `gc_retention_days` 설정 후 SQLite VACUUM은 수동. sweeper
   일일 GC 루프에 주기적 VACUUM 통합 검토.
 
-## 기능 후보 — observability · 편의 도구
+## 교착(deadlock) — 폐기, deadline 안전망으로 대체 (2026-06-02)
 
-2026-05-15 워커 brainstorming에서 나온 미구현 제안. 6명의 워커 중 5명이
-observability 결핍을 독립적으로 보고했다. (원본 제안서는 git 이력에 보존.)
-
-- **`agora.transcript(conversation_id, since_ts?)`** — 한 conversation의 메시지
-  시퀀스를 시간순 envelope 배열로 반환. 현재는 SQLite 직접 조회로만 가능하다.
-- **`agora.coverage(command_id)`** — `expect_result=true`로 발사된 command의 응답
-  커버리지(`responded` / `pending` / `deadline_ts`)를 한 호출로 조회.
-- **`agora.reply(message, ...)`** — 최근 수신한 명령을 컨텍스트로 잡아 `in_reply_to`
-  · `conversation_id` · `target` · `payload.from`을 자동으로 채우는 답신 헬퍼.
-- **`agora.cancel(command_id)`** — 발신자가 아직 consume되지 않은 in-flight 명령을
-  회수. 이미 consume됐으면 no-op + 사유 반환.
+런타임 교착 사이클 탐지/자동해소는 **채택하지 않기로 결정**했다. expect_result
+사이클 ≠ 교착이고(큐 기반 비동기), 사이클은 정상 반복 워크플로의 본질이며,
+런타임 탐지기는 acyclic 매트릭스에선 dead code·사이클 매트릭스에서만 작동하는
+역-ROI 기능이기 때문. 대신 **deadline 강제**(Plan A1)로 교착·죽은 워커·느린
+응답을 한 메커니즘으로 처리한다. 결정 트레일:
+`docs/superpowers/specs/2026-06-02-routing-core-deadline-observability-design.md` §2.
+comm-matrix `cycles()`는 진단 정보로만 제공(거부 없음).
 
 ## 기능 후보 — 인터랙티브 대시보드 후속
 
