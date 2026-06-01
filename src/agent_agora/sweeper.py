@@ -163,3 +163,8 @@ class Sweeper:
         if now is None:
             now = datetime.datetime.now(datetime.timezone.utc)
         return await self._dispatcher.expire_overdue_deadlines(now_iso=now.isoformat())
+
+    def vacuum(self) -> None:
+        """SQLite VACUUM — 일일 GC 루프에서 message_gc_sweep 후 호출해 삭제된
+        행이 점유하던 디스크를 회수한다(gc_retention_days 후 수동 VACUUM 필요 제거)."""
+        self._persistence.conn.execute("VACUUM")

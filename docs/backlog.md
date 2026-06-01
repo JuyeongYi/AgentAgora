@@ -63,16 +63,27 @@ transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 sta
 `server.py` `_error_json` + `bot.py` code 기반 분류. conversation 캐시 evict는
 `sweeper.message_gc_sweep`가 이미 호출 중.)
 
-- **재시작 복구의 fragile trick** — `persistence.restore_from_persistence()`가
-  closed 대화 메시지를 JOIN으로 제외하는 'Inst4 함정5' 주석의 취약한 쿼리에
-  의존하고, 명시 호출 안 하면 in-memory 상태가 빈다(`dispatcher.py` '우려3').
-  런타임 등록 schema는 재시작 시 복원되지 않아 orphan 가능. 복구를 부팅 시 명시
-  단계로 승격 + schema 영속 복원 검토.
-- **routing-bot ACL 우회** — `agora.bot_emit(target=...)`이 comm-matrix를
-  재검사하지 않는다(고정 워크플로 신뢰 인프라 전제). 선택적 재검사 플래그 추가
-  후보. (README에 강화 후보로 명시됨)
-- **수동 VACUUM** — `gc_retention_days` 설정 후 SQLite VACUUM은 수동. sweeper
-  일일 GC 루프에 주기적 VACUUM 통합 검토.
+- **재시작 복구의 fragile trick** — (2026-06-02 Plan B 검토) `restore_from_persistence()`는
+  이미 `__main__`에서 `--restore`로 명시 호출되므로 "명시 단계 승격"은 충족.
+  남은 항목인 **런타임 schema 영속 복원은 보류** — `__main__.py:106-108`이 명시하듯
+  비복원은 *의도적 설계*다(ref-counting 하에서 holder가 죽어 orphan ref가 되므로;
+  봇·워커는 재접속 시 재등록). 복원하면 봇 미재접속 시 orphan schema가 남는
+  역효과. trade-off가 있어 사용자와 재논의 후 결정. JOIN 쿼리 자체는 동작(테스트 통과).
+- ~~**routing-bot ACL 우회**~~ — ✅ 완료(2026-06-02 Plan B). `--bot-emit-recheck-acl`
+  opt-in 플래그(기본 off). 켜면 `bot_emit(target=워커)`도 comm-matrix 재검사
+  (`dispatcher._bot_emit_recheck_acl`). 봇도 `instance_id`가 있어 매트릭스 패턴 매칭 가능.
+- ~~**수동 VACUUM**~~ — ✅ 완료(2026-06-02 Plan B). `sweeper.vacuum()`을 일일 GC
+  루프(`_message_gc_loop`)의 `message_gc_sweep` 뒤에 통합.
+
+## 후속 — 레지스트리 일원화 (Plan E, 2026-06-02 식별)
+
+`InstanceRegistry`와 `BotRegistry`가 `register`/`resolve`/`touch_last_seen`/
+`last_seen`/dead-sweep에서 유사 로직을 중복한다. 공통 베이스 레지스트리 클래스를
+두고 Instance/Bot로 구체화하면 코드 중복 제거 + 통일된 식별 체계를 얻는다. 단
+영향 범위가 큼(`server.py`·`dispatcher`·`sweeper`·`auto_register`가 곳곳에서 두
+레지스트리를 구분해 씀) — 독립 plan으로 분리. 주의: 봇/워커의 동작 차이(봇은
+expect_result 대상 아님·schema 구독·observer)와 "봇은 ACL 면제" 정책 분기는
+일원화 후에도 명시적으로 남아야 한다(일원화가 ACL을 자동 처리하지 않음).
 
 ## 교착(deadlock) — 폐기, deadline 안전망으로 대체 (2026-06-02)
 
@@ -120,9 +131,9 @@ comm-matrix `cycles()`는 진단 정보로만 제공(거부 없음).
 
 ## 미수정 버그
 
-- **register_bot 재등록 검증 실패 시 ref 오류** — `server.py`의 `agora_register_bot`은
-  봇 재등록 시작 시점에 옛 스키마 ref를 먼저 해제한다. 그 후 검증이 실패하면
-  (`unknown_msgtype` 등) 봇의 옛 등록은 `BotRegistry`에 그대로 살아 있는데 스키마
-  ref만 날아가, 그 스키마가 잘못 해제될 수 있다. 정상 재등록·최초 등록엔 영향 없음 —
-  재등록이 *검증 실패*하는 드문 경우만. register_bot의 스키마 ref 변경을 검증 통과
-  후로 미루는 트랜잭션 순서 정리가 필요하다.
+- ~~**register_bot 재등록 검증 실패 시 ref 오류**~~ — ✅ 완료(2026-06-02 Plan B).
+  `agora_register_bot`을 검증 블록과 부수효과 블록으로 분리: 검증(description·
+  subscribe·inline preflight·구독 schema 존재)을 먼저 끝내고, 실패 시 옛 등록·옛
+  스키마 ref를 전혀 건드리지 않고 return. 옛 ref 해제·inline 등록·acquire는 모두
+  검증 통과 후에만 수행. 회귀 테스트:
+  `tests/test_v4_bots.py::test_register_bot_revalidation_failure_preserves_old_schema_ref`.

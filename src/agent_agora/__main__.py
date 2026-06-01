@@ -54,6 +54,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="레거시·디버깅용 - agora.wait_notify MCP 도구를 등록한다. "
              "기본 미등록. 채널 어댑터·봇 SDK는 GET /channel/wait를 쓴다.",
     )
+    parser.add_argument(
+        "--bot-emit-recheck-acl",
+        action="store_true",
+        help="라우팅 봇의 agora.bot_emit(target=...) 직접 전달도 comm-matrix ACL을 "
+             "재검사한다. 기본 미적용(봇은 신뢰 인프라로 우회). 켜면 매트릭스에 봇 "
+             "instance_id 패턴을 포함해야 봇 전달이 허용된다.",
+    )
     return parser.parse_args(argv)
 
 
@@ -79,6 +86,7 @@ def _build_app(
     gc_retention_days: int = 90,
     file_retention_days: int = 7,
     add_wait: bool = False,
+    bot_emit_recheck_acl: bool = False,
 ):
     """Construct FastMCP app + supporting state. Used by CLI and tests.
 
@@ -146,6 +154,7 @@ def _build_app(
         gc_retention_days=gc_retention_days,
         file_store=file_store,
         file_retention_days=file_retention_days,
+        bot_emit_recheck_acl=bot_emit_recheck_acl,
     )
     mcp = create_agora_app(
         agora_dir=agora_dir,
@@ -202,6 +211,7 @@ async def run_server(args: argparse.Namespace) -> None:
         gc_retention_days=args.gc_retention_days,
         file_retention_days=args.file_retention_days,
         add_wait=args.add_wait,
+        bot_emit_recheck_acl=args.bot_emit_recheck_acl,
     )
     instance_registry = mcp._agora_instance_registry  # type: ignore[attr-defined]
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
@@ -370,6 +380,7 @@ async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
         try:
             dispatcher.sweeper.message_gc_sweep()
             dispatcher.sweeper.file_gc_sweep()
+            dispatcher.sweeper.vacuum()
         except Exception as e:
             print(f"[agora] message_gc error: {e}", file=sys.stderr)
 
