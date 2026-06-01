@@ -353,6 +353,7 @@ async def _sweep_loop_60s(dispatcher) -> None:
             dispatcher.sweeper.close_ttl_sweep()
             dispatcher.sweeper.dead_session_sweep()
             dispatcher.sweeper.dead_bot_sweep()
+            await dispatcher.sweeper.deadline_sweep()
         except Exception as e:
             print(f"[agora] sweep error: {e}", file=sys.stderr)
 
