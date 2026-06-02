@@ -168,8 +168,9 @@ def create_agora_app(
     ) -> str:
         """Register this session as an addressable instance.
 
-        wait_mode: 'auto' means this worker uses an auto-loop on agora.wait,
-        'manual' means a human triggers waits. Defaults to 'unknown' if omitted.
+        wait_mode: advisory hint for how this worker receives inbound messages —
+        'auto' (the worker polls automatically, e.g. channel mode) vs 'manual'
+        (a human triggers waits). Defaults to 'unknown' if omitted.
         """
         try:
             session_id = _session_id_from_ctx(ctx)

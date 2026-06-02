@@ -11,9 +11,9 @@
   __aexit__        unregister + 연결 해제 — graceful 종료 시 stale 등록 방지
 
 생명주기를 async context manager로 묶었으므로, 정상 종료·예외·KeyboardInterrupt
-무엇이든 세션이 닫히기 전에 unregister가 실행된다. BotRegistry에는 dead-session
-sweep이 없어(InstanceRegistry만 청소된다) 명시적 unregister가 빠지면 죽은 봇
-등록이 영구히 남는다 — 이 클래스가 그걸 구조적으로 막는다.
+무엇이든 세션이 닫히기 전에 unregister가 실행된다. BotRegistry도 sweeper의
+dead_bot_sweep(last_seen TTL)으로 결국 청소되지만 그건 안전망일 뿐 — 명시적
+unregister가 stale 봇 등록을 즉시 제거한다. 이 클래스가 그 즉시 정리를 구조적으로 보장한다.
 
 서버를 먼저 띄워야 한다:
     python -m agent_agora --port 8420 --no-tls --no-timeout
