@@ -10,6 +10,76 @@
   어댑터·`AgoraBot` SDK를 HTTP로 전환, MCP `agora.wait_notify`는 기본 비등록 +
   `--add-wait` 플래그로만 등록.
 
+## 리팩토링 로드맵 — 2026-06-03 전수 분석 (ultracode 워크플로)
+
+2026-06-03 다중에이전트 워크플로(서브시스템 매핑 → 8개 차원 기회식별 → 적대적
+검증 → 분할계획 합성 → 비판 → 확정)로 전수 분석. 펀넬: 51 원시기회 → 41 통합 →
+적대적 검증 통과 34 → **15 plan화 + 15 의도적 drop + 7 검증탈락(허상)**. 각 plan은
+독립 브랜치·명시경로 커밋·pytest(`.venv`) 검증 전제. 강제 선행만 `dependsOn`.
+
+**Wave 1 — 무위험 quick-win (병렬)**
+- `observability-silent-swallow-logging` (S/low) — `persistence`·flush 경로 `except: pass`를
+  logging으로 신호화(`persistence.py`·`dispatcher.py`). 동작 불변.
+- `close-thread-dispatcher-closed-guard` (S/low) — ★버그: `agora.close_thread`만
+  `except DispatcherClosed` 누락(종료 레이스 미처리 예외). `server.py`.
+- `docstring-correctness-quickwins` (S/low) — `bot.py`·`agora.register` 거짓/스테일 docstring.
+
+**Wave 2 — 저위험 추출 + 버그수정 + 안전망**
+- `agora-register-cwd-durability-fix` (S/medium) — ★버그: 도구 cwd를 `AutoRegisterMiddleware`가
+  빈 헤더로 클로버. spec 선행 + 미들웨어 가드(`server`/`registry`/`auto_register`).
+- `broker-http-client-helper` (S/low) — `bot`·`channel_adapter`의 `/channel/wait` HTTP 클라
+  3종 중복 → `_broker_http.py` 추출.
+- `dashboard-protected-paths-single-source` (S/low) — protected-paths 3중 복제 → 모듈 상수
+  (통일 전 동일성 assert).
+- `test-harness-consolidation` (L/low) — 테스트 하니스 보일러플레이트 → `conftest`/`_helpers`.
+  라우팅 대공사 안전망(선행).
+
+**Wave 3 — 중간 정리**
+- `operator-prefix-constant-unify` (S/low) — `'operator:'` 매직스트링 → 헬퍼.
+- `server-session-caller-resolution-helper` (M/medium) — `server` 13도구 세션해석 보일러플레이트
+  → `_caller_or_error`.
+- `dashboard-route-error-narrowing-dedup` (M/low, **dependsOn** operator-prefix) — 광역 except
+  좁히기 + 내부텍스트 누출 차단.
+- `longpoll-file-bounded-wait-body` (M/medium) — 파일 업로드 바디 상한(Content-Length+chunked
+  누적 가드) + long-poll timeout 클램프.
+
+**Wave 4–5 — dispatcher 코어 분해 (순차)**
+- `dispatcher-routing-stdout-to-logging` (M/medium, **dependsOn** harness) — `print`→logging +
+  fan-out 골든 테스트 격리 파일로 고정.
+- `dispatcher-fanout-decompose-skeleton` (L/medium, **dependsOn** stdout-logging) —
+  `dispatcher.py`(1084줄) 분해: `_fanout_bots` → dispatch 분해 → 공통 골격. 동작 보존.
+
+**Wave 6–7 — 레지스트리 일원화 (Plan E)**
+- `dispatcher-hook-fire-public-api` (S/low) — register/unregister hook 공개 API 승격(Plan E 선행).
+- `registry-bidirectional-base-plan-e` (L/medium-high, **dependsOn** hook-fire) — 아래
+  "레지스트리 일원화" 섹션 + spec 참조.
+
+**핵심 발견**
+- **실제 버그 2건**: close_thread 종료 레이스, register cwd durability(미들웨어 클로버).
+  리팩토링 아니라 정합성 버그라 분리·spec화.
+- **허상 7건 기각**: "동시성 race"류 제안(registry-threading-lock·sqlite-txn-boundary·
+  wait-notify-wake-race·close-thread-lock-boundary 등)이 단일스레드 asyncio 모델에선
+  구조적 불가능함을 코드 대조로 확인. → 락 기반 "수정"에 노력 낭비 금지.
+- **15건 의도적 drop**: 의도적 설계(stateful 유지·schema 비복원) 오인, over-abstraction
+  (ROI 음수), 이미 해결 항목. 주요 defer 후보(envelope-row-mapping·conversation-domain-
+  enums/object·schema-registry-lifecycle·governance-base-filepolicy)는 전부 "다음 필드추가/
+  편집 시 기회적"으로 처리.
+
+### 패키지 재구성 — 권고: minimal (2026-06-03 별도 워크플로)
+
+spec: `docs/superpowers/specs/2026-06-03-package-layout-minimal-reorg-design.md`.
+
+- 의존그래프가 이미 **무순환 DAG**(leaf 바닥) → 서브패키징은 결합을 못 줄이고 import 경로만
+  relabel. 전면(full/by-domain) 재구성은 24~28모듈 + 235 테스트import(49파일) 갱신 대비
+  이득=탐색성뿐이라 과함 — **권고 안 함**.
+- **minimal**(effort S): `dashboard/`(4모듈+`dashboard.html`/`dashboard_static`)·`files/`(3모듈)만
+  서브패키지화. inbound-0(=`__main__`만 import)이라 결합 무증가. **함정=package-data 글롭
+  재경로** — 소스트리 pytest는 그린이지만 배포 휠에서만 에셋 누락. `test_packaging.py`(uv PATH,
+  휠빌드)가 유일 안전망.
+- ※ "묶을 코드 많다"의 더 급한 절반은 파일이동이 아니라 `dispatcher.py` 1084줄 god-module
+  분해(Wave 4–5). 패키지보다 우선순위 높음. HTTP 라우트 통합·`bot`/`channel_adapter` 이동은
+  의존/진입점 때문에 보류.
+
 ## MCP 표준 추적 — 2026-07-28 RC
 
 MCP가 2026-07-28 릴리스 후보를 발표했다(RC 잠금 2026-05-21, 최종 2026-07-28).
@@ -84,6 +154,12 @@ transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 sta
 레지스트리를 구분해 씀) — 독립 plan으로 분리. 주의: 봇/워커의 동작 차이(봇은
 expect_result 대상 아님·schema 구독·observer)와 "봇은 ACL 면제" 정책 분기는
 일원화 후에도 명시적으로 남아야 한다(일원화가 ACL을 자동 처리하지 않음).
+
+설계 spec 작성됨(2026-06-03): `docs/superpowers/specs/2026-06-03-registry-unification-plan-e-design.md`.
+공통 베이스 `_BidirectionalRegistry[InfoT]` + 봇 고유 로직은 `_on_store_locked`/
+`_on_detach_locked` 훅으로만 노출. risk **medium-high**(frozen+Generic 런타임 회귀) —
+공개 시그니처 스냅샷 테스트 선행. **dependsOn** `dispatcher-hook-fire-public-api`(register/
+unregister/dead-sweep 레이어 churn 완화). drop된 `registry-last-seen-test-seam`도 여기 흡수.
 
 ## 교착(deadlock) — 폐기, deadline 안전망으로 대체 (2026-06-02)
 
