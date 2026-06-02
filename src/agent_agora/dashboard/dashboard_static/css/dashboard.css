@@ -46,3 +46,26 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .nodelabel { fill:#e8e8e8; font-size:11px; text-anchor:middle; }
 .edge { stroke:#7a7ad0; fill:none; }
 .edgelabel { fill:#bbf; font-size:10px; text-anchor:middle; }
+
+/* 라우팅 루프 진단 노트 */
+.cycles-note { color:#f5a623; font-size:12px; margin-top:6px; }
+
+/* 스키마 explorer 모달 */
+.schema-explorer { display:flex; gap:12px; min-width:600px; }
+.schema-explorer #schema-list { flex:0 0 240px; max-height:60vh; overflow:auto; list-style:none; padding:0; margin:0; }
+.schema-explorer #schema-list li { padding:6px 8px; border-bottom:1px solid #33334d; cursor:pointer; }
+.schema-explorer #schema-list li:hover { background:#2d2d52; }
+.schema-explorer .schema-meta { color:#9aa; font-size:10px; }
+.schema-explorer #schema-body { flex:1; max-height:60vh; overflow:auto; }
+.schema-explorer pre { background:#1a1a2e; padding:8px; border-radius:4px; font-size:11px; white-space:pre-wrap; }
+
+/* 로그 패널 모달 */
+.logs-toolbar { display:flex; gap:12px; align-items:center; margin:8px 0; }
+.logs-table { width:100%; border-collapse:collapse; font-family:monospace; font-size:11px; }
+.logs-table td { padding:3px 6px; border-bottom:1px solid #33334d; vertical-align:top; }
+.logs-table td:nth-child(1) { color:#9aa; white-space:nowrap; }
+.logs-table td:nth-child(2) { font-weight:700; white-space:nowrap; }
+.logs-table td:nth-child(3) { color:#bbf; white-space:nowrap; }
+.logs-table tr.log-warning td:nth-child(2) { color:#f5a623; }
+.logs-table tr.log-error td:nth-child(2), .logs-table tr.log-critical td:nth-child(2) { color:#ff6b6b; }
+#logs-body { max-height:60vh; overflow:auto; min-width:600px; }

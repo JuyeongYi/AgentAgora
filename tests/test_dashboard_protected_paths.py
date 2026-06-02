@@ -20,6 +20,7 @@ def test_protected_paths_canonical_contents():
         "/dashboard/instance",
         "/dashboard/schemas",
         "/dashboard/coverage",
+        "/dashboard/logs",
         "/dashboard/stream",
     ]
 

@@ -304,6 +304,11 @@ async def run_server(args: argparse.Namespace) -> None:
         _event_broker = EventBroker(max_queue=1000)
         _event_broker.attach_to_dispatcher(dispatcher)
 
+        # 대시보드 로그 패널 — agent_agora.* 의 WARNING+ 를 ring buffer에 모은다.
+        from agent_agora.dashboard.logbuffer import RingBufferLogHandler
+        _log_buffer = RingBufferLogHandler(capacity=500, level=logging.WARNING)
+        logging.getLogger("agent_agora").addHandler(_log_buffer)
+
         starlette_app.add_middleware(
             DashboardAuthMiddleware,
             mode=_dash_auth_mode,
@@ -323,12 +328,14 @@ async def run_server(args: argparse.Namespace) -> None:
             schema_registry=schema_registry,
             health_collector=_health,
             event_broker=_event_broker,
+            log_buffer=_log_buffer,
             auth_mode=_dash_auth_mode,
         )
         print("  Dashboard: GET /dashboard, GET /dashboard/data, GET /dashboard/auth-mode")
         print("  Dashboard: GET /dashboard/stream (SSE)")
         print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")
         print("  Dashboard: GET /dashboard/operator/inbox, POST /dashboard/operator/inbox/ack")
+        print("  Dashboard: GET /dashboard/logs (recent WARNING+ events)")
         print(f"  Dashboard: auth mode = {_dash_auth_mode}")
         from agent_agora.files import register as register_files
         register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]

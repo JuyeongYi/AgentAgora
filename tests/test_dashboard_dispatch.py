@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import time
 import pytest
 from starlette.applications import Starlette
@@ -14,6 +15,7 @@ from agent_agora.dashboard import (
     DashboardAuthMiddleware, EventBroker, HealthCollector,
     register, DASHBOARD_PROTECTED_PATHS,
 )
+from agent_agora.dashboard.logbuffer import RingBufferLogHandler
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
@@ -63,6 +65,7 @@ def real_server_app(tmp_path):
     )
     event_broker = EventBroker(max_queue=100)
     event_broker.attach_to_dispatcher(dispatcher)
+    log_buffer = RingBufferLogHandler(capacity=100, level=logging.WARNING)
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
@@ -91,6 +94,7 @@ def real_server_app(tmp_path):
         schema_registry=schema_reg,
         health_collector=health,
         event_broker=event_broker,
+        log_buffer=log_buffer,
         auth_mode="trust",
     )
 
@@ -99,6 +103,7 @@ def real_server_app(tmp_path):
     app.state.instance_registry = reg
     app.state.write_queue = write_queue
     app.state.persistence = persistence
+    app.state.log_buffer = log_buffer
 
     return app
 
@@ -240,6 +245,30 @@ def test_dashboard_data_comm_matrix_includes_cycles(dashboard_client):
     assert r.status_code == 200
     cm = r.json()["comm_matrix"]
     assert "cycles" in cm and isinstance(cm["cycles"], list)
+
+
+def test_logs_endpoint_returns_buffered_records(dashboard_client, real_server_app):
+    """GET /dashboard/logs — RingBufferLogHandler에 쌓인 WARNING+ 레코드 노출."""
+    buf: RingBufferLogHandler = real_server_app.state.log_buffer
+    buf.emit(logging.LogRecord("agent_agora.dispatcher", logging.WARNING,
+                               __file__, 0, "inbox full, dropped", None, None))
+    buf.emit(logging.LogRecord("agent_agora.sweeper", logging.ERROR,
+                               __file__, 0, "sweep failed", None, None))
+    r = dashboard_client.get("/dashboard/logs", headers=_auth("alice"))
+    assert r.status_code == 200
+    logs = r.json()["logs"]
+    msgs = [e["message"] for e in logs]
+    assert "inbox full, dropped" in msgs
+    assert "sweep failed" in msgs
+    # min_level=ERROR 쿼리 필터
+    r2 = dashboard_client.get("/dashboard/logs?min_level=ERROR", headers=_auth("alice"))
+    assert [e["message"] for e in r2.json()["logs"]] == ["sweep failed"]
+
+
+def test_logs_is_protected_path(dashboard_client):
+    """/dashboard/logs는 보호 경로 — 운영자 헤더 없으면 거부(trust 모드는 통과지만
+    경로 자체가 protected 목록에 있어야 한다)."""
+    assert "/dashboard/logs" in DASHBOARD_PROTECTED_PATHS
 
 
 def test_coverage_endpoint_returns_structure(dashboard_client, register_worker):

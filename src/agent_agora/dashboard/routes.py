@@ -40,6 +40,7 @@ DASHBOARD_PROTECTED_PATHS = [
     "/dashboard/instance",
     "/dashboard/schemas",
     "/dashboard/coverage",
+    "/dashboard/logs",
     "/dashboard/stream",
 ]
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
@@ -150,6 +151,7 @@ def register(
     schema_registry=None,
     health_collector=None,
     event_broker=None,
+    log_buffer=None,
     auth_mode: str = "trust",
 ) -> None:
     """app에 대시보드 라우트를 등록한다.
@@ -160,6 +162,7 @@ def register(
 
     health_collector: HealthCollector 인스턴스 (선택). 제공 시 /data에 server 헬스 포함.
     event_broker: EventBroker 인스턴스 (선택). 제공 시 /stream SSE 엔드포인트 활성화.
+    log_buffer: RingBufferLogHandler 인스턴스 (선택). 제공 시 /logs 엔드포인트 활성화.
     auth_mode: 현재 인증 모드 ("trust" | "token"). /auth-mode 엔드포인트에 노출.
     """
 
@@ -180,6 +183,26 @@ def register(
     app.router.routes.append(Route("/dashboard/data", data_endpoint, methods=["GET"]))
     # /auth-mode는 보호 경로 목록에 포함시키지 않는다 — 누구나 읽을 수 있어야 함.
     app.router.routes.append(Route("/dashboard/auth-mode", auth_mode_endpoint, methods=["GET"]))
+
+    # ------------------------------------------------------------------
+    # logs endpoint (log_buffer 제공 시 활성화) — 최근 WARNING+ 운영 이벤트.
+    # ------------------------------------------------------------------
+    if log_buffer is not None:
+
+        async def logs_endpoint(request: Request) -> JSONResponse:
+            """GET /dashboard/logs — RingBufferLogHandler에 쌓인 최근 로그.
+
+            ?min_level=ERROR(이름 또는 numeric), ?limit=N 쿼리 지원."""
+            min_level = request.query_params.get("min_level")
+            limit_param = request.query_params.get("limit")
+            try:
+                limit = int(limit_param) if limit_param is not None else None
+            except ValueError:
+                return JSONResponse({"error": "limit must be an integer"}, status_code=422)
+            return JSONResponse(
+                {"logs": log_buffer.records(min_level=min_level, limit=limit)})
+
+        app.router.routes.append(Route("/dashboard/logs", logs_endpoint, methods=["GET"]))
 
     # ------------------------------------------------------------------
     # SSE stream endpoint (event_broker 제공 시 활성화)
