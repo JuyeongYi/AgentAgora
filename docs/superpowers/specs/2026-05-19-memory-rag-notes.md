@@ -24,7 +24,7 @@
 
 ## 4. 보류 — zero-trust federation
 
-memory/RAG와 함께 검토했으나 보류한다. 이유: AgentAgora의 명시적 설계 전제(`docs/superpowers/specs/2026-05-18-local-remote-deployment-design.md` — "trusted 사설망만 가정, 적대적 네트워크 대비는 범위 밖")와 정면 충돌한다. 위협 모델 자체를 바꾸는 재설계라 별도 프로젝트 규모이고, "cross-trust 운영이 실제로 필요한가"가 확정되기 전엔 착수하지 않는다.
+memory/RAG와 함께 검토했으나 보류한다. 이유: AgentAgora의 명시적 설계 전제(local/remote 배포 설계 — "trusted 사설망만 가정, 적대적 네트워크 대비는 범위 밖", git 히스토리)와 정면 충돌한다. 위협 모델 자체를 바꾸는 재설계라 별도 프로젝트 규모이고, "cross-trust 운영이 실제로 필요한가"가 확정되기 전엔 착수하지 않는다.
 
 ## 5. 미정 — 착수 시 브레인스토밍에서 결정
 

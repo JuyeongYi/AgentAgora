@@ -17,7 +17,7 @@ pip install code-review-graph
 1. `/agora-structure-analyze` — 현재 레포를 분석해 구조 매니페스트를 `<repo>/.agora-structure/manifest.json`에 작성한다. 운영자가 검토·편집.
 2. `/agora-structure-spawn --manifest <path>` — 매니페스트로 파티션마다 워커별 스테이징 디렉터리 생성 + 채널 모드 다중 기동.
 
-워커는 첫 구현 task 수신 시 superpowers `using-git-worktrees` 스킬로 자기 파티션의 worktree+sparse-checkout(콘 모드)을 생성해 작업한다. 자세한 설계는 `docs/superpowers/specs/2026-05-20-spawn-by-structure-design.md` 참조.
+워커는 첫 구현 task 수신 시 superpowers `using-git-worktrees` 스킬로 자기 파티션의 worktree+sparse-checkout(콘 모드)을 생성해 작업한다. 자세한 설계는 `2026-05-20-spawn-by-structure-design`(git 히스토리) 참조.
 
 ## 범위 강제 4계층
 

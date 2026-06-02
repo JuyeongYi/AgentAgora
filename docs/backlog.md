@@ -17,6 +17,27 @@
 적대적 검증 통과 34 → **15 plan화 + 15 의도적 drop + 7 검증탈락(허상)**. 각 plan은
 독립 브랜치·명시경로 커밋·pytest(`.venv`) 검증 전제. 강제 선행만 `dependsOn`.
 
+### ✅ 구현 완료 (2026-06-03)
+
+Wave 1–7 전부 구현·머지(master 선형 히스토리) + 패키지 재구성 minimal. 전체 **618 passed**.
+- **W1**: silent-swallow-logging, close-thread DispatcherClosed 가드(★버그), docstring 정정.
+- **W2**: register-cwd-durability(★버그), broker-http-helper, dashboard-protected-paths, harness 일원화(FakeCtx/_tool).
+- **W3**: operator-prefix, server `_session_or_error`, dashboard error-narrowing, longpoll/file bounds.
+- **W4–5**: dispatcher print→logging + fan-out 골든, dispatch fan-out 추출(`_fanout_to_bots`, Stage 1).
+- **W6–7**: hook-fire 공개 API(`notify_registered/unregistered`), 레지스트리 Plan E(`_BidirectionalRegistry`).
+- **패키지**: `files/` + `dashboard/` 서브패키지.
+
+### 남은 후속 (deferred)
+
+- **dispatcher Stage 2–3**: broadcast/bot_emit fan-out 통합 + dispatch validate/commit 분리 —
+  broadcast/bot_emit fan-out 골든 커버 확보 후(핵심 라우터를 테스트 범위 밖에서 리팩토링 금지).
+- **harness 일원화 잔여**: 파일별로 변이 큰 dispatcher 와이어링 픽스처 통합(보류).
+- **확장 모듈화**: `registry/`(+Plan E 베이스)·`storage/`(persistence·schemas·sweeper)·`http/`(routes) 서브패키지.
+- **기타 defer**: envelope-row-mapping, conversation-domain-enums/object, schema-registry-lifecycle 등(필드추가/편집 시 기회적).
+- **junction-sandboxed worker**(설계 논의): 워크스페이스 정션 + cwd 경계로 쓰기 샌드박스 — CC 정션-경계 해석 실측 후 spec화.
+
+아래는 분석 당시의 plan 원본 (기록용 — 실제 구현은 git 커밋 트레일 참조).
+
 **Wave 1 — 무위험 quick-win (병렬)**
 - `observability-silent-swallow-logging` (S/low) — `persistence`·flush 경로 `except: pass`를
   logging으로 신호화(`persistence.py`·`dispatcher.py`). 동작 불변.
@@ -67,7 +88,7 @@
 
 ### 패키지 재구성 — 권고: minimal (2026-06-03 별도 워크플로)
 
-spec: `docs/superpowers/specs/2026-06-03-package-layout-minimal-reorg-design.md`.
+설계 spec(`2026-06-03-package-layout-minimal-reorg-design`) — git 히스토리.
 
 - 의존그래프가 이미 **무순환 DAG**(leaf 바닥) → 서브패키징은 결합을 못 줄이고 import 경로만
   relabel. 전면(full/by-domain) 재구성은 24~28모듈 + 235 테스트import(49파일) 갱신 대비
@@ -145,7 +166,12 @@ transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 sta
 - ~~**수동 VACUUM**~~ — ✅ 완료(2026-06-02 Plan B). `sweeper.vacuum()`을 일일 GC
   루프(`_message_gc_loop`)의 `message_gc_sweep` 뒤에 통합.
 
-## 후속 — 레지스트리 일원화 (Plan E, 2026-06-02 식별)
+## 후속 — 레지스트리 일원화 (Plan E) — ✅ 완료 (2026-06-03)
+
+구현·머지됨(커밋 `c3b61ad`). 공통 베이스 `_BidirectionalRegistry[InfoT]` 도입,
+Instance/Bot가 상속, 봇 파생 인덱스는 `_on_store_locked`/`_on_detach_locked` 훅으로만 노출.
+공개 시그니처 스냅샷 테스트(`test_registry_signature_snapshot.py`)로 API 불변 강제. 618 passed.
+설계 spec(`2026-06-03-registry-unification-plan-e-design`)은 git 히스토리. 이하 원 식별 기록:
 
 `InstanceRegistry`와 `BotRegistry`가 `register`/`resolve`/`touch_last_seen`/
 `last_seen`/dead-sweep에서 유사 로직을 중복한다. 공통 베이스 레지스트리 클래스를
@@ -155,7 +181,7 @@ transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 sta
 expect_result 대상 아님·schema 구독·observer)와 "봇은 ACL 면제" 정책 분기는
 일원화 후에도 명시적으로 남아야 한다(일원화가 ACL을 자동 처리하지 않음).
 
-설계 spec 작성됨(2026-06-03): `docs/superpowers/specs/2026-06-03-registry-unification-plan-e-design.md`.
+설계 트레일(2026-06-03, git 히스토리):
 공통 베이스 `_BidirectionalRegistry[InfoT]` + 봇 고유 로직은 `_on_store_locked`/
 `_on_detach_locked` 훅으로만 노출. risk **medium-high**(frozen+Generic 런타임 회귀) —
 공개 시그니처 스냅샷 테스트 선행. **dependsOn** `dispatcher-hook-fire-public-api`(register/
@@ -167,19 +193,18 @@ unregister/dead-sweep 레이어 churn 완화). drop된 `registry-last-seen-test-
 사이클 ≠ 교착이고(큐 기반 비동기), 사이클은 정상 반복 워크플로의 본질이며,
 런타임 탐지기는 acyclic 매트릭스에선 dead code·사이클 매트릭스에서만 작동하는
 역-ROI 기능이기 때문. 대신 **deadline 강제**(Plan A1)로 교착·죽은 워커·느린
-응답을 한 메커니즘으로 처리한다. 결정 트레일:
-`docs/superpowers/specs/2026-06-02-routing-core-deadline-observability-design.md` §2.
-comm-matrix `cycles()`는 진단 정보로만 제공(거부 없음).
+응답을 한 메커니즘으로 처리한다. 결정 트레일: `2026-06-02-routing-core-deadline-observability-design`
+§2 (git 히스토리). comm-matrix `cycles()`는 진단 정보로만 제공(거부 없음).
 
 ## 기능 후보 — 인터랙티브 대시보드 후속
 
-2026-05-21 `interactive-dashboard` 브랜치(spec/plan: `docs/superpowers/specs/2026-05-21-interactive-dashboard-design.md`)에서 비목표로 미룬 항목들. MVP는 운영자 dispatch + 드릴다운 + SSE + 헬스 + trust/token 인증까지 포함했고, 아래는 그 위에 쌓는 후속이다.
+2026-05-21 `interactive-dashboard`(설계 문서는 git 히스토리)에서 비목표로 미룬 항목들 — **미구현 미래 후보**(정리 대상 아님). MVP는 운영자 dispatch + 드릴다운 + SSE + 헬스 + trust/token 인증까지 포함했고, 아래는 그 위에 쌓는 후속이다.
 
 - **워크플로 파이프라인 시각화** — superpowers persona 체인(planner→router→implementer→tester→reviewer→improver)을 Sankey/파이프라인 뷰로 시각화. in-flight 메시지를 위치 표시. Cytoscape.js 도입 필요.
 - **운영자 액션 (state-changing)** — 멈춘 대화 close, dead 워커 unregister, comm-matrix 토글·편집·시각 편집. 이미 존재하는 `admin_routes.py`의 `AGORA_ADMIN_TOKEN` 게이트를 dashboard UI에서 사용.
 - **에러/이벤트 로그 패널** — 최근 dispatcher·sweeper 에러, 스키마 검증 실패, dead-letter 항목 등 운영 이벤트 surface. 지금은 서버 콘솔에만.
 - **스키마 카탈로그 explorer** — `/dashboard/schemas`의 JSON Schema를 시각적으로 탐색(샘플 payload 생성, 사용 통계). 현재는 dispatch 모달의 dropdown으로만.
-- **파일 스토어 뷰** — `file_store.py`의 공유 파일 목록·정책 상태·다운로드 링크 surface.
+- **파일 스토어 뷰** — `files/store.py`의 공유 파일 목록·정책 상태·다운로드 링크 surface.
 - **시계열 차트** — 워커별 인박스 depth, dispatch rate(분당), 에러율 sparkline. SVG/Canvas 인라인.
 - **추가 인증 모드** — `basic`(htpasswd), `oidc` — `dashboard_auth.py`에 모드 분기 추가만 하면 엔드포인트 코드 변경 0.
 - **운영자별 inbox 격리 옵션** — 현재는 read-all 정책(다른 운영자 inbox 조회 가능). 비공개 정책 옵션을 환경변수 또는 설정으로 토글.

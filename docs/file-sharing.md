@@ -192,6 +192,6 @@ AgentAgora 워커(Claude Code 인스턴스)가 파일을 서로 주고받는 방
 
 - [`docs/channel-mode.md`](channel-mode.md) — 채널 모드 워커 배선 가이드
 - [`docs/usage-guide.md`](usage-guide.md) — 전체 워커·봇·매트릭스 사용 가이드
-- [`src/agent_agora/file_store.py`](../src/agent_agora/file_store.py) — `FileStore` 구현
-- [`src/agent_agora/file_policy.py`](../src/agent_agora/file_policy.py) — `FilePolicy` 구현
-- [`docs/superpowers/specs/2026-05-17-agora-file-sharing-design.md`](superpowers/specs/2026-05-17-agora-file-sharing-design.md) — 설계 스펙
+- [`src/agent_agora/files/store.py`](../src/agent_agora/files/store.py) — `FileStore` 구현
+- [`src/agent_agora/files/policy.py`](../src/agent_agora/files/policy.py) — `FilePolicy` 구현
+- 설계 스펙(`2026-05-17-agora-file-sharing-design`) — git 히스토리

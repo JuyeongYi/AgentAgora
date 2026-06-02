@@ -22,7 +22,7 @@ HTTP 클라이언트다.
 있지만, **인증·TLS SAN은 여전히 없다** — `/mcp`·`/channel/wait`·`/files`는 무인증이다.
 즉 cross-PC는 *테스트용 우회*로만 가능하고, 정식 secure 원격 배포
 (`--remote`/`--host`/Bearer 인증/TLS SAN)는 설계만 끝났고 미구현이다 —
-[`docs/superpowers/specs/2026-05-18-local-remote-deployment-design.md`](superpowers/specs/2026-05-18-local-remote-deployment-design.md).
+local/remote 배포 설계(`2026-05-18-local-remote-deployment-design`, git 히스토리).
 
 그래서 이 문서는 세 갈래로 나눈다.
 
@@ -152,7 +152,7 @@ long-poll(`GET /channel/wait`)이 이 주소로 붙는다.
 
 ## 시나리오 C — 정식 remote (spec 구현 후)
 
-[local/remote 배포 spec](superpowers/specs/2026-05-18-local-remote-deployment-design.md)이
+local/remote 배포 spec(설계는 git 히스토리)이
 구현되면 임시 패치·수동 방화벽 없이 다음으로 대체된다:
 
 ```

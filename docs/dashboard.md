@@ -424,7 +424,7 @@ python -m agent_agora --port 8420 --no-tls --no-timeout
 
 ## 참고
 
-- [`src/agent_agora/dashboard_routes.py`](../src/agent_agora/dashboard_routes.py) — 라우트 구현 및 JSON 조립
-- [`src/agent_agora/dashboard.html`](../src/agent_agora/dashboard.html) — 대시보드 UI
+- [`src/agent_agora/dashboard/routes.py`](../src/agent_agora/dashboard/routes.py) — 라우트 구현 및 JSON 조립
+- [`src/agent_agora/dashboard/dashboard.html`](../src/agent_agora/dashboard/dashboard.html) — 대시보드 UI
 - [`plugin/cc-agora-ops/skills/agora-dashboard/SKILL.md`](../plugin/cc-agora-ops/skills/agora-dashboard/SKILL.md) — 오픈 스킬 정의
 - [`plugin/cc-agora/skills/agora-protocol/SKILL.md`](../plugin/cc-agora/skills/agora-protocol/SKILL.md) — `reply_only` 워커 처리 규약
