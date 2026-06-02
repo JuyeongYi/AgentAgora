@@ -54,3 +54,33 @@ def test_operator_to_operator_allowed():
     assert matrix.active
     assert matrix.is_allowed(from_="operator:alice", to="operator:bob") is True
     assert matrix.is_allowed(from_="operator:bob", to="operator:alice") is True
+
+
+# --- cycles() 진단 (Plan A2) ---
+# CSV: cell[i][j] = weight(header[j] -> header[i]). header[i]=행(to), header[j]=열(from).
+
+def test_cycles_acyclic_returns_empty():
+    cm = CommMatrix()
+    # impl->reviewer->improver 선형 (acyclic)
+    # row(to=impl): 0,0,0  row(to=reviewer): impl->reviewer=1  row(to=improver): reviewer->improver=1
+    cm.load_csv("impl,reviewer,improver\n0,0,0\n1,0,0\n0,1,0")
+    assert cm.cycles() == []
+
+
+def test_cycles_detects_two_node_cycle():
+    cm = CommMatrix()
+    # A<->B: row(to=A): A->A=0,B->A=1  row(to=B): A->B=1,B->B=0
+    cm.load_csv("A,B\n0,1\n1,0")
+    cycles = cm.cycles()
+    assert any(set(c) == {"A", "B"} for c in cycles)
+
+
+def test_cycles_detects_self_loop():
+    cm = CommMatrix()
+    cm.load_csv("A\n1")  # A->A
+    assert any(c == ["A"] for c in cm.cycles())
+
+
+def test_cycles_empty_when_inactive():
+    cm = CommMatrix()
+    assert cm.cycles() == []

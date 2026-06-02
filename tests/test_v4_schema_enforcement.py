@@ -151,6 +151,7 @@ async def test_register_schema_immutable(app):
         FakeCtx("sess-anon"), name="t", kind="bot-task", purpose="v2",
         body=dict(body, required=["msgtype", "x"])))
     assert "이미 등록됨" in res["error"]
+    assert res["code"] == "schema_immutable"
 
 
 @pytest.mark.asyncio
@@ -267,5 +268,6 @@ async def test_register_schema_conflict_dispatches_notice(schema_app):
     r = json.loads(await _tool(mcp, "agora.register_schema")(
         FakeCtx("sess-Inst2"), name="custom_b", body=b2, kind="bot-task", purpose="p"))
     assert "error" in r and "이미 등록됨" in r["error"]
+    assert r["code"] == "schema_immutable"
     drained = await dispatcher.flush("Inst2")
     assert any(d["payload"]["msgtype"] == "schema_conflict" for d in drained)

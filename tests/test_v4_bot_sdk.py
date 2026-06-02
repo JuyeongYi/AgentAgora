@@ -273,6 +273,27 @@ def test_registration_error_other_failure_is_generic():
     assert not isinstance(err, SchemaConflictError)
 
 
+def test_registration_error_uses_code_over_message_text():
+    """code='schema_immutable'이면 메시지 텍스트에 '이미 등록'이 없어도 충돌로 분류."""
+    bot = _SchemaBot()
+    err = bot._registration_error(
+        "[agora] some opaque server message", code="schema_immutable")
+    assert isinstance(err, SchemaConflictError)
+
+
+@pytest.mark.asyncio
+async def test_aenter_uses_error_code_for_conflict(monkeypatch):
+    """서버가 code를 실어 보내면 메시지 문구와 무관하게 SchemaConflictError."""
+    session = FakeSession(responses={
+        "agora.register_bot": {
+            "error": "opaque", "code": "schema_immutable"},
+    })
+    _patch_transport(monkeypatch, session)
+    with pytest.raises(SchemaConflictError):
+        async with _SchemaBot():
+            pass
+
+
 @pytest.mark.asyncio
 async def test_aenter_raises_schema_conflict_on_immutable_error(monkeypatch):
     session = FakeSession(responses={

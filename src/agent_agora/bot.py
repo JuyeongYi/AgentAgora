@@ -237,7 +237,7 @@ class AgoraBot(ABC):
             reg = _result_json(await session.call_tool(
                 "agora.register_bot", self._register_args()))
             if "error" in reg:
-                raise self._registration_error(reg["error"])
+                raise self._registration_error(reg["error"], reg.get("code"))
             # 등록 성공 뒤에 unregister 콜백을 스택에 push한다. 종료 시 스택은
             # LIFO로 풀리므로 unregister → 세션 close → 트랜스포트 close 순서가
             # 보장된다 — 즉 세션이 살아있는 동안 unregister가 실행된다.
@@ -271,12 +271,15 @@ class AgoraBot(ABC):
             args["emit_schemas"] = self.EMIT_SCHEMAS
         return args
 
-    def _registration_error(self, error: str) -> BotRegistrationError:
-        """register_bot 에러 메시지를 분류한다. 서버는 에러 코드 없이 메시지
-        문자열만 반환하므로(`{"error": "<msg>"}`), schema_immutable 메시지의
-        안정적 부분('이미 등록')으로 스키마 이름 충돌을 식별한다 — 서버 메시지
-        텍스트(errors.py의 ERROR_MESSAGES['schema_immutable'])에 결합돼 있다."""
-        if self.SCHEMAS and "이미 등록" in error:
+    def _registration_error(
+        self, error: str, code: str | None = None
+    ) -> BotRegistrationError:
+        """register_bot 에러를 분류한다. 서버가 에러 코드(`{"error": ..., "code": ...}`)
+        를 실어 보내면 code로 충돌을 식별하고, code가 없으면(구버전 서버 호환)
+        schema_immutable 메시지의 안정적 부분('이미 등록')으로 폴백한다."""
+        is_conflict = code == "schema_immutable" or (
+            code is None and "이미 등록" in error)
+        if self.SCHEMAS and is_conflict:
             names = ", ".join(sorted(self.SCHEMAS))
             return SchemaConflictError(
                 f"register_bot 실패 — 스키마 이름 충돌: {error}\n"

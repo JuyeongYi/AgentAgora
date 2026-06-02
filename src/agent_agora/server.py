@@ -33,6 +33,16 @@ def _resolve_caller(session_id: str, instance_registry, bot_registry) -> str:
     return session_id
 
 
+def _error_json(e: Exception) -> str:
+    """에러를 ``{"error": <msg>}``로 직렬화한다. AgoraError처럼 ``.code``가 있으면
+    ``code``도 함께 실어 클라이언트가 메시지 텍스트 파싱 없이 분기할 수 있게 한다."""
+    payload: dict[str, str] = {"error": str(e)}
+    code = getattr(e, "code", None)
+    if code:
+        payload["code"] = code
+    return json.dumps(payload)
+
+
 def _schema_conflict_payload(schema_name: str, reason: str, attempted_by: str) -> dict:
     return {
         "msgtype": "schema_conflict",
@@ -132,7 +142,7 @@ def create_agora_app(
             if e.code == "schema_immutable":
                 await dispatcher.system_notify(holder,
                     _schema_conflict_payload(name, str(e), holder))
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         return json.dumps({"status": "ok", "name": name, "kind": kind})
 
     @mcp.tool(name="agora.schemas")
@@ -205,19 +215,17 @@ def create_agora_app(
         subscribe = list(subscribe_schemas or [])
         emit = list(emit_schemas or [])
         schemas = schemas or {}
-        # 봇 재등록이면 옛 스키마 ref를 먼저 해제 (새 inline/subscribe로 재획득).
-        try:
-            prior = bot_registry.resolve_instance_id(instance_id)
-            schema_registry.release_holder(prior.instance_id)
-        except NotRegisteredError:
-            pass
+        # BUG1: 검증(부수효과 없음)과 부수효과(ref 해제·등록·획득)를 분리한다.
+        # 옛 코드는 검증 *전*에 옛 ref를 해제해, 재등록이 검증 실패하면 옛 봇 등록은
+        # 살아있는데 스키마 ref만 날아가는 불일치가 생겼다. 검증을 먼저 끝내고
+        # 실패 시 아무 상태도 건드리지 않으면 옛 등록·옛 ref가 보존된다.
         try:
             if not description:
                 raise AgoraError("description_required")
             if bot_mode == "handler" and not subscribe:
                 raise AgoraError("subscribe_required")
 
-            # (1) inline schemas 사전 검증 — diff preflight (§3.3, §9.6)
+            # (1) inline schemas 사전 검증 — kind + diff preflight (§3.3, §9.6)
             for name, defn in schemas.items():
                 if defn.get("kind") != "bot-task":
                     raise AgoraError("schema_kind_not_bot_task", name=name)
@@ -229,7 +237,31 @@ def create_agora_app(
                             f"schema '{name}' already registered with a different body",
                             instance_id))
                     raise AgoraError("schema_immutable", name=name)
-            # (2) 일괄 등록 — 모두 검증 통과 후
+
+            # (2) 구독 schema 검증 — 기존 registry 또는 inline 정의 (부수효과 없음)
+            if bot_mode == "handler":
+                for s in subscribe:
+                    entry = schema_registry.get(s)
+                    if entry is not None:
+                        if entry.kind != "bot-task":
+                            raise AgoraError("cannot_subscribe_conversation", name=s)
+                    elif s not in schemas:
+                        raise AgoraError("unknown_msgtype", msgtype=s)
+                    # s in schemas: (1)에서 bot-task kind가 보장됨
+        except AgoraError as e:
+            # 검증 실패 — 옛 등록·옛 스키마 ref를 건드리지 않고 그대로 보존한다.
+            return _error_json(e)
+
+        # === 모든 검증 통과 — 이제 부수효과 시작 ===
+        try:
+            # 봇 재등록이면 옛 스키마 ref 해제 (새 inline/subscribe로 재획득).
+            try:
+                prior = bot_registry.resolve_instance_id(instance_id)
+                schema_registry.release_holder(prior.instance_id)
+            except NotRegisteredError:
+                pass
+
+            # (3) inline schemas 일괄 등록 — 모두 검증 통과 후
             for name, defn in schemas.items():
                 schema_registry.register(
                     name, defn["body"], kind="bot-task",
@@ -237,14 +269,6 @@ def create_agora_app(
                 persistence.save_schema(
                     name, defn["body"], kind="bot-task",
                     purpose=defn.get("purpose", ""), registered_by=instance_id)
-            # (3) 구독 schema 검증 — 존재 + bot-task kind
-            if bot_mode == "handler":
-                for s in subscribe:
-                    entry = schema_registry.get(s)
-                    if entry is None:
-                        raise AgoraError("unknown_msgtype", msgtype=s)
-                    if entry.kind != "bot-task":
-                        raise AgoraError("cannot_subscribe_conversation", name=s)
 
             info = bot_registry.register(
                 session_id=session_id, instance_id=instance_id,
@@ -259,7 +283,7 @@ def create_agora_app(
                 schema_registry.acquire_ref(s, instance_id)
         except AgoraError as e:
             schema_registry.release_holder(instance_id)
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         return json.dumps({
             "status": "ok", "instance_id": info.instance_id,
             "bot_mode": info.bot_mode,
@@ -358,7 +382,7 @@ def create_agora_app(
         try:
             info = instance_registry.resolve_instance_id(instance_id)
         except NotRegisteredError as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         return json.dumps({"instance_id": info.instance_id, "cwd": info.cwd},
                           ensure_ascii=False)
 
@@ -394,7 +418,7 @@ def create_agora_app(
         try:
             source = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         try:
             result = await dispatcher.dispatch(
                 source=source, target=target, payload=payload,
@@ -404,7 +428,7 @@ def create_agora_app(
             )
             return json.dumps({"status": "ok", **result})
         except (NotRegisteredError, ValueError) as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
@@ -430,7 +454,7 @@ def create_agora_app(
         try:
             source = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         try:
             result = await dispatcher.broadcast(
                 source=source, payload=payload,
@@ -440,7 +464,7 @@ def create_agora_app(
             )
             return json.dumps({"status": "ok", **result})
         except (NotRegisteredError, ValueError) as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
@@ -457,6 +481,60 @@ def create_agora_app(
     async def agora_conversation_status(conversation_id: str) -> str:
         """Query the status, kind, participants, and message_count of a conversation."""
         return json.dumps(dispatcher.conversation_status(conversation_id), ensure_ascii=False)
+
+    @mcp.tool(name="agora.transcript")
+    async def agora_transcript(conversation_id: str, since_ts: str | None = None) -> str:
+        """Time-ordered envelope array for a conversation (SQLite is source of truth).
+        since_ts: ISO timestamp — only messages created after it. Advisory (peek-grade)."""
+        return json.dumps(dispatcher.transcript(conversation_id, since_ts), ensure_ascii=False)
+
+    @mcp.tool(name="agora.coverage")
+    async def agora_coverage(command_id: str) -> str:
+        """Response coverage of an expect_result command: responded/pending/expired."""
+        return json.dumps(dispatcher.coverage(command_id), ensure_ascii=False)
+
+    @mcp.tool(name="agora.reply")
+    async def agora_reply(ctx: Context, payload: Any, in_reply_to: str | None = None,
+                          target: str | None = None, conversation_id: str | None = None) -> str:
+        """Reply to the most recently received command — auto-fills in_reply_to, target,
+        conversation_id from your last drained inbound. Explicit args win."""
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        try:
+            caller = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError as e:
+            return _error_json(e)
+        try:
+            result = await dispatcher.reply(
+                caller=caller, payload=payload, in_reply_to=in_reply_to,
+                target=target, conversation_id=conversation_id)
+            return json.dumps({"status": "ok", **result}, ensure_ascii=False)
+        except (AgoraError, NotRegisteredError, ValueError) as e:
+            return _error_json(e)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
+
+    @mcp.tool(name="agora.cancel")
+    async def agora_cancel(ctx: Context, command_id: str) -> str:
+        """Recall an in-flight command you sent that hasn't been consumed yet.
+        Already-consumed targets are reported, not recalled. Caller must be the sender."""
+        try:
+            session_id = _session_id_from_ctx(ctx)
+        except RuntimeError as e:
+            return json.dumps({"error": f"Session context unavailable: {e}"})
+        try:
+            caller = instance_registry.resolve_session(session_id).instance_id
+        except NotRegisteredError as e:
+            return _error_json(e)
+        try:
+            return json.dumps(await dispatcher.cancel(caller=caller, command_id=command_id),
+                              ensure_ascii=False)
+        except (AgoraError, NotRegisteredError, ValueError) as e:
+            return _error_json(e)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
 
     @mcp.tool(name="agora.conversations_list")
     async def agora_conversations_list(
@@ -476,11 +554,11 @@ def create_agora_app(
         except RuntimeError as e:
             return json.dumps({"error": f"Session context unavailable: {e}"})
         except NotRegisteredError as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         try:
             return json.dumps(await dispatcher.close_thread(caller, conversation_id, reason=reason))
         except ValueError as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
 
     @mcp.tool(name="agora.bot_emit")
     async def agora_bot_emit(
@@ -510,7 +588,7 @@ def create_agora_app(
                 in_reply_to=in_reply_to, target=target)
             return json.dumps({"status": "ok", **result}, ensure_ascii=False)
         except (ValueError, NotRegisteredError) as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
@@ -542,7 +620,7 @@ def create_agora_app(
             try:
                 who = bot_registry.resolve_session(session_id).instance_id
             except NotRegisteredError as e:
-                return json.dumps({"error": str(e)})
+                return _error_json(e)
 
         try:
             commands = await dispatcher.flush(
@@ -553,7 +631,7 @@ def create_agora_app(
             )
             return json.dumps({"commands": commands}, ensure_ascii=False)
         except NotRegisteredError as e:
-            return json.dumps({"error": str(e)})
+            return _error_json(e)
         except DispatcherClosed:
             return json.dumps({"error": "server is shutting down"})
 
@@ -589,7 +667,7 @@ def create_agora_app(
             try:
                 handle = file_store.store_path(Path(path), name, caller)
             except (AgoraError, OSError) as e:
-                return json.dumps({"error": str(e)})
+                return _error_json(e)
             return json.dumps({"status": "ok", "handle": handle}, ensure_ascii=False)
 
         @mcp.tool(name="agora.fetch_file")

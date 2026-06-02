@@ -153,3 +153,18 @@ class Sweeper:
         # in-memory cache eviction
         self._conv.evict(victim_ids)
         return deleted
+
+    async def deadline_sweep(self, now: datetime.datetime | None = None) -> list[dict]:
+        """expect_result deadline 초과 명령을 만료시킨다. Dispatcher로 위임
+        (in_flight/_deadlines 조작은 dispatcher._lock 안에서 일어나야 한다).
+        dispatcher 미주입(테스트) 시 빈 리스트."""
+        if self._dispatcher is None:
+            return []
+        if now is None:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        return await self._dispatcher.expire_overdue_deadlines(now_iso=now.isoformat())
+
+    def vacuum(self) -> None:
+        """SQLite VACUUM — 일일 GC 루프에서 message_gc_sweep 후 호출해 삭제된
+        행이 점유하던 디스크를 회수한다(gc_retention_days 후 수동 VACUUM 필요 제거)."""
+        self._persistence.conn.execute("VACUUM")

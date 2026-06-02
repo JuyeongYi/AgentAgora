@@ -101,6 +101,57 @@ class CommMatrix:
         """현재 매트릭스를 {to_pattern: {from_pattern: weight}} dict로 반환 (조회용)."""
         return {to: dict(froms) for to, froms in self._weights.items()}
 
+    def cycles(self) -> list[list[str]]:
+        """패턴 그래프(weight>0 엣지)의 사이클을 반환한다. 노드는 CSV 헤더 패턴.
+        진단 전용 — 사이클은 정상 워크플로(반복 루프)일 수 있으므로 거부·경고하지
+        않는다. 2노드 이상 SCC와 자기루프를 모두 보고한다. 비활성이면 빈 리스트."""
+        if not self.active:
+            return []
+        nodes = list(self._weights.keys())
+        adj: dict[str, list[str]] = {n: [] for n in nodes}
+        self_loops: list[list[str]] = []
+        for to_pat, row in self._weights.items():
+            for from_pat, w in row.items():
+                if w > 0 and from_pat in adj:
+                    adj[from_pat].append(to_pat)
+                    if from_pat == to_pat:
+                        self_loops.append([from_pat])
+        # Tarjan SCC
+        index: dict[str, int | None] = {n: None for n in nodes}
+        low: dict[str, int] = {n: 0 for n in nodes}
+        on_stack: dict[str, bool] = {n: False for n in nodes}
+        stack: list[str] = []
+        counter = [0]
+        sccs: list[list[str]] = []
+
+        def strongconnect(v: str) -> None:
+            index[v] = counter[0]
+            low[v] = counter[0]
+            counter[0] += 1
+            stack.append(v)
+            on_stack[v] = True
+            for w_ in adj[v]:
+                if index[w_] is None:
+                    strongconnect(w_)
+                    low[v] = min(low[v], low[w_])
+                elif on_stack[w_]:
+                    low[v] = min(low[v], index[w_])  # type: ignore[type-var]
+            if low[v] == index[v]:
+                comp: list[str] = []
+                while True:
+                    w_ = stack.pop()
+                    on_stack[w_] = False
+                    comp.append(w_)
+                    if w_ == v:
+                        break
+                if len(comp) > 1:
+                    sccs.append(comp)
+
+        for n in nodes:
+            if index[n] is None:
+                strongconnect(n)
+        return sccs + self_loops
+
 
 def load_comm_matrix(path: Path) -> CommMatrix:
     """path의 comm-matrix.csv를 로드한다. 파일이 없으면 비활성 CommMatrix(all-allow)."""

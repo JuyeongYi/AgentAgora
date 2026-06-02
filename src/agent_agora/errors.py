@@ -23,6 +23,10 @@ ERROR_MESSAGES: dict[str, str] = {
     "comm_matrix_shape_mismatch": "[agora] comm-matrix CSV shape 불일치: {detail}",
     "comm_matrix_invalid_cell": "[agora] comm-matrix CSV 셀 오류: {detail}",
     "comm_matrix_invalid_pattern": "[agora] comm-matrix CSV 정규식 헤더 오류: {detail}",
+    # observability codes (agora.reply / agora.cancel)
+    "no_inbound_to_reply": "[agora] agora.reply: 회신할 직전 수신 명령이 없습니다. in_reply_to/target을 명시하세요.",
+    "unknown_command": "[agora] unknown_command: command_id '{detail}'를 찾을 수 없습니다.",
+    "not_command_owner": "[agora] not_command_owner: command_id '{detail}'의 발신자만 회수할 수 있습니다.",
     # file codes
     "file_too_large": "[agora] 파일이 너무 큽니다: {size} bytes (상한 {limit}).",
     "file_upload_denied": "[agora] file_upload_denied: {worker}는 '{name}'을 공유할 수 없습니다 (파일 권한 정책).",

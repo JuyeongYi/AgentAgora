@@ -14,6 +14,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="AgentAgora -- multi-agent message-routing MCP server",
     )
     parser.add_argument("--port", type=int, default=8420)
+    parser.add_argument(
+        "--bind-host",
+        default=os.environ.get("AGORA_BIND_HOST", "127.0.0.1"),
+        help="uvicorn이 바인딩할 호스트. 기본 127.0.0.1(로컬 전용). "
+             "여러 PC에서 접속하는 테스트는 0.0.0.0(전 인터페이스)으로 둔다. "
+             "인증이 없으므로 신뢰된 사설망에서만. 환경변수 AGORA_BIND_HOST로도 "
+             "지정 가능(플래그가 우선). 정식 remote 배포는 별도 spec 참조.",
+    )
     parser.add_argument("--dir", type=Path, default=Path("."))
     parser.add_argument(
         "--cert-dir",
@@ -38,13 +46,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--restore",
         action="store_true",
         help="재시작 시 이전 미배달 메시지를 인박스로 복구한다 "
-             "(크래시 내구성). 미지정 시 클린 스타트 — 미배달 메시지는 drop된다.",
+             "(크래시 내구성). 미지정 시 클린 스타트 - 미배달 메시지는 drop된다.",
     )
     parser.add_argument(
         "--add-wait",
         action="store_true",
-        help="레거시·디버깅용 — agora.wait_notify MCP 도구를 등록한다. "
+        help="레거시·디버깅용 - agora.wait_notify MCP 도구를 등록한다. "
              "기본 미등록. 채널 어댑터·봇 SDK는 GET /channel/wait를 쓴다.",
+    )
+    parser.add_argument(
+        "--bot-emit-recheck-acl",
+        action="store_true",
+        help="라우팅 봇의 agora.bot_emit(target=...) 직접 전달도 comm-matrix ACL을 "
+             "재검사한다. 기본 미적용(봇은 신뢰 인프라로 우회). 켜면 매트릭스에 봇 "
+             "instance_id 패턴을 포함해야 봇 전달이 허용된다.",
     )
     return parser.parse_args(argv)
 
@@ -53,7 +68,7 @@ def _warn_legacy_schemas_json(agora_dir: Path) -> None:
     legacy = agora_dir / "schemas.json"
     if legacy.exists():
         print(
-            f"[agora] WARNING: detected legacy v1 schemas.json at {legacy} — "
+            f"[agora] WARNING: detected legacy v1 schemas.json at {legacy} - "
             f"v3 ignores it (KV removed). You may delete or rename this file.",
             file=sys.stderr,
         )
@@ -71,6 +86,7 @@ def _build_app(
     gc_retention_days: int = 90,
     file_retention_days: int = 7,
     add_wait: bool = False,
+    bot_emit_recheck_acl: bool = False,
 ):
     """Construct FastMCP app + supporting state. Used by CLI and tests.
 
@@ -138,6 +154,7 @@ def _build_app(
         gc_retention_days=gc_retention_days,
         file_store=file_store,
         file_retention_days=file_retention_days,
+        bot_emit_recheck_acl=bot_emit_recheck_acl,
     )
     mcp = create_agora_app(
         agora_dir=agora_dir,
@@ -194,6 +211,7 @@ async def run_server(args: argparse.Namespace) -> None:
         gc_retention_days=args.gc_retention_days,
         file_retention_days=args.file_retention_days,
         add_wait=args.add_wait,
+        bot_emit_recheck_acl=args.bot_emit_recheck_acl,
     )
     instance_registry = mcp._agora_instance_registry  # type: ignore[attr-defined]
     dispatcher = mcp._agora_dispatcher  # type: ignore[attr-defined]
@@ -202,7 +220,10 @@ async def run_server(args: argparse.Namespace) -> None:
     schema_registry = mcp._agora_schema_registry  # type: ignore[attr-defined]
 
     scheme = "http" if args.no_tls else "https"
-    print(f"AgentAgora starting on {scheme}://127.0.0.1:{args.port}/mcp")
+    print(f"AgentAgora starting on {scheme}://{args.bind_host}:{args.port}/mcp")
+    if args.bind_host not in ("127.0.0.1", "localhost"):
+        print(f"  Bind     : {args.bind_host} (non-local bind - no auth, "
+              f"trusted private network only)")
     print(f"  Data dir : {agora_dir.resolve()}")
     print(f"  DB       : {db_path.resolve()}")
     print(f"  Cert     : {cert_path if cert_path else '(none -- HTTP mode, localhost only)'}")
@@ -310,7 +331,7 @@ async def run_server(args: argparse.Namespace) -> None:
         register_channel(starlette_app, dispatcher=dispatcher)
         print("  Channel  : GET /channel/wait")
         config_kwargs = {
-            "host": "127.0.0.1",
+            "host": args.bind_host,
             "port": args.port,
             "log_level": "info",
         }
@@ -342,6 +363,7 @@ async def _sweep_loop_60s(dispatcher) -> None:
             dispatcher.sweeper.close_ttl_sweep()
             dispatcher.sweeper.dead_session_sweep()
             dispatcher.sweeper.dead_bot_sweep()
+            await dispatcher.sweeper.deadline_sweep()
         except Exception as e:
             print(f"[agora] sweep error: {e}", file=sys.stderr)
 
@@ -358,6 +380,7 @@ async def _message_gc_loop(dispatcher, gc_hour: int) -> None:
         try:
             dispatcher.sweeper.message_gc_sweep()
             dispatcher.sweeper.file_gc_sweep()
+            dispatcher.sweeper.vacuum()
         except Exception as e:
             print(f"[agora] message_gc error: {e}", file=sys.stderr)
 
