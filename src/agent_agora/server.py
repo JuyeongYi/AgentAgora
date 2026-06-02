@@ -559,6 +559,8 @@ def create_agora_app(
             return json.dumps(await dispatcher.close_thread(caller, conversation_id, reason=reason))
         except ValueError as e:
             return _error_json(e)
+        except DispatcherClosed:
+            return json.dumps({"error": "server is shutting down"})
 
     @mcp.tool(name="agora.bot_emit")
     async def agora_bot_emit(
