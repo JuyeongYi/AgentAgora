@@ -234,6 +234,30 @@ def test_operator_inbox_empty_initially(dashboard_client):
     assert r.json()["messages"] == []
 
 
+def test_dispatch_response_surfaces_deliveries(dashboard_client, register_worker):
+    """dispatch 응답이 deliveries/skipped_full/target_inbox_depth_after를 통과시킨다 —
+    운영자가 fan-out 결과(만석 skip 포함)를 즉시 인지."""
+    register_worker("W1")
+    r = dashboard_client.post(
+        "/dashboard/dispatch", headers=_auth("alice"),
+        json={"to": "W1", "schema": "operator_message", "payload": {}, "reply_only": False})
+    assert r.status_code == 201
+    body = r.json()
+    assert "deliveries" in body and "skipped_full" in body
+    assert "target_inbox_depth_after" in body
+    assert any(d["target"] == "W1" and d["status"] == "delivered" for d in body["deliveries"])
+
+
+def test_broadcast_results_surface_deliveries(dashboard_client, register_worker):
+    register_worker("W1")
+    r = dashboard_client.post(
+        "/dashboard/broadcast", headers=_auth("alice"),
+        json={"targets": ["W1"], "schema": "operator_message", "payload": {}, "reply_only": False})
+    assert r.status_code == 200
+    res = r.json()["results"][0]
+    assert "deliveries" in res and "skipped_full" in res
+
+
 def test_operator_inbox_receives_reply(dashboard_client, register_worker, post_reply_from_worker):
     register_worker("W1")
     # operator -> worker dispatch

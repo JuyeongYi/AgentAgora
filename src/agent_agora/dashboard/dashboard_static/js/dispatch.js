@@ -88,15 +88,20 @@ window.agoraDispatch = (function() {
       const schema = document.getElementById('dispatch-schema').value;
       const reply_only = document.getElementById('dispatch-reply-only').checked;
       const payload = getPayload();
+      let skipped = [];
       if (mode === 'single') {
         const to = document.getElementById('dispatch-to').value;
-        await window.agoraApi.post('/dashboard/dispatch', {to, schema, payload, reply_only});
+        const res = await window.agoraApi.post('/dashboard/dispatch', {to, schema, payload, reply_only});
+        skipped = res.skipped_full || [];
       } else {
         const targets = Array.from(document.querySelectorAll('#dispatch-targets-list input:checked')).map(c => c.value);
         if (!targets.length) { alert('최소 1개 대상 선택'); return; }
-        await window.agoraApi.post('/dashboard/broadcast', {targets, schema, payload, reply_only});
+        const res = await window.agoraApi.post('/dashboard/broadcast', {targets, schema, payload, reply_only});
+        skipped = (res.results || []).flatMap(r => r.skipped_full || []);
       }
       close();
+      // 인박스 만석으로 조용히 누락된 대상을 운영자에게 알린다.
+      if (skipped.length) alert('일부 대상이 인박스 만석으로 누락(skipped_full): ' + skipped.join(', '));
     } catch (e) { alert('전송 실패: ' + e.message); }
   }
 

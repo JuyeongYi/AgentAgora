@@ -295,6 +295,9 @@ def register(
             {
                 "message_id": result["command_id"],
                 "conversation_id": result["conversation_id"],
+                "deliveries": result.get("deliveries", []),
+                "skipped_full": result.get("skipped_full", []),
+                "target_inbox_depth_after": result.get("target_inbox_depth_after", {}),
             },
             status_code=201,
         )
@@ -328,7 +331,9 @@ def register(
                     reply_only=reply_only,
                 )
                 results.append({"to": to, "message_id": r["command_id"],
-                                 "conversation_id": r["conversation_id"]})
+                                 "conversation_id": r["conversation_id"],
+                                 "deliveries": r.get("deliveries", []),
+                                 "skipped_full": r.get("skipped_full", [])})
             except Exception as exc:  # noqa: BLE001
                 results.append({"to": to, **_error_detail(exc)})
 
