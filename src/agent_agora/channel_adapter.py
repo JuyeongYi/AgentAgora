@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import sys
 
 import anyio
-import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.lowlevel import Server
@@ -25,6 +23,13 @@ from mcp.server.session import ServerSession
 from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCNotification
+
+from agent_agora._broker_http import (
+    channel_wait_base_url,
+    channel_wait_url,
+    http_wait_notify,
+    result_to_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,52 +128,22 @@ async def watch_loop(
 
 # --- 브로커(HTTP MCP 클라이언트) 글루 ----------------------------------------
 
-def _result_json(result) -> dict:
-    """tool 호출 결과의 text content 중 첫 JSON 객체를 꺼낸다."""
-    for item in getattr(result, "content", []) or []:
-        text = getattr(item, "text", None)
-        if text is None:
-            continue
-        try:
-            data = json.loads(text)
-        except (TypeError, ValueError):
-            continue
-        if isinstance(data, dict):
-            return data
-    return {}
-
-
-def _channel_wait_base_url(broker_mcp_url: str) -> str:
-    """브로커 MCP URL에서 GET /channel/wait의 베이스 URL을 유도한다.
-
-    어댑터는 --broker로 MCP 엔드포인트(http://host:port/mcp)를 받는다.
-    /channel/wait는 같은 호스트·포트의 다른 경로다 — /mcp 꼬리를 떼어낸다."""
-    url = broker_mcp_url.rstrip("/")
-    if url.endswith("/mcp"):
-        url = url[: -len("/mcp")]
-    return url.rstrip("/")
+# `_result_json`/`_channel_wait_base_url`/`_make_http_wait_notify`는 모듈 레벨
+# 이름으로 보존하되(테스트가 import한다) 공유 헬퍼 agent_agora._broker_http에 위임한다.
+_result_json = result_to_json
+_channel_wait_base_url = channel_wait_base_url
 
 
 def _make_http_wait_notify(broker_mcp_url: str):
-    """GET /channel/wait를 호출하는 wait_notify 콜러블을 만든다.
+    """GET /channel/wait를 호출하는 wait_notify 콜러블을 만든다 (공유 헬퍼에 위임).
 
-    blocking long-poll 도구 agora.wait_notify를 대체한다 — 워커 MCP 도구
-    표면을 오염시키지 않는 HTTP 경로다. 호출 실패 시 {error:...} dict를
-    반환한다(watch_loop가 이 신호를 보면 backoff한다)."""
-    wait_url = _channel_wait_base_url(broker_mcp_url) + "/channel/wait"
+    blocking long-poll 도구 agora.wait_notify를 대체한다 — 워커 MCP 도구 표면을
+    오염시키지 않는 HTTP 경로다. 호출 실패 시 {error:...} dict를 반환한다
+    (watch_loop가 이 신호를 보면 backoff한다)."""
+    wait_url = channel_wait_url(broker_mcp_url)
 
     async def wait_notify(instance_id: str, timeout_ms: int) -> dict:
-        try:
-            async with httpx.AsyncClient(timeout=None) as http:
-                resp = await http.get(
-                    wait_url,
-                    params={"instance_id": instance_id,
-                            "timeout_ms": timeout_ms})
-                resp.raise_for_status()
-                data = resp.json()
-                return data if isinstance(data, dict) else {}
-        except Exception as exc:  # noqa: BLE001 — 연결 실패는 backoff 신호
-            return {"error": f"channel/wait HTTP 호출 실패: {exc!r}"}
+        return await http_wait_notify(wait_url, instance_id, timeout_ms)
 
     return wait_notify
 

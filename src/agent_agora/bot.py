@@ -22,16 +22,16 @@ from __future__ import annotations
 
 import contextlib
 import datetime
-import json
 import os
 import sys
 import traceback
 from abc import ABC, abstractmethod
 from typing import Any
 
-import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+
+from agent_agora._broker_http import channel_wait_url, http_wait_notify, result_to_json
 
 # Windows 콘솔 코드 페이지와 무관하게 한글 print가 깨지지 않도록 UTF-8 강제.
 try:
@@ -40,19 +40,8 @@ except (AttributeError, ValueError):
     pass
 
 
-def _result_json(result) -> dict:
-    """call_tool 결과(CallToolResult)의 text content에서 첫 JSON 객체를 추출한다."""
-    for item in result.content:
-        text = getattr(item, "text", None)
-        if text is None:
-            continue
-        try:
-            data = json.loads(text)
-        except (TypeError, ValueError):
-            continue
-        if isinstance(data, dict):
-            return data
-    return {}
+# `_result_json`은 모듈 레벨 이름으로 보존하되 공유 헬퍼 agent_agora._broker_http에 위임한다.
+_result_json = result_to_json
 
 
 class BotRegistrationError(RuntimeError):
@@ -110,31 +99,15 @@ class AgoraBot(ABC):
         return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     def _channel_wait_url(self) -> str:
-        """GET /channel/wait의 전체 URL. self.url(MCP 엔드포인트)에서 /mcp
-        꼬리를 떼어 같은 호스트·포트의 채널 경로를 유도한다."""
-        base = self.url.rstrip("/")
-        if base.endswith("/mcp"):
-            base = base[: -len("/mcp")]
-        return base.rstrip("/") + "/channel/wait"
+        """GET /channel/wait의 전체 URL (공유 헬퍼에 위임 — self.url에서 /mcp 제거)."""
+        return channel_wait_url(self.url)
 
     async def _http_wait(self, instance_id: str, timeout_ms: int) -> dict:
-        """GET /channel/wait로 인박스 도착을 long-poll한다.
+        """GET /channel/wait로 인박스 도착을 long-poll한다 (공유 헬퍼에 위임).
 
-        blocking long-poll 도구 agora.wait_notify의 대체 경로 — 봇은 MCP 도구
-        표면 대신 이 HTTP 엔드포인트를 쓴다. 호출 실패는 봇을 죽이지 않는다:
-        {error:...}를 반환하고, 이어지는 flush가 인박스를 드레인하고
-        last_seen heartbeat를 갱신한다."""
-        try:
-            async with httpx.AsyncClient(timeout=None) as http:
-                resp = await http.get(
-                    self._channel_wait_url(),
-                    params={"instance_id": instance_id,
-                            "timeout_ms": timeout_ms})
-                resp.raise_for_status()
-                data = resp.json()
-                return data if isinstance(data, dict) else {}
-        except Exception as exc:  # noqa: BLE001 — 봇은 wait 실패에 죽지 않는다
-            return {"error": f"channel/wait HTTP 호출 실패: {exc!r}"}
+        호출 실패는 봇을 죽이지 않는다 — {error:...}를 반환하고, 이어지는 flush가
+        인박스를 드레인하고 last_seen heartbeat를 갱신한다."""
+        return await http_wait_notify(self._channel_wait_url(), instance_id, timeout_ms)
 
     async def emit(
         self,

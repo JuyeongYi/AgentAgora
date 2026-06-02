@@ -235,7 +235,7 @@ async def test_http_wait_notify_calls_channel_wait_endpoint(monkeypatch):
             seen["params"] = params
             return _FakeResponse()
 
-    monkeypatch.setattr("agent_agora.channel_adapter.httpx.AsyncClient",
+    monkeypatch.setattr("agent_agora._broker_http.httpx.AsyncClient",
                         _FakeAsyncClient)
     wait_notify = _make_http_wait_notify("http://127.0.0.1:8420/mcp")
     result = await wait_notify("InstA", 5000)
@@ -262,7 +262,7 @@ async def test_http_wait_notify_returns_error_dict_on_failure(monkeypatch):
         async def get(self, url, params=None):
             raise RuntimeError("connection refused")
 
-    monkeypatch.setattr("agent_agora.channel_adapter.httpx.AsyncClient",
+    monkeypatch.setattr("agent_agora._broker_http.httpx.AsyncClient",
                         _BoomClient)
     wait_notify = _make_http_wait_notify("http://127.0.0.1:8420/mcp")
     result = await wait_notify("InstA", 5000)
