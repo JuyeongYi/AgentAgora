@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "team": [
+    {"id": "Orchestrator", "role": "orchestrator", "description": "팀 조율·작업 분배 오케스트레이터"},
+    {"id": "Planner", "role": "planner", "description": "설계·계획 수립 플래너"},
+    {"id": "Coder", "role": "coder", "description": "구현 담당 코더"},
+    {"id": "Tester", "role": "tester", "description": "테스트 작성·검증 테스터"},
+    {"id": "Reviewer", "role": "reviewer", "description": "코드 리뷰·게이트 리뷰어"},
+    {"id": "Writer", "role": "writer", "description": "문서·산출물 작성 라이터"},
+    {"id": "General", "role": "general", "description": "범용 보조 워커"}
+  ]
+}

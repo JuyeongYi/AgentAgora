@@ -1,0 +1,13 @@
+# 생성된 워커 디렉토리 — spawn-all.bat로 재생성한다.
+# .mcp.json에 머신별 절대경로(X-Agora-Cwd)가 박히므로 커밋하지 않는다.
+/Orchestrator/
+/Planner/
+/Coder/
+/Tester/
+/Reviewer/
+/Writer/
+/General/
+
+# 브로커 런타임 데이터·인증서
+/.agentagora/
+/certs/
