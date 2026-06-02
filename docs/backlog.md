@@ -72,13 +72,13 @@ spec: `docs/superpowers/specs/2026-06-03-package-layout-minimal-reorg-design.md`
 - 의존그래프가 이미 **무순환 DAG**(leaf 바닥) → 서브패키징은 결합을 못 줄이고 import 경로만
   relabel. 전면(full/by-domain) 재구성은 24~28모듈 + 235 테스트import(49파일) 갱신 대비
   이득=탐색성뿐이라 과함 — **권고 안 함**.
-- **minimal**(effort S): `dashboard/`(4모듈+`dashboard.html`/`dashboard_static`)·`files/`(3모듈)만
-  서브패키지화. inbound-0(=`__main__`만 import)이라 결합 무증가. **함정=package-data 글롭
-  재경로** — 소스트리 pytest는 그린이지만 배포 휠에서만 에셋 누락. `test_packaging.py`(uv PATH,
-  휠빌드)가 유일 안전망.
-- ※ "묶을 코드 많다"의 더 급한 절반은 파일이동이 아니라 `dispatcher.py` 1084줄 god-module
-  분해(Wave 4–5). 패키지보다 우선순위 높음. HTTP 라우트 통합·`bot`/`channel_adapter` 이동은
-  의존/진입점 때문에 보류.
+- ~~**minimal**(effort S)~~ — ✅ 완료(2026-06-03). `files/`(store·policy·routes)·`dashboard/`
+  (routes·events·auth·health + `dashboard.html`·`dashboard_static/` 동거) 서브패키지화. pyproject
+  package-data `'agent_agora.dashboard'=['*.html','dashboard_static/**/*']` 재경로,
+  `test_packaging.py`(실제 휠 빌드)가 새 경로 에셋 포함 검증. 609 passed.
+- **보류(deferred)**: HTTP 라우트 통합(`admin`/`channel`/`auto_register`는 comm_matrix/dispatcher
+  의존), `bot`/`channel_adapter` 이동(진입점·이득). ※ "묶을 코드 많다"의 더 급한 절반은 파일이동이
+  아니라 `dispatcher.py` 1084줄 god-module 분해(Wave 4–5) — 패키지보다 우선.
 
 ## MCP 표준 추적 — 2026-07-28 RC
 
