@@ -5,7 +5,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.channel_routes import register
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher

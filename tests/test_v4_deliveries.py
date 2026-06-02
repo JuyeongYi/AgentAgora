@@ -1,7 +1,7 @@
 """Plan A2 Task 2 — dispatch deliveries[] per-target 전달 상태 (TD2)."""
 import pytest
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence

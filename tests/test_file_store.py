@@ -5,7 +5,7 @@ import datetime
 
 import pytest
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.conversation_store import ConversationStore
 from agent_agora.errors import AgoraError

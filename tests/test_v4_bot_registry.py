@@ -1,5 +1,5 @@
 import pytest
-from agent_agora.bot_registry import BotInfo, BotRegistry
+from agent_agora.registry import BotInfo, BotRegistry
 from agent_agora.registry import NotRegisteredError
 
 

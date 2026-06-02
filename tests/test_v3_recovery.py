@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
@@ -133,7 +133,7 @@ async def test_dead_bot_sweep_releases_schema_refs(tmp_path):
     """dead_bot_sweep — 스윕된 봇이 마지막 holder인 스키마가 해제된다."""
     import datetime
     from agent_agora.schemas import SchemaRegistry
-    from agent_agora.bot_registry import BotRegistry
+    from agent_agora.registry import BotRegistry
     from agent_agora.registry import InstanceRegistry
     from agent_agora.persistence import Persistence, AsyncWriteQueue
     from agent_agora.comm_matrix import CommMatrix

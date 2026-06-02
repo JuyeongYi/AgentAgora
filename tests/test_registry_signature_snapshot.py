@@ -7,7 +7,7 @@ names + parameter names + defaults. A signature drift fails loudly here.
 """
 import inspect
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.registry import InstanceRegistry
 
 

@@ -42,7 +42,7 @@ def test_static_route_served(real_server_app):
 import contextlib
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dashboard import (
     DashboardAuthMiddleware, EventBroker, HealthCollector, register,

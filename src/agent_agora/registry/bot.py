@@ -9,7 +9,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Literal
 
-from agent_agora.registry import NotRegisteredError, _BidirectionalRegistry
+from agent_agora.registry.core import NotRegisteredError, _BidirectionalRegistry
 
 __all__ = ["BotInfo", "BotMode", "BotRegistry", "NotRegisteredError"]
 

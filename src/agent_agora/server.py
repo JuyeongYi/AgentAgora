@@ -12,7 +12,7 @@ from typing import Any, Literal
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
 from agent_agora.errors import AgoraError

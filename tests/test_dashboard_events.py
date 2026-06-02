@@ -185,7 +185,7 @@ async def test_auto_register_middleware_fires_register_hook():
 @pytest.mark.asyncio
 async def test_sweeper_dead_session_fires_unregister_hook(tmp_path):
     """dead_session_sweep이 unregister hook을 발화한다 — wiring 회귀 가드."""
-    from agent_agora.bot_registry import BotRegistry
+    from agent_agora.registry import BotRegistry
     from agent_agora.conversation_store import ConversationStore
     from agent_agora.persistence import Persistence
     from agent_agora.registry import InstanceRegistry

@@ -158,7 +158,7 @@ def test_load_comm_matrix_present_file_loads(tmp_path):
 
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.persistence import Persistence, AsyncWriteQueue
 from _helpers import make_schema_registry, tany, get_tool as _tool, FakeCtx as _FakeCtx
 

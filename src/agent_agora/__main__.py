@@ -96,7 +96,7 @@ def _build_app(
     Note: this helper does NOT start AsyncWriteQueue's worker task — tests
     that only inspect tool registration don't need it.
     """
-    from agent_agora.bot_registry import BotRegistry
+    from agent_agora.registry import BotRegistry
     from agent_agora.comm_matrix import load_comm_matrix
     from agent_agora.dispatcher import Dispatcher
     from agent_agora.persistence import AsyncWriteQueue, Persistence

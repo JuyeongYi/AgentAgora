@@ -20,7 +20,7 @@ from agent_agora.envelope import (
     validate_payload_size,
     validate_priority,
 )
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.errors import AgoraError
 from agent_agora.persistence import AsyncWriteQueue, Persistence

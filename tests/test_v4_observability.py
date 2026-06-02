@@ -1,7 +1,7 @@
 """Plan A2 — observability 도구 테스트 (transcript/coverage/reply/cancel)."""
 import pytest
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.errors import AgoraError

@@ -1,7 +1,7 @@
 """Plan B TD4 — sweeper.vacuum() 일일 GC 통합."""
 import pytest
 
-from agent_agora.bot_registry import BotRegistry
+from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence

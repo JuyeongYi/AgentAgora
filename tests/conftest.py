@@ -35,7 +35,7 @@ def schema_registry():
     return make_schema_registry()
 
 
-from agent_agora.bot_registry import BotRegistry  # noqa: E402
+from agent_agora.registry import BotRegistry  # noqa: E402
 
 
 @pytest.fixture
