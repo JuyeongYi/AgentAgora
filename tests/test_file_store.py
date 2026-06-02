@@ -51,6 +51,28 @@ def test_store_bytes(tmp_path):
     assert store.path_of(h["file_id"]).read_bytes() == b"abc"
 
 
+def test_list_returns_all_metadata_newest_first(tmp_path):
+    """FileStore.list() — 저장된 모든 파일의 메타를 created_at 내림차순으로."""
+    store, _ = _store(tmp_path)
+    h1 = store.store_bytes(b"a", "first.txt", "Coder1")
+    h2 = store.store_bytes(b"bb", "second.txt", "Bot1")
+    rows = store.list()
+    assert {r["file_id"] for r in rows} == {h1["file_id"], h2["file_id"]}
+    # 메타 컬럼 전부 노출 (바이트는 제외)
+    r = next(r for r in rows if r["file_id"] == h2["file_id"])
+    assert r["name"] == "second.txt" and r["size"] == 2
+    assert r["registered_by"] == "Bot1" and r["sha256"] == h2["sha256"]
+    assert "created_at" in r
+    # created_at 내림차순 (동률이면 안정성만 요구) — 최신이 앞
+    assert [r["created_at"] for r in rows] == sorted(
+        [r["created_at"] for r in rows], reverse=True)
+
+
+def test_list_empty_when_no_files(tmp_path):
+    store, _ = _store(tmp_path)
+    assert store.list() == []
+
+
 def test_too_large_rejected(tmp_path):
     store, _ = _store(tmp_path, max_bytes=4)
     src = tmp_path / "big.bin"

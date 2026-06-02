@@ -69,6 +69,10 @@ class FileStore:
     def meta(self, file_id: str) -> dict | None:
         return self._persistence.get_file(file_id)
 
+    def list(self) -> list[dict]:
+        """모든 파일의 메타를 created_at 내림차순으로 (바이트 제외)."""
+        return self._persistence.list_files()
+
     def path_of(self, file_id: str) -> Path | None:
         """스토어 내 파일 경로. 메타·바이트 둘 다 있어야 반환, 아니면 None."""
         if self._persistence.get_file(file_id) is None:

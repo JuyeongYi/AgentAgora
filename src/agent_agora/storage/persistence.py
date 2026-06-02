@@ -248,6 +248,13 @@ class Persistence:
             "FROM files WHERE file_id=?", (file_id,)).fetchone()
         return dict(zip(self._FILE_COLS, row)) if row is not None else None
 
+    def list_files(self) -> list[dict]:
+        """모든 파일 메타를 created_at 내림차순으로 (대시보드 파일 뷰용)."""
+        rows = self._conn.execute(
+            "SELECT file_id,name,size,sha256,content_type,registered_by,created_at "
+            "FROM files ORDER BY created_at DESC").fetchall()
+        return [dict(zip(self._FILE_COLS, row)) for row in rows]
+
     def files_before(self, cutoff_iso: str) -> list[str]:
         rows = self._conn.execute(
             "SELECT file_id FROM files WHERE created_at < ?", (cutoff_iso,)).fetchall()

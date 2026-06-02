@@ -41,6 +41,7 @@ DASHBOARD_PROTECTED_PATHS = [
     "/dashboard/schemas",
     "/dashboard/coverage",
     "/dashboard/logs",
+    "/dashboard/files",
     "/dashboard/stream",
 ]
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
@@ -447,7 +448,14 @@ def register(
     app.router.routes.append(
         Route("/dashboard/instance/{instance_id}/inbox", instance_inbox_endpoint, methods=["GET"])
     )
+    async def files_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/files — 공유 파일 스토어 메타 목록 (created_at 내림차순).
+
+        바이트는 노출하지 않는다 — 다운로드는 별도 /files/{file_id} 라우트가 담당."""
+        return JSONResponse({"files": persistence.list_files()})
+
     app.router.routes.append(Route("/dashboard/schemas", schemas_endpoint, methods=["GET"]))
     app.router.routes.append(
         Route("/dashboard/coverage/{command_id}", coverage_endpoint, methods=["GET"])
     )
+    app.router.routes.append(Route("/dashboard/files", files_endpoint, methods=["GET"]))

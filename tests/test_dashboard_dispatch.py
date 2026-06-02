@@ -265,6 +265,22 @@ def test_logs_endpoint_returns_buffered_records(dashboard_client, real_server_ap
     assert [e["message"] for e in r2.json()["logs"]] == ["sweep failed"]
 
 
+def test_files_endpoint_lists_shared_files(dashboard_client, real_server_app):
+    """GET /dashboard/files — persistence.list_files() 메타를 노출."""
+    p = real_server_app.state.persistence
+    p.save_file("fid-1", "report.md", 5, "deadbeef", "text/markdown",
+                "Coder1", "2026-06-01T00:00:00+00:00")
+    r = dashboard_client.get("/dashboard/files", headers=_auth("alice"))
+    assert r.status_code == 200
+    files = r.json()["files"]
+    assert any(f["file_id"] == "fid-1" and f["name"] == "report.md"
+               and f["registered_by"] == "Coder1" for f in files)
+
+
+def test_files_is_protected_path():
+    assert "/dashboard/files" in DASHBOARD_PROTECTED_PATHS
+
+
 def test_logs_is_protected_path(dashboard_client):
     """/dashboard/logs는 보호 경로 — 운영자 헤더 없으면 거부(trust 모드는 통과지만
     경로 자체가 protected 목록에 있어야 한다)."""

@@ -69,3 +69,10 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .logs-table tr.log-warning td:nth-child(2) { color:#f5a623; }
 .logs-table tr.log-error td:nth-child(2), .logs-table tr.log-critical td:nth-child(2) { color:#ff6b6b; }
 #logs-body { max-height:60vh; overflow:auto; min-width:600px; }
+
+/* 파일 스토어 뷰 모달 */
+#files-body { max-height:60vh; overflow:auto; min-width:600px; }
+.files-table { width:100%; border-collapse:collapse; font-size:12px; }
+.files-table th { text-align:left; color:#9aa; padding:4px 8px; border-bottom:1px solid #44446a; }
+.files-table td { padding:4px 8px; border-bottom:1px solid #33334d; vertical-align:top; }
+.files-table a { color:#8cf; }
