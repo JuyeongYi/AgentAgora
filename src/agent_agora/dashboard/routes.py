@@ -39,6 +39,7 @@ DASHBOARD_PROTECTED_PATHS = [
     "/dashboard/conversation",
     "/dashboard/instance",
     "/dashboard/schemas",
+    "/dashboard/coverage",
     "/dashboard/stream",
 ]
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
@@ -410,6 +411,13 @@ def register(
             })
         return JSONResponse({"schemas": items})
 
+    async def coverage_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/coverage/{command_id} — expect_result 응답 커버리지
+        (pending/responded/deadline_ts/expired). 운영자가 dispatch 받은 command_id로
+        '누가 아직 응답 안 했나/deadline 넘겼나'를 추적."""
+        command_id = request.path_params["command_id"]
+        return JSONResponse(dispatcher.coverage(command_id))
+
     app.router.routes.append(
         Route("/dashboard/conversation/{conversation_id}", conversation_endpoint, methods=["GET"])
     )
@@ -417,3 +425,6 @@ def register(
         Route("/dashboard/instance/{instance_id}/inbox", instance_inbox_endpoint, methods=["GET"])
     )
     app.router.routes.append(Route("/dashboard/schemas", schemas_endpoint, methods=["GET"]))
+    app.router.routes.append(
+        Route("/dashboard/coverage/{command_id}", coverage_endpoint, methods=["GET"])
+    )

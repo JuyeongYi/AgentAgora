@@ -242,6 +242,21 @@ def test_dashboard_data_comm_matrix_includes_cycles(dashboard_client):
     assert "cycles" in cm and isinstance(cm["cycles"], list)
 
 
+def test_coverage_endpoint_returns_structure(dashboard_client, register_worker):
+    """GET /dashboard/coverage/{command_id} — expect_result 응답 커버리지 구조 노출."""
+    register_worker("W1")
+    d = dashboard_client.post(
+        "/dashboard/dispatch", headers=_auth("alice"),
+        json={"to": "W1", "schema": "operator_message", "payload": {}}).json()
+    cmd = d["message_id"]
+    r = dashboard_client.get(f"/dashboard/coverage/{cmd}", headers=_auth("alice"))
+    assert r.status_code == 200
+    cov = r.json()
+    assert cov["command_id"] == cmd
+    for key in ("pending", "responded", "deadline_ts", "expired"):
+        assert key in cov
+
+
 def test_schemas_endpoint_includes_meta_and_refs(dashboard_client):
     """스키마 explorer 백엔드 — /dashboard/schemas가 kind/purpose/registered_by/ref_count
     메타를 함께 반환하되, 기존 dispatch dropdown용 id/schema도 보존(하위호환)."""

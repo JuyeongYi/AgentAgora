@@ -19,6 +19,7 @@ def test_protected_paths_canonical_contents():
         "/dashboard/conversation",
         "/dashboard/instance",
         "/dashboard/schemas",
+        "/dashboard/coverage",
         "/dashboard/stream",
     ]
 
