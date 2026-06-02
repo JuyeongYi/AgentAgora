@@ -236,3 +236,23 @@ async def test_cwd_change_triggers_update(reg):
     await mw(scope, _receive, _send)
     info = reg.resolve_session("sess-cwd3")
     assert info.cwd == "/new/path"
+
+
+async def test_empty_cwd_header_does_not_clobber_registered_cwd(reg):
+    """Durability: a request with NO X-Agora-CWD header must not wipe a cwd that
+    was already set (by the agora.register tool or an earlier non-empty header).
+    Empty header means 'no info', not 'clear cwd'."""
+    reg.register(session_id="sess-cwd4", instance_id="A", role="r", cwd="/work/set")
+    mw = AutoRegisterMiddleware(app=_noop_app, registry=reg)
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"mcp-session-id", b"sess-cwd4"),
+            (b"x-agora-instance-id", b"A"),
+            (b"x-agora-role", b"r"),
+            # deliberately no x-agora-cwd header → extracted cwd == ""
+        ],
+    }
+    await mw(scope, _receive, _send)
+    info = reg.resolve_session("sess-cwd4")
+    assert info.cwd == "/work/set"  # preserved, NOT clobbered to ""

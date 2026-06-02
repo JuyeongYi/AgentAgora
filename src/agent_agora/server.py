@@ -164,10 +164,14 @@ def create_agora_app(
         instance_id: str,
         role: str = "worker",
         description: str = "",
+        cwd: str = "",
         wait_mode: Literal["auto", "manual"] | None = None,
     ) -> str:
         """Register this session as an addressable instance.
 
+        cwd: working directory of this worker (stable identity metadata, surfaced
+        via agora.instances/agora.cwd). Durable — an empty X-Agora-CWD header on a
+        later request will not clobber a cwd set here.
         wait_mode: advisory hint for how this worker receives inbound messages —
         'auto' (the worker polls automatically, e.g. channel mode) vs 'manual'
         (a human triggers waits). Defaults to 'unknown' if omitted.
@@ -181,6 +185,7 @@ def create_agora_app(
             instance_id=instance_id,
             role=role,
             description=description,
+            cwd=cwd,
             wait_mode=wait_mode,
         )
         dispatcher._fire_register_hooks(info)
@@ -189,6 +194,7 @@ def create_agora_app(
             "instance_id": info.instance_id,
             "role": info.role,
             "description": info.description,
+            "cwd": info.cwd,
             "registered_at": info.registered_at,
             "wait_mode": info.wait_mode,
         })

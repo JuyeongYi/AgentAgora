@@ -36,11 +36,14 @@ class AutoRegisterMiddleware:
                 fired_info = None
                 try:
                     existing = self._registry.resolve_session(session_id)
+                    # Empty CWD header means "no info", not "clear cwd": preserve a
+                    # cwd already set (by the agora.register tool or an earlier header).
+                    effective_cwd = cwd or existing.cwd
                     if (
                         existing.instance_id != instance_id
                         or existing.role != role
                         or existing.description != description
-                        or existing.cwd != cwd
+                        or existing.cwd != effective_cwd
                         or (wait_mode is not None and existing.wait_mode != wait_mode)
                     ):
                         fired_info = self._registry.register(
@@ -48,7 +51,7 @@ class AutoRegisterMiddleware:
                             instance_id=instance_id,
                             role=role,
                             description=description,
-                            cwd=cwd,
+                            cwd=effective_cwd,
                             wait_mode=wait_mode,
                         )
                 except NotRegisteredError:

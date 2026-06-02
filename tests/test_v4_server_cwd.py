@@ -114,3 +114,25 @@ async def test_cwd_tool_no_cwd_returns_empty_string(app):
 
     res = json.loads(await _tool(mcp, "agora.cwd")("NoCwdWorker"))
     assert res == {"instance_id": "NoCwdWorker", "cwd": ""}
+
+
+# ---------------------------------------------------------------------------
+# 6. agora.register tool accepts a cwd argument (durability — set via tool)
+# ---------------------------------------------------------------------------
+
+class _FakeCtx:
+    def __init__(self, session_id):
+        self.request_context = type("RC", (), {"request": type("R", (), {
+            "headers": {"mcp-session-id": session_id}})()})()
+
+
+@pytest.mark.asyncio
+async def test_register_tool_accepts_and_returns_cwd(app):
+    mcp, instance_registry = app
+
+    res = json.loads(await _tool(mcp, "agora.register")(
+        _FakeCtx("sess-reg-cwd"), instance_id="ToolCwd", cwd="/tool/set/path"))
+
+    assert res["status"] == "ok"
+    assert res["cwd"] == "/tool/set/path"
+    assert instance_registry.resolve_session("sess-reg-cwd").cwd == "/tool/set/path"
