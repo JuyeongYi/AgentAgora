@@ -72,6 +72,16 @@ def _session_is_bot(bot_registry: BotRegistry, session_id: str) -> bool:
         return False
 
 
+def _session_or_error(ctx: Context) -> tuple[str | None, str | None]:
+    """Resolve the MCP session id, or return a serialized 'session unavailable'
+    error. Returns (session_id, None) on success, (None, error_json) on failure.
+    Collapses the identical try/except repeated across every session-bound tool."""
+    try:
+        return _session_id_from_ctx(ctx), None
+    except RuntimeError as e:
+        return None, json.dumps({"error": f"Session context unavailable: {e}"})
+
+
 def create_agora_app(
     agora_dir: Path,
     instance_registry: InstanceRegistry,
@@ -121,10 +131,9 @@ def create_agora_app(
     ) -> str:
         """Register a schema. Immutable — 동일 이름 다른 body는 거부.
         body에 msgtype property 필수 (결정 20). 호출자가 ref holder가 된다."""
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         # 호출자 instance_id 해석 — 워커/봇 모두 허용, 미등록이면 session_id를 holder로.
         try:
             holder = instance_registry.resolve_session(session_id).instance_id
@@ -176,10 +185,9 @@ def create_agora_app(
         'auto' (the worker polls automatically, e.g. channel mode) vs 'manual'
         (a human triggers waits). Defaults to 'unknown' if omitted.
         """
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         info = instance_registry.register(
             session_id=session_id,
             instance_id=instance_id,
@@ -215,10 +223,9 @@ def create_agora_app(
         bot_mode='observer': schema 무관 전체 메시지를 cc로 수신.
         schemas: 신규 schema 동시 등록. {name: {kind, purpose, body}} (kind는 'bot-task').
         """
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         subscribe = list(subscribe_schemas or [])
         emit = list(emit_schemas or [])
         schemas = schemas or {}
@@ -301,10 +308,9 @@ def create_agora_app(
 
     @mcp.tool(name="agora.unregister")
     async def agora_unregister(ctx: Context) -> str:
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         # 해제 전에 holder id를 잡아 스키마 ref를 해제하고 unregister hook을 발화한다.
         fired_ids: list[str] = []
         for reg in (instance_registry, bot_registry):
@@ -416,10 +422,9 @@ def create_agora_app(
         priority: 'high' must be reserved for actual blocking reasons.
         Caller MUST be registered.
         """
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         if _session_is_bot(bot_registry, session_id):
             return json.dumps({"error": "[agora] 봇은 agora.dispatch를 호출할 수 없습니다. agora.bot_emit을 쓰세요."})
         try:
@@ -452,10 +457,9 @@ def create_agora_app(
         deadline_ts: str | None = None,
     ) -> str:
         """Fan-out to ALL other registered instances. closing=True → announcement (immediate close)."""
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         if _session_is_bot(bot_registry, session_id):
             return json.dumps({"error": "[agora] 봇은 agora.broadcast를 호출할 수 없습니다. agora.bot_emit을 쓰세요."})
         try:
@@ -505,10 +509,9 @@ def create_agora_app(
                           target: str | None = None, conversation_id: str | None = None) -> str:
         """Reply to the most recently received command — auto-fills in_reply_to, target,
         conversation_id from your last drained inbound. Explicit args win."""
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         try:
             caller = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
@@ -527,10 +530,9 @@ def create_agora_app(
     async def agora_cancel(ctx: Context, command_id: str) -> str:
         """Recall an in-flight command you sent that hasn't been consumed yet.
         Already-consumed targets are reported, not recalled. Caller must be the sender."""
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         try:
             caller = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
@@ -556,10 +558,11 @@ def create_agora_app(
     async def agora_close_thread(ctx: Context, conversation_id: str, reason: str = "") -> str:
         """Explicit close of a conversation. Equivalent to dispatching closing=True
         to every other primary participant. caller MUST be a participant."""
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         try:
-            caller = instance_registry.resolve_session(_session_id_from_ctx(ctx)).instance_id
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+            caller = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError as e:
             return _error_json(e)
         try:
@@ -583,10 +586,9 @@ def create_agora_app(
         둘 다 미지정 시 payload msgtype 구독 봇에 schema-routed fan-out (결정 25).
         target과 in_reply_to는 동시에 지정 불가.
         """
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         try:
             bot = bot_registry.resolve_session(session_id)
         except NotRegisteredError:
@@ -619,10 +621,9 @@ def create_agora_app(
         from_sources / by_conversation: AND-combined filters; unmatched envelopes stay queued.
         The caller MUST be registered before calling flush.
         """
-        try:
-            session_id = _session_id_from_ctx(ctx)
-        except RuntimeError as e:
-            return json.dumps({"error": f"Session context unavailable: {e}"})
+        session_id, _err = _session_or_error(ctx)
+        if _err:
+            return _err
         try:
             who = instance_registry.resolve_session(session_id).instance_id
         except NotRegisteredError:
@@ -664,10 +665,9 @@ def create_agora_app(
         async def agora_share_file(ctx: Context, path: str) -> str:
             """Share a local file through the store. Returns a handle to dispatch
             in a file_share message."""
-            try:
-                session_id = _session_id_from_ctx(ctx)
-            except RuntimeError as e:
-                return json.dumps({"error": f"Session context unavailable: {e}"})
+            session_id, _err = _session_or_error(ctx)
+            if _err:
+                return _err
             caller = _resolve_caller(session_id, instance_registry, bot_registry)
             name = os.path.basename(path)
             if file_policy is not None and not file_policy.can_upload(caller, name):
@@ -682,10 +682,9 @@ def create_agora_app(
         @mcp.tool(name="agora.fetch_file")
         async def agora_fetch_file(ctx: Context, file_id: str, dest_path: str) -> str:
             """Fetch a shared file from the store into dest_path."""
-            try:
-                session_id = _session_id_from_ctx(ctx)
-            except RuntimeError as e:
-                return json.dumps({"error": f"Session context unavailable: {e}"})
+            session_id, _err = _session_or_error(ctx)
+            if _err:
+                return _err
             caller = _resolve_caller(session_id, instance_registry, bot_registry)
             meta = file_store.meta(file_id)
             if meta is None:

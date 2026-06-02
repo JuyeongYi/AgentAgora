@@ -126,3 +126,16 @@ async def test_register_tool_accepts_and_returns_cwd(app):
     assert res["status"] == "ok"
     assert res["cwd"] == "/tool/set/path"
     assert instance_registry.resolve_session("sess-reg-cwd").cwd == "/tool/set/path"
+
+
+# ---------------------------------------------------------------------------
+# 7. session-unavailable path (single source: _session_or_error)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_tool_without_session_returns_session_unavailable(app):
+    """A ctx carrying no mcp-session-id resolves to the shared 'session
+    unavailable' error via _session_or_error (consolidated across all tools)."""
+    mcp, _ = app
+    res = json.loads(await _tool(mcp, "agora.register")(_FakeCtx(None), instance_id="X"))
+    assert "Session context unavailable" in res["error"]
