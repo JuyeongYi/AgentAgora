@@ -158,7 +158,7 @@ async def test_auto_register_middleware_fires_register_hook():
     class FakeDispatcher:
         def __init__(self) -> None:
             self.fired: list = []
-        def _fire_register_hooks(self, info) -> None:
+        def notify_registered(self, info) -> None:
             self.fired.append(info)
 
     async def _noop_app(scope, receive, send): pass
@@ -195,7 +195,7 @@ async def test_sweeper_dead_session_fires_unregister_hook(tmp_path):
     class FakeDispatcher:
         def __init__(self) -> None:
             self.fired: list[str] = []
-        def _fire_unregister_hooks(self, iid: str) -> None:
+        def notify_unregistered(self, iid: str) -> None:
             self.fired.append(iid)
 
     persistence = Persistence(tmp_path / "agora.db")

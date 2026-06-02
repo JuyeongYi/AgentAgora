@@ -64,7 +64,7 @@ class AutoRegisterMiddleware:
                         wait_mode=wait_mode,
                     )
                 if fired_info is not None and self._dispatcher is not None:
-                    self._dispatcher._fire_register_hooks(fired_info)
+                    self._dispatcher.notify_registered(fired_info)
         await self._app(scope, receive, send)
 
     def _extract(self, scope) -> tuple[str | None, str | None, str, str, str, str | None]:

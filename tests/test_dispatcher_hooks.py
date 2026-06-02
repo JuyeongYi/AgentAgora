@@ -132,6 +132,26 @@ async def test_unregister_hook_fires(dispatcher_fixture):
 
 
 @pytest.mark.asyncio
+async def test_notify_registered_delegates_to_register_hooks(dispatcher_fixture):
+    """공개 notify_registered(server/auto_register 경로)가 register hook을 발화한다."""
+    captured: list = []
+    dispatcher_fixture.register_register_hook(lambda info: captured.append(info))
+    info = InstanceInfo(instance_id="W9", session_id="s9", role="coder",
+                        registered_at="2026-01-01T00:00:00Z", description="d")
+    dispatcher_fixture.notify_registered(info)
+    assert [i.instance_id for i in captured] == ["W9"]
+
+
+@pytest.mark.asyncio
+async def test_notify_unregistered_delegates_to_unregister_hooks(dispatcher_fixture):
+    """공개 notify_unregistered(server/sweeper dead_session 경로)가 unregister hook을 발화한다."""
+    captured: list = []
+    dispatcher_fixture.register_unregister_hook(lambda iid: captured.append(iid))
+    dispatcher_fixture.notify_unregistered("W9")
+    assert captured == ["W9"]
+
+
+@pytest.mark.asyncio
 async def test_multiple_dispatch_hooks_all_called(dispatcher_fixture, instance_registry):
     """여러 hook이 등록된 경우 모두 호출된다."""
     calls_a: list = []

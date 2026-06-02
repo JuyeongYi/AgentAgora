@@ -196,7 +196,7 @@ def create_agora_app(
             cwd=cwd,
             wait_mode=wait_mode,
         )
-        dispatcher._fire_register_hooks(info)
+        dispatcher.notify_registered(info)
         return json.dumps({
             "status": "ok",
             "instance_id": info.instance_id,
@@ -323,7 +323,7 @@ def create_agora_app(
         instance_registry.unregister_session(session_id)
         bot_registry.unregister_session(session_id)
         for iid in fired_ids:
-            dispatcher._fire_unregister_hooks(iid)
+            dispatcher.notify_unregistered(iid)
         return json.dumps({"status": "ok"})
 
     @mcp.tool(name="agora.instances")

@@ -149,6 +149,22 @@ class Dispatcher:
             except Exception:
                 logger.exception("unregister hook raised")
 
+    # ------------------------------------------------------------------
+    # Public registration-lifecycle notifications. External callers
+    # (server / auto_register / sweeper) signal through these rather than the
+    # private _fire_* helpers. Bot semantics are the caller's responsibility —
+    # bot registration and dead_bot_sweep intentionally do NOT notify (bots are
+    # not worker-lifecycle participants).
+    # ------------------------------------------------------------------
+
+    def notify_registered(self, info: Any) -> None:
+        """Fire register hooks for a newly-registered worker instance."""
+        self._fire_register_hooks(info)
+
+    def notify_unregistered(self, instance_id: str) -> None:
+        """Fire unregister hooks for a removed instance."""
+        self._fire_unregister_hooks(instance_id)
+
     @property
     def default_timeout_ms(self) -> int:
         return self._default_timeout_ms

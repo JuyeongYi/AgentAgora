@@ -93,7 +93,7 @@ class Sweeper:
         for iid in removed:
             self._schema_registry.release_holder(iid)
             if self._dispatcher is not None:
-                self._dispatcher._fire_unregister_hooks(iid)
+                self._dispatcher.notify_unregistered(iid)
         self.dead_session_sweep_runs_total += 1
         self.dead_session_sweep_last_run_at = time.time()
         return removed
