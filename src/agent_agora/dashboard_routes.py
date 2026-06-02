@@ -18,6 +18,8 @@ from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from agent_agora.dispatcher import DispatcherClosed
+from agent_agora.errors import AgoraError
 from agent_agora.registry import NotRegisteredError, operator_id
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,48 @@ DASHBOARD_PROTECTED_PATHS = [
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
 # 헤더를 못 실어서). DASHBOARD_PROTECTED_PATHS의 부분집합이어야 한다.
 DASHBOARD_QUERY_PARAM_PATHS = ["/dashboard/stream"]
+
+
+async def _parse_json_body(request):
+    """Parse the request JSON body. Returns (body, None) or (None, 422 response).
+    Narrow to ValueError (JSONDecodeError/UnicodeDecodeError are subclasses)."""
+    try:
+        return await request.json(), None
+    except ValueError:
+        return None, JSONResponse({"error": "invalid JSON body"}, status_code=422)
+
+
+def _inject_msgtype(payload, schema):
+    """Inject msgtype into a dict payload when absent (non-dict passed through)."""
+    if isinstance(payload, dict) and "msgtype" not in payload:
+        return {**payload, "msgtype": schema}
+    return payload
+
+
+def _error_detail(exc: Exception) -> dict:
+    """{'error': msg} plus 'code' when the exception carries one (AgoraError)."""
+    detail = {"error": str(exc)}
+    code = getattr(exc, "code", None)
+    if code:
+        detail["code"] = code
+    return detail
+
+
+def _error_to_response(exc: Exception) -> JSONResponse:
+    """Map a broker/dispatch exception to an HTTP response without leaking internal
+    text. AgoraError (a ValueError subclass) is checked first to keep its .code;
+    NotRegisteredError -> 404, DispatcherClosed -> 503, other ValueError -> 422,
+    anything else -> logged + generic 500."""
+    if isinstance(exc, AgoraError):
+        return JSONResponse(_error_detail(exc), status_code=422)
+    if isinstance(exc, NotRegisteredError):
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    if isinstance(exc, DispatcherClosed):
+        return JSONResponse({"error": "server is shutting down"}, status_code=503)
+    if isinstance(exc, ValueError):
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    logger.exception("dashboard request failed unexpectedly")
+    return JSONResponse({"error": "internal error"}, status_code=500)
 
 
 def build_dashboard_data(*, dispatcher, instance_registry, bot_registry,
@@ -209,10 +253,9 @@ def register(
 
     async def dispatch_endpoint(request: Request) -> JSONResponse:
         """POST /dashboard/dispatch — 운영자 → 특정 워커."""
-        try:
-            body = await request.json()
-        except Exception:
-            return JSONResponse({"error": "invalid JSON body"}, status_code=422)
+        body, _err = await _parse_json_body(request)
+        if _err:
+            return _err
 
         to = body.get("to")
         schema = body.get("schema")
@@ -235,9 +278,7 @@ def register(
         except NotRegisteredError:
             return JSONResponse({"error": "recipient not registered"}, status_code=404)
 
-        # msgtype을 payload에 주입
-        if isinstance(payload, dict) and "msgtype" not in payload:
-            payload = {**payload, "msgtype": schema}
+        payload = _inject_msgtype(payload, schema)
 
         try:
             result = await dispatcher.dispatch(
@@ -247,8 +288,8 @@ def register(
                 conversation_id=conv,
                 reply_only=reply_only,
             )
-        except Exception as exc:
-            return JSONResponse({"error": str(exc)}, status_code=422)
+        except Exception as exc:  # noqa: BLE001 — mapped to status by _error_to_response
+            return _error_to_response(exc)
 
         return JSONResponse(
             {
@@ -260,10 +301,9 @@ def register(
 
     async def broadcast_endpoint(request: Request) -> JSONResponse:
         """POST /dashboard/broadcast — 운영자 → 여러 워커."""
-        try:
-            body = await request.json()
-        except Exception:
-            return JSONResponse({"error": "invalid JSON body"}, status_code=422)
+        body, _err = await _parse_json_body(request)
+        if _err:
+            return _err
 
         targets = body.get("targets") or []
         schema = body.get("schema")
@@ -281,9 +321,7 @@ def register(
 
         results = []
         for to in targets:
-            msg_payload = dict(payload) if isinstance(payload, dict) else payload
-            if isinstance(msg_payload, dict) and "msgtype" not in msg_payload:
-                msg_payload = {**msg_payload, "msgtype": schema}
+            msg_payload = _inject_msgtype(payload, schema)
             try:
                 r = await dispatcher.dispatch(
                     source=sender, target=to, payload=msg_payload,
@@ -291,8 +329,8 @@ def register(
                 )
                 results.append({"to": to, "message_id": r["command_id"],
                                  "conversation_id": r["conversation_id"]})
-            except Exception as exc:
-                results.append({"to": to, "error": str(exc)})
+            except Exception as exc:  # noqa: BLE001
+                results.append({"to": to, **_error_detail(exc)})
 
         return JSONResponse({"results": results})
 
@@ -306,10 +344,9 @@ def register(
 
     async def operator_inbox_ack_endpoint(request: Request) -> JSONResponse:
         """POST /dashboard/operator/inbox/ack — 메시지 acked_at 설정."""
-        try:
-            body = await request.json()
-        except Exception:
-            return JSONResponse({"error": "invalid JSON body"}, status_code=422)
+        body, _err = await _parse_json_body(request)
+        if _err:
+            return _err
 
         ids = body.get("message_ids") or []
         count = await persistence.mark_messages_acked(ids, write_queue=write_queue)
