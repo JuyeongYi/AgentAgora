@@ -191,10 +191,13 @@ class Dispatcher:
         return msgtype
 
     def _fanout_to_bots(self, bot_ids, *, delivered_as, exclude, state,
-                        skipped_full, make_env, now):
-        """Lock-held 봇 fan-out (dispatch 전용). exclude에 없고 인박스가 만석이 아닌
-        각 봇에: delivered_as 봉투를 큐에 넣고, cc 참가자로 등록하고, _wake한다.
-        만석 봇은 skipped_full에 누적. 생성된 봉투 리스트를 반환한다."""
+                        skipped_full, make_env, now, add_participant=True):
+        """Lock-held 봇 fan-out. exclude에 없고 인박스가 만석이 아닌 각 봇에:
+        delivered_as 봉투를 큐에 넣고, _wake하고, make_env로 봉투를 만든다. 만석 봇은
+        skipped_full에 누적. 생성된 봉투 리스트를 반환한다.
+
+        add_participant: True면 봇을 cc 참가자로 등록(dispatch). broadcast는 봇을
+        conversation 참가자로 넣지 않으므로 False (의도된 라우팅 비대칭)."""
         envs: list[Envelope] = []
         for bot_id in bot_ids:
             if bot_id in exclude:
@@ -205,10 +208,23 @@ class Dispatcher:
             e = make_env(bot_id, delivered_as, er=False, cl=False)
             envs.append(e)
             self._queues[bot_id].append(e)
-            self._conv.add_participant(state, bot_id, role="cc", delivered=True)
+            if add_participant:
+                self._conv.add_participant(state, bot_id, role="cc", delivered=True)
             self._last_dispatch_to[bot_id] = now
             self._wake(bot_id)
         return envs
+
+    def _decrement_inflight_on_reply(self, in_reply_to, source) -> None:
+        """reply 도착 시 원 발신자의 in_flight에서 (in_reply_to → source)를 제거한다.
+        _lock 보유 상태에서 호출."""
+        if in_reply_to is None or self._conv.conv_id_of(in_reply_to) is None:
+            return
+        for pending_map in self._in_flight.values():
+            s = pending_map.get(in_reply_to)
+            if s is not None and source in s:
+                s.discard(source)
+                if not s:
+                    pending_map.pop(in_reply_to, None)
 
     async def dispatch(
         self,
@@ -352,15 +368,7 @@ class Dispatcher:
                 state=state, skipped_full=skipped_full, make_env=_make, now=now)
 
             # reply correlation: decrement in_flight for original source
-            if in_reply_to is not None:
-                original_conv = self._conv.conv_id_of(in_reply_to)
-                if original_conv is not None:
-                    for _original_sender, pending_map in self._in_flight.items():
-                        s = pending_map.get(in_reply_to)
-                        if s is not None and source in s:
-                            s.discard(source)
-                            if not s:
-                                pending_map.pop(in_reply_to, None)
+            self._decrement_inflight_on_reply(in_reply_to, source)
 
             # closing handling (primary source only)
             if closing and state["participants"].get(source, {}).get("role") == "primary":
@@ -510,42 +518,26 @@ class Dispatcher:
                     if eff_deadline is not None:
                         self._deadlines[cmd_id] = eff_deadline
 
-            # subscriber 봇 fan-out (delivered_as=subscribed)
-            for bot_id in subscriber_bots:
-                if len(self._queues[bot_id]) >= self._max_inbox_depth:
-                    skipped_full.append(bot_id)
-                    continue
-                s_env = make_envelope(
-                    cmd_id=cmd_id, source=source, target=bot_id, payload=payload,
+            # subscriber/observer 봇 fan-out — broadcast는 봇을 conversation 참가자로
+            # 넣지 않으므로 add_participant=False (dispatch와의 의도된 비대칭).
+            def _bcast_bot_env(tid, das, *, er, cl):
+                return make_envelope(
+                    cmd_id=cmd_id, source=source, target=tid, payload=payload,
                     created_at=now, conversation_id=conv_id,
-                    expect_result=False, reply_to=reply_to, cc=None,
-                    delivered_as="subscribed", dispatch_kind="broadcast",
-                    in_reply_to=in_reply_to,
-                    closing=False, priority=priority, deadline_ts=deadline_ts,
+                    expect_result=er, reply_to=reply_to, cc=None,
+                    delivered_as=das, dispatch_kind="broadcast",
+                    in_reply_to=in_reply_to, closing=cl,
+                    priority=priority, deadline_ts=deadline_ts,
                 )
-                envs.append(s_env)
-                self._queues[bot_id].append(s_env)
-                self._last_dispatch_to[bot_id] = now
-                self._wake(bot_id)
-            # observer 봇 fan-out (delivered_as=cc)
-            for bot_id in observer_bots:
-                if bot_id in subscriber_bots:
-                    continue
-                if len(self._queues[bot_id]) >= self._max_inbox_depth:
-                    skipped_full.append(bot_id)
-                    continue
-                o_env = make_envelope(
-                    cmd_id=cmd_id, source=source, target=bot_id, payload=payload,
-                    created_at=now, conversation_id=conv_id,
-                    expect_result=False, reply_to=reply_to, cc=None,
-                    delivered_as="cc", dispatch_kind="broadcast",
-                    in_reply_to=in_reply_to,
-                    closing=False, priority=priority, deadline_ts=deadline_ts,
-                )
-                envs.append(o_env)
-                self._queues[bot_id].append(o_env)
-                self._last_dispatch_to[bot_id] = now
-                self._wake(bot_id)
+
+            envs += self._fanout_to_bots(
+                subscriber_bots, delivered_as="subscribed", exclude=set(),
+                state=state, skipped_full=skipped_full, make_env=_bcast_bot_env,
+                now=now, add_participant=False)
+            envs += self._fanout_to_bots(
+                observer_bots, delivered_as="cc", exclude=set(subscriber_bots),
+                state=state, skipped_full=skipped_full, make_env=_bcast_bot_env,
+                now=now, add_participant=False)
             self._conv.record_command(cmd_id, conv_id, source)
             # closing → if broadcast announcement, close immediately
             if closing:

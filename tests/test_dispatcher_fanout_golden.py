@@ -91,6 +91,58 @@ async def test_fanout_skips_full_cc_inbox(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_broadcast_fanout_primary_and_bots(tmp_path):
+    """broadcast: 모든 워커(source 제외)에 primary + subscriber(subscribed)/observer(cc) 봇 fan-out."""
+    registry, dispatcher, queue = await _make_dispatcher(tmp_path)
+    async with queue:
+        payload = _register_task_schema(dispatcher)
+        dispatcher._bot_registry.register(session_id="bs", instance_id="bot_s", description="d",
+                                          bot_mode="handler", subscribe_schemas=["fanout_task"])
+        dispatcher._bot_registry.register(session_id="bo", instance_id="bot_o", description="d",
+                                          bot_mode="observer")
+        res = await dispatcher.broadcast(source="Inst1", payload=payload)
+        delivered = {d["instance_id"]: d["as"] for d in res["dispatched_to"]}
+        # 워커 Inst2/3/4 = primary, subscriber 봇 = subscribed, observer 봇 = cc
+        assert delivered["Inst2"] == "primary"
+        assert delivered["Inst3"] == "primary"
+        assert delivered["Inst4"] == "primary"
+        assert delivered["bot_s"] == "subscribed"
+        assert delivered["bot_o"] == "cc"
+        assert (await dispatcher.flush("Inst2"))[0]["delivered_as"] == "primary"
+        assert (await dispatcher.flush("bot_s"))[0]["delivered_as"] == "subscribed"
+        assert (await dispatcher.flush("bot_o"))[0]["delivered_as"] == "cc"
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_fanout_subscribers_and_observers(tmp_path):
+    """bot_emit (target/in_reply_to 없음): msgtype 구독 봇=subscribed, observer=cc fan-out."""
+    registry, dispatcher, queue = await _make_dispatcher(tmp_path)
+    async with queue:
+        payload = _register_task_schema(dispatcher)
+        dispatcher._bot_registry.register(session_id="bs", instance_id="bot_s", description="d",
+                                          bot_mode="handler", subscribe_schemas=["fanout_task"])
+        dispatcher._bot_registry.register(session_id="bo", instance_id="bot_o", description="d",
+                                          bot_mode="observer")
+        res = await dispatcher.bot_emit(source="Inst1", payload=payload)
+        delivered = {d["instance_id"]: d["as"] for d in res["dispatched_to"]}
+        assert delivered["bot_s"] == "subscribed"
+        assert delivered["bot_o"] == "cc"
+        assert (await dispatcher.flush("bot_s"))[0]["delivered_as"] == "subscribed"
+
+
+@pytest.mark.asyncio
+async def test_bot_emit_to_target_is_primary(tmp_path):
+    """bot_emit (target 지정): 해당 워커에 primary 직접 전달."""
+    registry, dispatcher, queue = await _make_dispatcher(tmp_path)
+    async with queue:
+        payload = _register_task_schema(dispatcher)
+        res = await dispatcher.bot_emit(source="Inst1", payload=payload, target="Inst2")
+        delivered = {d["instance_id"]: d["as"] for d in res["dispatched_to"]}
+        assert delivered["Inst2"] == "primary"
+        assert (await dispatcher.flush("Inst2"))[0]["delivered_as"] == "primary"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_emits_routing_log_not_stdout(tmp_path, caplog):
     """The routing banner is now a logger.info record (was print) — observable
     via caplog and decoupled from stdout."""
