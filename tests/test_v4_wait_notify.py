@@ -8,7 +8,7 @@ import pytest
 from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
-from agent_agora.persistence import AsyncWriteQueue, Persistence
+from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
 from _helpers import make_schema_registry, tany
 

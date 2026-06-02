@@ -16,9 +16,9 @@ from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher, DispatcherClosed
 from agent_agora.errors import AgoraError
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
-from agent_agora.schemas import SchemaRegistry
+from agent_agora.storage.schemas import SchemaRegistry
 
 MCP_SESSION_ID_HEADER = "mcp-session-id"
 

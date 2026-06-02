@@ -1,5 +1,5 @@
 """v4 테스트 공용 헬퍼 — payload 빌더 + registry 팩토리."""
-from agent_agora.schemas import SchemaRegistry, load_schemas_into, BUNDLED_DEFAULT_SCHEMAS
+from agent_agora.storage.schemas import SchemaRegistry, load_schemas_into, BUNDLED_DEFAULT_SCHEMAS
 
 # 기존 v3 테스트가 임의 dict payload를 보내던 것을 흡수하는 느슨한 테스트 schema.
 TEST_ANY_BODY = {

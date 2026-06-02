@@ -9,9 +9,9 @@ import time
 
 from agent_agora.registry import BotRegistry
 from agent_agora.conversation_store import ConversationStore
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 from agent_agora.registry import InstanceRegistry, is_operator
-from agent_agora.schemas import SchemaRegistry
+from agent_agora.storage.schemas import SchemaRegistry
 
 
 class Sweeper:

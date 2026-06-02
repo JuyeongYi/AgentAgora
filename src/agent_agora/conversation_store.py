@@ -9,7 +9,7 @@ import datetime
 import uuid
 from typing import Any
 
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 
 
 def _now_iso() -> str:

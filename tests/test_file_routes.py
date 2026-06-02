@@ -7,7 +7,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from agent_agora.files import FilePolicy, FileStore, register
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 
 
 def _client(tmp_path):

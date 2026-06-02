@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from agent_agora.errors import AgoraError
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 
 _DEFAULT_MAX_BYTES = 104_857_600  # 100 MB
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from agent_agora.errors import AgoraError
-from agent_agora.schemas import SchemaRegistry, SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY
+from agent_agora.storage.schemas import SchemaRegistry, SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY
 
 _BODY = {"type": "object", "properties": {"msgtype": {"const": "s"}}}
 _BODY2 = {"type": "object", "properties": {"msgtype": {"const": "s"}, "x": {"type": "string"}}}

@@ -23,9 +23,9 @@ from agent_agora.envelope import (
 from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.errors import AgoraError
-from agent_agora.persistence import AsyncWriteQueue, Persistence
+from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
-from agent_agora.schemas import SchemaRegistry
+from agent_agora.storage.schemas import SchemaRegistry
 from agent_agora.dispatch_console import _colored, _fmt_payload
 
 

@@ -1,6 +1,6 @@
 import pytest
 from agent_agora.errors import AgoraError, ERROR_MESSAGES
-from agent_agora.schemas import SchemaRegistry, SchemaEntry
+from agent_agora.storage.schemas import SchemaRegistry, SchemaEntry
 
 
 def test_agora_error_carries_code_and_korean_message():
@@ -126,7 +126,7 @@ def test_list_all_returns_entries_with_body():
     assert len(entries) == 1 and entries[0].body == _WF_BODY
 
 
-from agent_agora.schemas import (
+from agent_agora.storage.schemas import (
     parse_schema_lines, ensure_schemas_file, load_schemas_into,
     BUNDLED_DEFAULT_SCHEMAS,
 )

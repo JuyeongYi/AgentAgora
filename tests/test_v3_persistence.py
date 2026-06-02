@@ -1,6 +1,6 @@
 import pytest
 import sqlite3
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 
 
 def test_migrate_creates_three_tables(tmp_path):
@@ -48,7 +48,7 @@ def test_participants_has_role_column(tmp_path):
 
 @pytest.mark.asyncio
 async def test_submit_transaction_commits_atomically(tmp_path):
-    from agent_agora.persistence import AsyncWriteQueue
+    from agent_agora.storage.persistence import AsyncWriteQueue
     db = tmp_path / "agora.db"
     p = Persistence(db)
     p.migrate()
@@ -66,7 +66,7 @@ async def test_submit_transaction_commits_atomically(tmp_path):
 
 @pytest.mark.asyncio
 async def test_submit_transaction_rolls_back_on_constraint_violation(tmp_path):
-    from agent_agora.persistence import AsyncWriteQueue
+    from agent_agora.storage.persistence import AsyncWriteQueue
     db = tmp_path / "agora.db"
     p = Persistence(db)
     p.migrate()
@@ -85,7 +85,7 @@ async def test_submit_transaction_rolls_back_on_constraint_violation(tmp_path):
 
 @pytest.mark.asyncio
 async def test_restore_inflight_skips_closed_conversation_messages(tmp_path):
-    from agent_agora.persistence import AsyncWriteQueue
+    from agent_agora.storage.persistence import AsyncWriteQueue
     db = tmp_path / "agora.db"
     p = Persistence(db)
     p.migrate()
@@ -226,7 +226,7 @@ def test_migrate_idempotent_reply_only_column_add(tmp_path):
 @pytest.mark.asyncio
 async def test_reply_only_survives_persistence_roundtrip(tmp_path):
     """Envelope.reply_only=True should round-trip through SQLite via dispatch INSERT + restore_inflight."""
-    from agent_agora.persistence import AsyncWriteQueue
+    from agent_agora.storage.persistence import AsyncWriteQueue
     from agent_agora.dispatch_persistence import DispatchPersistence
     from agent_agora.envelope import make_envelope, validate_payload_size, validate_priority
 
@@ -302,7 +302,7 @@ def test_lookup_source_for_returns_message_source(tmp_path):
 @pytest.mark.asyncio
 async def test_write_queue_depth_initially_zero(tmp_path):
     """write_queue_depth() returns 0 when no writes are pending."""
-    from agent_agora.persistence import AsyncWriteQueue
+    from agent_agora.storage.persistence import AsyncWriteQueue
     db = tmp_path / "agora.db"
     p = Persistence(db)
     p.migrate()
@@ -314,7 +314,7 @@ async def test_write_queue_depth_initially_zero(tmp_path):
 @pytest.mark.asyncio
 async def test_write_queue_depth_reports_queued_items(tmp_path):
     """write_queue_depth() reflects pending writes when worker is not draining."""
-    from agent_agora.persistence import AsyncWriteQueue, _TxnRequest
+    from agent_agora.storage.persistence import AsyncWriteQueue, _TxnRequest
     db = tmp_path / "agora.db"
     p = Persistence(db)
     p.migrate()

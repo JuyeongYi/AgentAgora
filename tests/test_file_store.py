@@ -10,9 +10,9 @@ from agent_agora.comm_matrix import CommMatrix
 from agent_agora.conversation_store import ConversationStore
 from agent_agora.errors import AgoraError
 from agent_agora.files import FileStore
-from agent_agora.persistence import Persistence
+from agent_agora.storage.persistence import Persistence
 from agent_agora.registry import InstanceRegistry
-from agent_agora.schemas import FILE_SHARE_NAME, FILE_SHARE_BODY
+from agent_agora.storage.schemas import FILE_SHARE_NAME, FILE_SHARE_BODY
 from agent_agora.sweeper import Sweeper
 from _helpers import make_schema_registry
 

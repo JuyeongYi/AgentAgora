@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from agent_agora.envelope import Envelope
-from agent_agora.persistence import AsyncWriteQueue, Persistence
+from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 
 
 class DispatchPersistence:

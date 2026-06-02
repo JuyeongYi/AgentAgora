@@ -48,12 +48,12 @@ from agent_agora.dashboard import (
     DashboardAuthMiddleware, EventBroker, HealthCollector, register,
 )
 from agent_agora.dispatcher import Dispatcher
-from agent_agora.persistence import AsyncWriteQueue, Persistence
+from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
 
 
 def _make_schema_registry():
-    from agent_agora.schemas import SchemaRegistry
+    from agent_agora.storage.schemas import SchemaRegistry
     return SchemaRegistry()
 
 

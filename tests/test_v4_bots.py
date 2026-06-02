@@ -5,7 +5,7 @@ from agent_agora.server import create_agora_app
 from agent_agora.registry import InstanceRegistry
 from agent_agora.registry import BotRegistry
 from agent_agora.dispatcher import Dispatcher
-from agent_agora.persistence import Persistence, AsyncWriteQueue
+from agent_agora.storage.persistence import Persistence, AsyncWriteQueue
 from _helpers import make_schema_registry, get_tool as _tool, FakeCtx
 
 

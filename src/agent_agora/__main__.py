@@ -99,9 +99,9 @@ def _build_app(
     from agent_agora.registry import BotRegistry
     from agent_agora.comm_matrix import load_comm_matrix
     from agent_agora.dispatcher import Dispatcher
-    from agent_agora.persistence import AsyncWriteQueue, Persistence
+    from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
     from agent_agora.registry import InstanceRegistry
-    from agent_agora.schemas import SchemaRegistry, ensure_schemas_file, load_schemas_into
+    from agent_agora.storage.schemas import SchemaRegistry, ensure_schemas_file, load_schemas_into
     from agent_agora.server import create_agora_app
 
     _warn_legacy_schemas_json(agora_dir)
@@ -115,7 +115,7 @@ def _build_app(
     # Schema 로드: (1) .agentagora/schemas.jsonl 빌트인 로드, (2) schema_conflict 시스템 스키마.
     # 런타임 등록 스키마는 복원하지 않는다 — ref-counting 하에서 holder가 죽어 고아 ref가
     # 되므로(spec §3 재시작 동작). 봇·워커는 재접속 시 스스로 재등록한다.
-    from agent_agora.schemas import (SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
+    from agent_agora.storage.schemas import (SCHEMA_CONFLICT_NAME, SCHEMA_CONFLICT_BODY,
                                      FILE_SHARE_NAME, FILE_SHARE_BODY)
     schema_registry = SchemaRegistry()
     schemas_file = ensure_schemas_file(agora_dir / "schemas.jsonl")

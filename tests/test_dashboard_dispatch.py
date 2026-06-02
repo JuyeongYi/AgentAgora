@@ -15,7 +15,7 @@ from agent_agora.dashboard import (
     register, DASHBOARD_PROTECTED_PATHS,
 )
 from agent_agora.dispatcher import Dispatcher
-from agent_agora.persistence import AsyncWriteQueue, Persistence
+from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
 from _helpers import make_schema_registry
 

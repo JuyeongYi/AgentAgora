@@ -45,6 +45,7 @@ def test_built_wheel_includes_dashboard_static(tmp_path):
         "agent_agora/dashboard/dashboard_static/js/dashboard.js",
         "agent_agora/dashboard/dashboard_static/vendor/tabulator.min.js",
         "agent_agora/dashboard/dashboard_static/vendor/tabulator.min.css",
+        "agent_agora/storage/default_schemas.jsonl",
     ]
     missing = [r for r in required if r not in names]
     assert not missing, (

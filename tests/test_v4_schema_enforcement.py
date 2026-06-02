@@ -4,7 +4,7 @@ from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry
-from agent_agora.persistence import Persistence, AsyncWriteQueue
+from agent_agora.storage.persistence import Persistence, AsyncWriteQueue
 from agent_agora.errors import AgoraError
 from agent_agora.server import create_agora_app
 from _helpers import make_schema_registry, tany, wf, get_tool as _tool, FakeCtx
@@ -207,7 +207,7 @@ async def test_schema_persists_across_restart(tmp_path):
     mcp2 = _build_app(agora_dir=agora_dir, port=0)
     assert mcp2._agora_schema_registry.get("domain_x") is None  # 복원 안 됨
     # 빌트인 schema와 schema_conflict는 여전히 로드됨
-    from agent_agora.schemas import SCHEMA_CONFLICT_NAME
+    from agent_agora.storage.schemas import SCHEMA_CONFLICT_NAME
     assert mcp2._agora_schema_registry.get(SCHEMA_CONFLICT_NAME) is not None
 
 

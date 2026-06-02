@@ -8,7 +8,7 @@ import pytest_asyncio
 
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.registry import InstanceRegistry, InstanceInfo
-from agent_agora.persistence import Persistence, AsyncWriteQueue
+from agent_agora.storage.persistence import Persistence, AsyncWriteQueue
 from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.envelope import make_envelope
