@@ -5,7 +5,7 @@ text, and centralise the JSON-parse / msgtype-injection boilerplate.
 """
 import json
 
-from agent_agora.dashboard_routes import _error_to_response, _inject_msgtype
+from agent_agora.dashboard.routes import _error_to_response, _inject_msgtype
 from agent_agora.dispatcher import DispatcherClosed
 from agent_agora.errors import AgoraError
 from agent_agora.registry import NotRegisteredError

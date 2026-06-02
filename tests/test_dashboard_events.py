@@ -5,7 +5,7 @@ import asyncio
 import datetime
 import pytest
 
-from agent_agora.dashboard_events import EventBroker
+from agent_agora.dashboard import EventBroker
 from agent_agora.envelope import make_envelope
 
 

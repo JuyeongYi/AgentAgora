@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-STATIC_DIR = REPO_ROOT / "src" / "agent_agora" / "dashboard_static"
+STATIC_DIR = REPO_ROOT / "src" / "agent_agora" / "dashboard" / "dashboard_static"
 
 
 def test_vendor_libraries_present():
@@ -44,10 +44,9 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
-from agent_agora.dashboard_auth import DashboardAuthMiddleware
-from agent_agora.dashboard_events import EventBroker
-from agent_agora.dashboard_health import HealthCollector
-from agent_agora.dashboard_routes import register
+from agent_agora.dashboard import (
+    DashboardAuthMiddleware, EventBroker, HealthCollector, register,
+)
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
@@ -88,7 +87,7 @@ def real_server_app(tmp_path):
     event_broker.attach_to_dispatcher(dispatcher)
 
     # single source — see agent_agora.dashboard_routes.DASHBOARD_PROTECTED_PATHS
-    from agent_agora.dashboard_routes import DASHBOARD_PROTECTED_PATHS as PROTECTED_PATHS
+    from agent_agora.dashboard import DASHBOARD_PROTECTED_PATHS as PROTECTED_PATHS
 
     @contextlib.asynccontextmanager
     async def lifespan(app):

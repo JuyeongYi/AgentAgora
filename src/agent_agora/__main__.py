@@ -255,10 +255,11 @@ async def run_server(args: argparse.Namespace) -> None:
                 make_file_policy_route(mcp._agora_file_policy, _admin_token))  # type: ignore[attr-defined]
             print("  Admin    : POST/GET /admin/file-policy (AGORA_ADMIN_TOKEN set)")
         import time as _time
-        from agent_agora.dashboard_health import HealthCollector
-        from agent_agora.dashboard_events import EventBroker
-        from agent_agora.dashboard_auth import DashboardAuthMiddleware, parse_tokens
-        from agent_agora.dashboard_routes import (
+        from agent_agora.dashboard import (
+            HealthCollector,
+            EventBroker,
+            DashboardAuthMiddleware,
+            parse_tokens,
             register as register_dashboard,
             DASHBOARD_PROTECTED_PATHS,
             DASHBOARD_QUERY_PARAM_PATHS,

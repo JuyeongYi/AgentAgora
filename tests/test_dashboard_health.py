@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 
-from agent_agora.dashboard_health import HealthCollector
+from agent_agora.dashboard import HealthCollector
 
 
 class _FakePersistence:

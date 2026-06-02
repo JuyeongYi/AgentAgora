@@ -4,7 +4,7 @@ The list was previously copy-pasted in __main__ + two test modules and could
 drift. It now lives once in dashboard_routes; this pins its canonical contents
 and the query-param subset.
 """
-from agent_agora.dashboard_routes import (
+from agent_agora.dashboard import (
     DASHBOARD_PROTECTED_PATHS,
     DASHBOARD_QUERY_PARAM_PATHS,
 )

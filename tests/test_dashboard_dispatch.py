@@ -10,10 +10,10 @@ from starlette.testclient import TestClient
 
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
-from agent_agora.dashboard_auth import DashboardAuthMiddleware
-from agent_agora.dashboard_events import EventBroker
-from agent_agora.dashboard_health import HealthCollector
-from agent_agora.dashboard_routes import register, DASHBOARD_PROTECTED_PATHS
+from agent_agora.dashboard import (
+    DashboardAuthMiddleware, EventBroker, HealthCollector,
+    register, DASHBOARD_PROTECTED_PATHS,
+)
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry

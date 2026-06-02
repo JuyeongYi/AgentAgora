@@ -40,11 +40,11 @@ def test_built_wheel_includes_dashboard_static(tmp_path):
         names = set(zf.namelist())
 
     required = [
-        "agent_agora/dashboard_static/css/dashboard.css",
-        "agent_agora/dashboard_static/js/login.js",
-        "agent_agora/dashboard_static/js/dashboard.js",
-        "agent_agora/dashboard_static/vendor/tabulator.min.js",
-        "agent_agora/dashboard_static/vendor/tabulator.min.css",
+        "agent_agora/dashboard/dashboard_static/css/dashboard.css",
+        "agent_agora/dashboard/dashboard_static/js/login.js",
+        "agent_agora/dashboard/dashboard_static/js/dashboard.js",
+        "agent_agora/dashboard/dashboard_static/vendor/tabulator.min.js",
+        "agent_agora/dashboard/dashboard_static/vendor/tabulator.min.css",
     ]
     missing = [r for r in required if r not in names]
     assert not missing, (

@@ -8,7 +8,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from agent_agora.dashboard_auth import DashboardAuthMiddleware, parse_tokens
+from agent_agora.dashboard import DashboardAuthMiddleware, parse_tokens
 
 
 def _make_app(mode: str, tokens: dict | None = None) -> Starlette:
@@ -125,7 +125,7 @@ def test_trust_mode_query_param_fallback_for_sse():
 
 def test_trust_mode_stream_path_allows_query():
     """미들웨어 빌드 시 query_param_paths로 지정한 path는 query fallback."""
-    from agent_agora.dashboard_auth import DashboardAuthMiddleware
+    from agent_agora.dashboard import DashboardAuthMiddleware
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse
     from starlette.routing import Route
@@ -140,7 +140,7 @@ def test_trust_mode_stream_path_allows_query():
 
 
 def test_token_mode_stream_path_allows_token_query():
-    from agent_agora.dashboard_auth import DashboardAuthMiddleware
+    from agent_agora.dashboard import DashboardAuthMiddleware
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse
     from starlette.routing import Route

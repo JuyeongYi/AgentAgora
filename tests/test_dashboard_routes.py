@@ -9,7 +9,7 @@ from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
-from agent_agora.dashboard_routes import register, build_dashboard_data
+from agent_agora.dashboard import register, build_dashboard_data
 from _helpers import make_schema_registry
 
 
