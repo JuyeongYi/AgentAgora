@@ -18,7 +18,7 @@ from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from agent_agora.registry import NotRegisteredError
+from agent_agora.registry import NotRegisteredError, operator_id
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ def register(
 
     def _lazy_register_operator(user: str) -> None:
         """operator:<user> 가 레지스트리에 없으면 pseudo-instance로 등록한다."""
-        sender = f"operator:{user}"
+        sender = operator_id(user)
         try:
             instance_registry.resolve_instance_id(sender)
         except NotRegisteredError:
@@ -226,7 +226,7 @@ def register(
             return JSONResponse({"error": "schema required"}, status_code=422)
 
         user = request.state.operator_user
-        sender = f"operator:{user}"
+        sender = operator_id(user)
         _lazy_register_operator(user)
 
         # 워커 존재 확인
@@ -276,7 +276,7 @@ def register(
             return JSONResponse({"error": "schema required"}, status_code=422)
 
         user = request.state.operator_user
-        sender = f"operator:{user}"
+        sender = operator_id(user)
         _lazy_register_operator(user)
 
         results = []
@@ -299,7 +299,7 @@ def register(
     async def operator_inbox_endpoint(request: Request) -> JSONResponse:
         """GET /dashboard/operator/inbox — 운영자 인박스 조회."""
         user = request.state.operator_user
-        recipient = f"operator:{user}"
+        recipient = operator_id(user)
         include_acked = request.query_params.get("include_acked") == "true"
         msgs = persistence.fetch_messages_for(recipient=recipient, include_acked=include_acked)
         return JSONResponse({"messages": msgs})

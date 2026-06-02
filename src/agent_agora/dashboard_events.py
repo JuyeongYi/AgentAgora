@@ -13,6 +13,8 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
+from agent_agora.registry import is_operator, strip_operator_prefix
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,10 +88,10 @@ class EventBroker:
         })
         # 운영자 대상 메시지면 별도 이벤트로도 publish
         recipient = getattr(envelope, "target", "") or ""
-        if recipient.startswith("operator:"):
+        if is_operator(recipient):
             self.publish({
                 "type": "operator_inbox_message",
-                "target_operator": recipient[len("operator:"):],
+                "target_operator": strip_operator_prefix(recipient),
                 "sender": getattr(envelope, "source", None),
                 "schema": msgtype,
                 "timestamp": getattr(envelope, "created_at", None),

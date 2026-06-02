@@ -25,6 +25,22 @@ def is_operator(instance_id: str) -> bool:
     return len(instance_id) > len(OPERATOR_PREFIX)
 
 
+def operator_id(user: str) -> str:
+    """Build the operator pseudo-instance id for a dashboard user."""
+    return OPERATOR_PREFIX + user
+
+
+def strip_operator_prefix(instance_id: str) -> str | None:
+    """Return the username for an operator pseudo-instance, else None.
+
+    None for non-operators and for the bare 'operator:' prefix (no username) —
+    matches is_operator's length guard.
+    """
+    if not is_operator(instance_id):
+        return None
+    return instance_id[len(OPERATOR_PREFIX):]
+
+
 @dataclass(frozen=True)
 class InstanceInfo:
     instance_id: str
