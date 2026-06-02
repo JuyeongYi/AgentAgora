@@ -8,8 +8,7 @@ import pytest
 from agent_agora.bot_registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dispatcher import Dispatcher
-from agent_agora.file_policy import FilePolicy
-from agent_agora.file_store import FileStore
+from agent_agora.files import FilePolicy, FileStore
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
 from agent_agora.server import create_agora_app

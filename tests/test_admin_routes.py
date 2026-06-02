@@ -8,7 +8,7 @@ from starlette.testclient import TestClient
 
 from agent_agora.admin_routes import make_admin_route, make_file_policy_route, maybe_register
 from agent_agora.comm_matrix import CommMatrix
-from agent_agora.file_policy import FilePolicy
+from agent_agora.files import FilePolicy
 
 _TOKEN = "test-secret"
 _HUB = "Inst1,Coder1\n0,1\n1,0\n"

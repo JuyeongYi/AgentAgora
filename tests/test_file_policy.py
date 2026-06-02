@@ -6,7 +6,7 @@ import json
 import pytest
 
 from agent_agora.errors import AgoraError
-from agent_agora.file_policy import FilePolicy
+from agent_agora.files import FilePolicy
 
 _POLICY = json.dumps({
     "workers": {

@@ -135,8 +135,7 @@ def _build_app(
         persistence.save_schema(entry.name, entry.body, kind=entry.kind,
                                 purpose=entry.purpose, registered_by=entry.registered_by)
 
-    from agent_agora.file_store import FileStore
-    from agent_agora.file_policy import load_file_policy
+    from agent_agora.files import FileStore, load_file_policy
     file_store = FileStore(agora_dir, persistence)
     file_policy = load_file_policy(agora_dir / "file-policy.json")
     write_queue = AsyncWriteQueue(persistence)
@@ -314,7 +313,7 @@ async def run_server(args: argparse.Namespace) -> None:
         print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")
         print("  Dashboard: GET /dashboard/operator/inbox, POST /dashboard/operator/inbox/ack")
         print(f"  Dashboard: auth mode = {_dash_auth_mode}")
-        from agent_agora.file_routes import register as register_files
+        from agent_agora.files import register as register_files
         register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
                        file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]
         print("  Files    : POST /files, GET /files/<id>")

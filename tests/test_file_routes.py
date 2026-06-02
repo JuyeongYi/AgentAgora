@@ -6,9 +6,7 @@ import json as _json
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from agent_agora.file_policy import FilePolicy
-from agent_agora.file_routes import register
-from agent_agora.file_store import FileStore
+from agent_agora.files import FilePolicy, FileStore, register
 from agent_agora.persistence import Persistence
 
 
