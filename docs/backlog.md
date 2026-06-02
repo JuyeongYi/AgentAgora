@@ -1,14 +1,14 @@
 # Backlog — 미뤄둔 작업
 
-## 진행 중
+## 완료
 
-- **wait-tool-gating** — `agora.wait_notify`(블로킹 long-poll)를 채널 모드 워커
-  (Claude Code)의 MCP 도구 표면에서 들어내는 작업. spec 완료 —
-  `docs/superpowers/specs/2026-05-18-wait-tool-gating-design.md`, 브랜치
-  `wait-tool-gating`. 다음 단계는 구현 플랜 작성 → 구현 → 브랜치 마무리. 설계
-  요지: `GET /channel/wait` HTTP 엔드포인트 신설(always-on), `agora-channel`
-  어댑터·`AgoraBot` SDK를 HTTP로 전환, MCP `agora.wait_notify`는 기본 비등록 +
-  `--add-wait` 플래그로만 등록.
+- ~~**wait-tool-gating**~~ — ✅ 완료(2026-06-03 확인). 3요소 모두 master에 구현·테스트됨:
+  (1) `GET /channel/wait` always-on(`channel_routes.py`, `__main__`에서 무조건 등록),
+  (2) `agora-channel` 어댑터·`AgoraBot` SDK가 HTTP 경로 사용(`_broker_http.py`),
+  (3) MCP `agora.wait_notify`는 기본 비등록 + `--add-wait`로만 등록(`server.py:648` 게이트,
+  `__main__ --add-wait`). 테스트: `test_v4_wait_notify`(기본 미등록/플래그 등록)·
+  `test_main`(플래그 기본값). 설계 spec은 `2026-05-18-wait-tool-gating-design.md`(보존).
+  ※ `wait-tool-gating` 브랜치는 redundant(옛 spec 초안, 168 behind) — 삭제 가능.
 
 ## 리팩토링 로드맵 — 2026-06-03 전수 분석 (ultracode 워크플로)
 
