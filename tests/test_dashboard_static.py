@@ -87,16 +87,8 @@ def real_server_app(tmp_path):
     event_broker = EventBroker(max_queue=100)
     event_broker.attach_to_dispatcher(dispatcher)
 
-    PROTECTED_PATHS = [
-        "/dashboard/data",
-        "/dashboard/dispatch",
-        "/dashboard/broadcast",
-        "/dashboard/operator",
-        "/dashboard/conversation",
-        "/dashboard/instance",
-        "/dashboard/schemas",
-        "/dashboard/stream",
-    ]
+    # single source — see agent_agora.dashboard_routes.DASHBOARD_PROTECTED_PATHS
+    from agent_agora.dashboard_routes import DASHBOARD_PROTECTED_PATHS as PROTECTED_PATHS
 
     @contextlib.asynccontextmanager
     async def lifespan(app):

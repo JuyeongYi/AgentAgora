@@ -27,6 +27,22 @@ _DASHBOARD_HTML = Path(__file__).with_name("dashboard.html")
 # 대시보드 대화 목록에 싣는 최근 대화 수 (전체가 아닌 최근 N개).
 _RECENT_CONVERSATIONS = 50
 
+# 인증이 필요한 대시보드 라우트 — 단일 소스. __main__의 미들웨어 배선과 테스트가
+# 이 상수를 import해 production 설정과 테스트가 절대 drift하지 않게 한다.
+DASHBOARD_PROTECTED_PATHS = [
+    "/dashboard/data",
+    "/dashboard/dispatch",
+    "/dashboard/broadcast",
+    "/dashboard/operator",
+    "/dashboard/conversation",
+    "/dashboard/instance",
+    "/dashboard/schemas",
+    "/dashboard/stream",
+]
+# 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
+# 헤더를 못 실어서). DASHBOARD_PROTECTED_PATHS의 부분집합이어야 한다.
+DASHBOARD_QUERY_PARAM_PATHS = ["/dashboard/stream"]
+
 
 def build_dashboard_data(*, dispatcher, instance_registry, bot_registry,
                          comm_matrix, health_collector=None) -> dict:

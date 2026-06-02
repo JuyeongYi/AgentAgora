@@ -13,7 +13,7 @@ from agent_agora.comm_matrix import CommMatrix
 from agent_agora.dashboard_auth import DashboardAuthMiddleware
 from agent_agora.dashboard_events import EventBroker
 from agent_agora.dashboard_health import HealthCollector
-from agent_agora.dashboard_routes import register
+from agent_agora.dashboard_routes import register, DASHBOARD_PROTECTED_PATHS
 from agent_agora.dispatcher import Dispatcher
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
@@ -28,16 +28,8 @@ def _auth(user: str) -> dict:
 # Fixtures
 # ---------------------------------------------------------------------------
 
-_PROTECTED_PATHS = [
-    "/dashboard/data",
-    "/dashboard/dispatch",
-    "/dashboard/broadcast",
-    "/dashboard/operator",
-    "/dashboard/conversation",
-    "/dashboard/instance",
-    "/dashboard/schemas",
-    "/dashboard/stream",
-]
+# single source — see agent_agora.dashboard_routes.DASHBOARD_PROTECTED_PATHS
+_PROTECTED_PATHS = DASHBOARD_PROTECTED_PATHS
 
 
 @pytest.fixture

@@ -259,7 +259,11 @@ async def run_server(args: argparse.Namespace) -> None:
         from agent_agora.dashboard_health import HealthCollector
         from agent_agora.dashboard_events import EventBroker
         from agent_agora.dashboard_auth import DashboardAuthMiddleware, parse_tokens
-        from agent_agora.dashboard_routes import register as register_dashboard
+        from agent_agora.dashboard_routes import (
+            register as register_dashboard,
+            DASHBOARD_PROTECTED_PATHS,
+            DASHBOARD_QUERY_PARAM_PATHS,
+        )
 
         _dash_auth_mode = os.environ.get("AGORA_DASHBOARD_AUTH_MODE", "trust")
         try:
@@ -284,23 +288,12 @@ async def run_server(args: argparse.Namespace) -> None:
         _event_broker = EventBroker(max_queue=1000)
         _event_broker.attach_to_dispatcher(dispatcher)
 
-        _DASHBOARD_PROTECTED_PATHS = [
-            "/dashboard/data",
-            "/dashboard/dispatch",
-            "/dashboard/broadcast",
-            "/dashboard/operator",
-            "/dashboard/conversation",
-            "/dashboard/instance",
-            "/dashboard/schemas",
-            "/dashboard/stream",
-        ]
-
         starlette_app.add_middleware(
             DashboardAuthMiddleware,
             mode=_dash_auth_mode,
             tokens=_dash_tokens,
-            protected_paths=_DASHBOARD_PROTECTED_PATHS,
-            query_param_paths=["/dashboard/stream"],
+            protected_paths=DASHBOARD_PROTECTED_PATHS,
+            query_param_paths=DASHBOARD_QUERY_PARAM_PATHS,
         )
 
         register_dashboard(
