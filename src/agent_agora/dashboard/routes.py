@@ -126,7 +126,11 @@ def build_dashboard_data(*, dispatcher, instance_registry, bot_registry,
         "instances": inst_rows,
         "bots": bot_rows,
         "conversations": convs,
-        "comm_matrix": {"active": comm_matrix.active, "matrix": comm_matrix.snapshot()},
+        "comm_matrix": {
+            "active": comm_matrix.active,
+            "matrix": comm_matrix.snapshot(),
+            "cycles": comm_matrix.cycles(),  # 진단 — 라우팅 루프(SCC/self-loop). 거부 아님.
+        },
     }
     if health_collector is not None:
         data["server"] = health_collector.snapshot()

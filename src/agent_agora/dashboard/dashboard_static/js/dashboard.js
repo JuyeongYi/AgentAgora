@@ -128,11 +128,17 @@
     const circles = nodes.map(n =>
       `<circle class="node" cx="${pos[n].x}" cy="${pos[n].y}" r="18"/>` +
       `<text class="nodelabel" x="${pos[n].x}" y="${pos[n].y + 4}">${escape(n)}</text>`).join('');
+    // 라우팅 루프(SCC/self-loop) 진단 — 거부 아님, 정상 반복 워크플로일 수 있음.
+    const cyc = cm.cycles || [];
+    const cyclesNote = cyc.length
+      ? `<p class="cycles-note">⚠ 라우팅 루프 ${cyc.length}개: ${
+          cyc.map(c => escape(c.join(' → '))).join(' / ')} (진단 — 정상 반복일 수 있음)</p>`
+      : '';
     wrap.innerHTML =
       `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
       `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
       `<path d="M0 0 L10 5 L0 10 z" fill="#7a7ad0"/></marker></defs>` +
-      edges + circles + `</svg>`;
+      edges + circles + `</svg>` + cyclesNote;
   }
 
   function escape(s) {
