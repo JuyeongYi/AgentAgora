@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_agora.auto_register import AutoRegisterMiddleware
+from agent_agora.http.auto_register import AutoRegisterMiddleware
 from agent_agora.registry import InstanceRegistry, NotRegisteredError
 
 

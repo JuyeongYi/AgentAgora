@@ -152,7 +152,7 @@ async def test_auto_register_middleware_fires_register_hook():
 
     Fix 2 회귀 가드: 이 hook이 wired 되지 않으면 SSE에 instance_registered 이벤트가
     영원히 안 나간다."""
-    from agent_agora.auto_register import AutoRegisterMiddleware
+    from agent_agora.http.auto_register import AutoRegisterMiddleware
     from agent_agora.registry import InstanceRegistry
 
     class FakeDispatcher:

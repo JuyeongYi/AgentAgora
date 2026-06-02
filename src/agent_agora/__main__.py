@@ -199,7 +199,7 @@ async def run_server(args: argparse.Namespace) -> None:
     import uvicorn
     _setup_console_logging()
 
-    from agent_agora.auto_register import AutoRegisterMiddleware
+    from agent_agora.http.auto_register import AutoRegisterMiddleware
     from agent_agora.certs import ensure_certs
 
     agora_dir = args.dir / ".agentagora"
@@ -259,7 +259,7 @@ async def run_server(args: argparse.Namespace) -> None:
             registry=instance_registry,
             dispatcher=dispatcher,
         )
-        from agent_agora.admin_routes import maybe_register, make_file_policy_route
+        from agent_agora.http.admin_routes import maybe_register, make_file_policy_route
         _admin_token = os.environ.get("AGORA_ADMIN_TOKEN")
         if maybe_register(
             starlette_app, mcp._agora_comm_matrix,  # type: ignore[attr-defined]
@@ -336,7 +336,7 @@ async def run_server(args: argparse.Namespace) -> None:
         print("  Files    : POST /files, GET /files/<id>")
         # GET /channel/wait는 --add-wait와 무관하게 항상 등록한다 — 채널
         # 어댑터·봇 SDK의 인박스 감지가 이 라우트에 의존하기 때문.
-        from agent_agora.channel_routes import register as register_channel
+        from agent_agora.http.channel_routes import register as register_channel
         register_channel(starlette_app, dispatcher=dispatcher)
         print("  Channel  : GET /channel/wait")
         config_kwargs = {

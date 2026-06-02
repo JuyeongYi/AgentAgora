@@ -8,7 +8,7 @@
   - 라우팅 코어: `server.py`(FastMCP `agora.*` 도구), `dispatcher.py`(메시지 라우터 — in-memory 큐 + SQLite cold path), `conversation_store.py`·`dispatch_console.py`, `envelope.py`(메시지 envelope + 검증), `errors.py`
   - 레지스트리: `registry/` 서브패키지 — `core.py`(`_BidirectionalRegistry` 베이스 + `InstanceRegistry` + operator 헬퍼), `bot.py`(`BotRegistry` 봇 네임스페이스). `__init__`가 공개 표면 re-export.
   - 영속: `persistence.py`(SQLite WAL — conversations·messages, AsyncWriteQueue), `dispatch_persistence.py`, `schemas.py`(런타임 가변 JSON Schema 카탈로그), `sweeper.py`(주기 sweep — TTL·dead-session·GC)
-  - HTTP 라우트·미들웨어: `auto_register.py`(`X-Agora-*` 자동 등록), `admin_routes.py`(`AGORA_ADMIN_TOKEN` 게이팅), `channel_routes.py`(`GET /channel/wait`)
+  - HTTP 라우트·미들웨어: `http/` 서브패키지 — `auto_register.py`(`X-Agora-*` 자동 등록), `admin_routes.py`(`AGORA_ADMIN_TOKEN` 게이팅), `channel_routes.py`(`GET /channel/wait`)
   - 대시보드: `dashboard/` 서브패키지 — `routes.py`(HTTP 라우트 + `dashboard.html`·`dashboard_static/` 동거), `events.py`(SSE 브로커), `auth.py`(`DashboardAuthMiddleware`), `health.py`. `__init__`가 공개 표면 re-export.
   - 채널 모드: `channel_adapter.py`(워커별 stdio MCP 채널 서버 — 인박스 감지 → `claude/channel` 알림)
   - 봇 SDK: `bot.py`(`AgoraBot` 베이스 클래스), `_broker_http.py`(채널/봇 공유 `/channel/wait` HTTP 클라이언트)

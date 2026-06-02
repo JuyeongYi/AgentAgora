@@ -6,7 +6,7 @@ import json as _json
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from agent_agora.admin_routes import make_admin_route, make_file_policy_route, maybe_register
+from agent_agora.http.admin_routes import make_admin_route, make_file_policy_route, maybe_register
 from agent_agora.comm_matrix import CommMatrix
 from agent_agora.files import FilePolicy
 
