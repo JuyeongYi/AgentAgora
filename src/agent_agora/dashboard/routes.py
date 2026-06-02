@@ -383,13 +383,27 @@ def register(
         return JSONResponse({"messages": msgs})
 
     async def schemas_endpoint(request: Request) -> JSONResponse:
-        """GET /dashboard/schemas — 등록된 스키마 카탈로그."""
+        """GET /dashboard/schemas — 스키마 카탈로그 (메타 + ref holder 사용통계 근사).
+
+        id/schema는 dispatch 모달 dropdown 하위호환용으로 보존하고, kind·purpose·
+        registered_by·registered_at·refs(ref holder 집합)·ref_count를 함께 노출해
+        read-only explorer가 소비한다."""
         if schema_registry is None:
             return JSONResponse({"schemas": []})
-        items = [
-            {"id": entry.name, "schema": entry.body}
-            for entry in schema_registry.list_all()
-        ]
+        items = []
+        for entry in schema_registry.list_all():
+            refs = sorted(schema_registry.refs_of(entry.name))
+            items.append({
+                "id": entry.name,
+                "name": entry.name,
+                "kind": entry.kind,
+                "purpose": entry.purpose,
+                "registered_by": entry.registered_by,
+                "registered_at": entry.registered_at,
+                "refs": refs,
+                "ref_count": len(refs),
+                "schema": entry.body,
+            })
         return JSONResponse({"schemas": items})
 
     app.router.routes.append(

@@ -234,6 +234,18 @@ def test_operator_inbox_empty_initially(dashboard_client):
     assert r.json()["messages"] == []
 
 
+def test_schemas_endpoint_includes_meta_and_refs(dashboard_client):
+    """스키마 explorer 백엔드 — /dashboard/schemas가 kind/purpose/registered_by/ref_count
+    메타를 함께 반환하되, 기존 dispatch dropdown용 id/schema도 보존(하위호환)."""
+    r = dashboard_client.get("/dashboard/schemas", headers=_auth("alice"))
+    assert r.status_code == 200
+    schemas = r.json()["schemas"]
+    assert schemas, "스키마 카탈로그가 비어있지 않아야 함(번들 + test_any)"
+    s0 = schemas[0]
+    for key in ("id", "name", "kind", "purpose", "registered_by", "ref_count", "schema"):
+        assert key in s0, f"스키마 항목에 '{key}' 누락"
+
+
 def test_dispatch_response_surfaces_deliveries(dashboard_client, register_worker):
     """dispatch 응답이 deliveries/skipped_full/target_inbox_depth_after를 통과시킨다 —
     운영자가 fan-out 결과(만석 skip 포함)를 즉시 인지."""
