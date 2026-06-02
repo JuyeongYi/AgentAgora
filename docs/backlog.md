@@ -202,12 +202,21 @@ unregister/dead-sweep 레이어 churn 완화). drop된 `registry-last-seen-test-
 
 2026-05-21 `interactive-dashboard`(설계 문서는 git 히스토리)에서 비목표로 미룬 항목들 — **미구현 미래 후보**(정리 대상 아님). MVP는 운영자 dispatch + 드릴다운 + SSE + 헬스 + trust/token 인증까지 포함했고, 아래는 그 위에 쌓는 후속이다.
 
+### ✅ 구현 완료 (2026-06-03 — dashboard 빌드아웃)
+
+- ~~**에러/이벤트 로그 패널**~~ — ✅ `RingBufferLogHandler` + `GET /dashboard/logs`(min_level/limit) + 로그 모달.
+- ~~**스키마 카탈로그 explorer**~~ — ✅ `/dashboard/schemas` 메타(kind/purpose/refs) 확장 + read-only explorer 모달(`schemas.js`).
+- ~~**파일 스토어 뷰**~~ — ✅ `persistence.list_files()` + `GET /dashboard/files` + 파일 모달(다운로드 링크).
+- **expect_result 커버리지** — ✅ `dispatcher.coverage()` + `GET /dashboard/coverage/{command_id}`(pending/responded/deadline/expired).
+- **deadline 만료 SSE** — ✅ `deadline_expired` 이벤트(`register_deadline_hook`) → 대시보드 실시간 경고.
+- **comm-matrix 루프 진단** — ✅ `cycles()` 오버레이(SCC/self-loop, 거부 아님 진단).
+- **dispatch 전달 결과 노출** — ✅ `/dashboard/dispatch` 응답에 deliveries/skipped_full/target_inbox_depth_after.
+
+### 남은 후속 (deferred)
+
 - **워크플로 파이프라인 시각화** — superpowers persona 체인(planner→router→implementer→tester→reviewer→improver)을 Sankey/파이프라인 뷰로 시각화. in-flight 메시지를 위치 표시. Cytoscape.js 도입 필요.
 - **운영자 액션 (state-changing)** — 멈춘 대화 close, dead 워커 unregister, comm-matrix 토글·편집·시각 편집. 이미 존재하는 `admin_routes.py`의 `AGORA_ADMIN_TOKEN` 게이트를 dashboard UI에서 사용.
-- **에러/이벤트 로그 패널** — 최근 dispatcher·sweeper 에러, 스키마 검증 실패, dead-letter 항목 등 운영 이벤트 surface. 지금은 서버 콘솔에만.
-- **스키마 카탈로그 explorer** — `/dashboard/schemas`의 JSON Schema를 시각적으로 탐색(샘플 payload 생성, 사용 통계). 현재는 dispatch 모달의 dropdown으로만.
-- **파일 스토어 뷰** — `files/store.py`의 공유 파일 목록·정책 상태·다운로드 링크 surface.
-- **시계열 차트** — 워커별 인박스 depth, dispatch rate(분당), 에러율 sparkline. SVG/Canvas 인라인.
+- **드릴다운 트랜스크립트 강화 + 시계열 차트** — 메시지 카드에 coverage 인라인 표시, 워커별 인박스 depth·dispatch rate(분당)·에러율 sparkline. SVG/Canvas 인라인.
 - **추가 인증 모드** — `basic`(htpasswd), `oidc` — `dashboard_auth.py`에 모드 분기 추가만 하면 엔드포인트 코드 변경 0.
 - **운영자별 inbox 격리 옵션** — 현재는 read-all 정책(다른 운영자 inbox 조회 가능). 비공개 정책 옵션을 환경변수 또는 설정으로 토글.
 - **검색 엔진** — FTS5 기반 메시지·대화 full-text 검색. dashboard에 검색바 + 결과 뷰.
