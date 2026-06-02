@@ -58,6 +58,20 @@ async def test_explicit_deadline_is_respected(disp):
 
 
 @pytest.mark.asyncio
+async def test_deadline_hook_fires_on_expiry(disp):
+    """register_deadline_hook 콜백이 만료 항목 {command_id,source,target}으로 호출된다
+    (대시보드 SSE deadline_expired의 소스)."""
+    captured: list = []
+    disp.register_deadline_hook(lambda entry: captured.append(entry))
+    r = await disp.dispatch(source="Inst1", target="Inst2", payload=tany(text="x"),
+                            expect_result=True, deadline_ts="2000-01-01T00:00:00+00:00")
+    cmd = r["command_id"]
+    expired = await disp.expire_overdue_deadlines(now_iso=_now_iso())
+    assert {"command_id": cmd, "source": "Inst1", "target": "Inst2"} in expired
+    assert any(e["command_id"] == cmd and e["target"] == "Inst2" for e in captured)
+
+
+@pytest.mark.asyncio
 async def test_no_deadline_without_expect_result(disp):
     r = await disp.dispatch(source="Inst1", target="Inst2", payload=tany(text="x"))
     assert r["command_id"] not in disp._deadlines

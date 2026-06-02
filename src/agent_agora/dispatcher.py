@@ -106,6 +106,7 @@ class Dispatcher:
         self._dispatch_hooks: list[Callable[[Envelope], None]] = []
         self._register_hooks: list[Callable[[Any], None]] = []  # InstanceInfo once Task 9 wires
         self._unregister_hooks: list[Callable[[str], None]] = []
+        self._deadline_hooks: list[Callable[[dict], None]] = []  # deadline 만료 통지(대시보드 SSE)
 
     # ------------------------------------------------------------------
     # event hook registration (public API)
@@ -123,6 +124,11 @@ class Dispatcher:
     def register_unregister_hook(self, callback: Callable) -> None:
         """callback(instance_id: str) — 인스턴스 해제 시 호출."""
         self._unregister_hooks.append(callback)
+
+    def register_deadline_hook(self, callback: Callable) -> None:
+        """callback(entry: {command_id, source, target}) — expect_result deadline 만료 시 호출.
+        timeout 통지(_emit_timeout)는 발신자 큐로만 가므로, 대시보드 SSE surface는 이 hook을 쓴다."""
+        self._deadline_hooks.append(callback)
 
     # ------------------------------------------------------------------
     # internal hook fire helpers (exception-safe)
@@ -148,6 +154,13 @@ class Dispatcher:
                 cb(instance_id)
             except Exception:
                 logger.exception("unregister hook raised")
+
+    def _fire_deadline_hooks(self, entry: dict) -> None:
+        for cb in list(self._deadline_hooks):  # snapshot: mutation-during-iter safe
+            try:
+                cb(entry)
+            except Exception:
+                logger.exception("deadline hook raised")
 
     # ------------------------------------------------------------------
     # Public registration-lifecycle notifications. External callers
@@ -871,6 +884,9 @@ class Dispatcher:
                 still = any(cmd_id in pm for pm in self._in_flight.values())
                 if not still:
                     self._deadlines.pop(cmd_id, None)
+        # lock 밖에서 deadline hook 발화 — 대시보드 SSE 등 구독자에 통지.
+        for entry in expired:
+            self._fire_deadline_hooks(entry)
         return expired
 
     def in_flight_count(self, instance_id: str) -> int:

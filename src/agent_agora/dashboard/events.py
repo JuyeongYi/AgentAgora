@@ -71,6 +71,7 @@ class EventBroker:
         dispatcher.register_dispatch_hook(self._on_dispatch)
         dispatcher.register_register_hook(self._on_register)
         dispatcher.register_unregister_hook(self._on_unregister)
+        dispatcher.register_deadline_hook(self._on_deadline)
 
     def _on_dispatch(self, envelope) -> None:
         # Envelope에 'schema' 필드는 없다 — 스키마는 payload['msgtype']로 식별된다
@@ -108,4 +109,13 @@ class EventBroker:
         self.publish({
             "type": "instance_unregistered",
             "instance_id": instance_id,
+        })
+
+    def _on_deadline(self, entry: dict) -> None:
+        # expect_result deadline 만료 — 발신자 큐 timeout 통지와 별개로 SSE surface.
+        self.publish({
+            "type": "deadline_expired",
+            "command_id": entry.get("command_id"),
+            "source": entry.get("source"),
+            "target": entry.get("target"),
         })

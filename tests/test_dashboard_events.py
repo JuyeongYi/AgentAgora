@@ -83,9 +83,11 @@ async def test_attach_to_dispatcher_hooks():
             self.d_hooks = []
             self.r_hooks = []
             self.u_hooks = []
+            self.dl_hooks = []
         def register_dispatch_hook(self, cb): self.d_hooks.append(cb)
         def register_register_hook(self, cb): self.r_hooks.append(cb)
         def register_unregister_hook(self, cb): self.u_hooks.append(cb)
+        def register_deadline_hook(self, cb): self.dl_hooks.append(cb)
 
     d = FakeDispatcher()
     broker = EventBroker(max_queue=100)
@@ -93,6 +95,20 @@ async def test_attach_to_dispatcher_hooks():
     assert len(d.d_hooks) == 1
     assert len(d.r_hooks) == 1
     assert len(d.u_hooks) == 1
+    assert len(d.dl_hooks) == 1
+
+
+@pytest.mark.asyncio
+async def test_on_deadline_publishes_deadline_expired():
+    """deadline 만료 entry가 deadline_expired SSE 이벤트로 publish된다."""
+    broker = EventBroker(max_queue=100)
+    sub = broker.subscribe(operator_user="alice")
+    broker._on_deadline({"command_id": "c1", "source": "Inst1", "target": "Inst2"})
+    evt = await asyncio.wait_for(sub.get(), timeout=0.5)
+    assert evt["type"] == "deadline_expired"
+    assert evt["command_id"] == "c1"
+    assert evt["source"] == "Inst1"
+    assert evt["target"] == "Inst2"
 
 
 @pytest.mark.asyncio

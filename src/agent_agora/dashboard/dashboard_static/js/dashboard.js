@@ -15,6 +15,7 @@
     window.agoraStream.on('instance_registered', () => refresh());
     window.agoraStream.on('instance_unregistered', () => refresh());
     window.agoraStream.on('message_dispatched', () => refresh());
+    window.agoraStream.on('deadline_expired', (evt) => { console.warn('deadline expired', evt); refresh(); });
     window.agoraStream.on('operator_inbox_message', (evt) => window.agoraInbox.push(evt));
     window.agoraInbox.refresh();
     window.agoraStream.connect();
