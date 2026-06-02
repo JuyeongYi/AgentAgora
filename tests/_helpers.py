@@ -31,3 +31,19 @@ def wf(message: str = "hi", type_: str = "task", **extra) -> dict:
         "from": "tester", "ts": "2026-01-01T00:00:00Z",
         "message": message, **extra,
     }
+
+
+def get_tool(mcp, name):
+    """Return the bare function behind a registered FastMCP tool (the single
+    touch-point for mcp._tool_manager)."""
+    return mcp._tool_manager.get_tool(name).fn
+
+
+class FakeCtx:
+    """Minimal MCP Context stub exposing
+    request_context.request.headers['mcp-session-id'] — what
+    server._session_id_from_ctx reads. Replaces the per-file _FakeCtx copies."""
+
+    def __init__(self, session_id):
+        self.request_context = type("RC", (), {"request": type("R", (), {
+            "headers": {"mcp-session-id": session_id}})()})()

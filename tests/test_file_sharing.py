@@ -13,17 +13,9 @@ from agent_agora.file_store import FileStore
 from agent_agora.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
 from agent_agora.server import create_agora_app
-from _helpers import make_schema_registry
+from _helpers import make_schema_registry, get_tool as _tool, FakeCtx as _FakeCtx
 
 
-class _FakeCtx:
-    def __init__(self, session_id):
-        self.request_context = type("RC", (), {"request": type("R", (), {
-            "headers": {"mcp-session-id": session_id}})()})()
-
-
-def _tool(mcp, name):
-    return mcp._tool_manager.get_tool(name).fn
 
 
 @pytest.fixture

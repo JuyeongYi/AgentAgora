@@ -7,7 +7,7 @@ from agent_agora.registry import InstanceRegistry
 from agent_agora.persistence import Persistence, AsyncWriteQueue
 from agent_agora.errors import AgoraError
 from agent_agora.server import create_agora_app
-from _helpers import make_schema_registry, tany, wf
+from _helpers import make_schema_registry, tany, wf, get_tool as _tool, FakeCtx
 
 
 @pytest.fixture
@@ -83,15 +83,6 @@ async def test_close_thread_uses_closing_schema(setup):
     assert closing_msgs[0]["payload"]["reason"] == "끝"
 
 
-class FakeCtx:
-    """_session_id_from_ctx가 읽는 ctx.request_context.request.headers를 흉내낸다."""
-    def __init__(self, session_id):
-        self.request_context = type("RC", (), {"request": type("R", (), {
-            "headers": {"mcp-session-id": session_id}})()})()
-
-
-def _tool(mcp, name):
-    return mcp._tool_manager.get_tool(name).fn
 
 
 @pytest.fixture
