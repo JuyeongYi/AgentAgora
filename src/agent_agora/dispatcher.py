@@ -762,8 +762,9 @@ class Dispatcher:
             ]
             try:
                 await self._write_queue.submit_transaction(stmts)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("flush: drained_at UPDATE failed for %s (best-effort): %s",
+                               instance_id, exc)
 
         return results
 
@@ -988,8 +989,9 @@ class Dispatcher:
                      for t in cancelled]
             try:
                 await self._write_queue.submit_transaction(stmts)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("cancel: drained_at UPDATE failed for %s (best-effort): %s",
+                               command_id, exc)
         return {"command_id": command_id, "cancelled": cancelled, "already_consumed": already}
 
     def conversations_list(

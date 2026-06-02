@@ -4,10 +4,13 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 _SCHEMA_V1 = """
@@ -294,6 +297,7 @@ class Persistence:
             try:
                 payload_val = json.loads(payload_raw)
             except (TypeError, ValueError):
+                logger.warning("message %s has non-JSON payload; returning raw text", row[0])
                 payload_val = payload_raw
             out.append({
                 "message_id": row[0],
@@ -328,6 +332,7 @@ class Persistence:
             try:
                 payload_val = json.loads(r[3])
             except (TypeError, ValueError):
+                logger.warning("message %s has non-JSON payload; returning raw text", cmd)
                 payload_val = r[3]
             seen[cmd] = {
                 "command_id": cmd, "source": r[1], "target": r[2], "payload": payload_val,
@@ -393,10 +398,11 @@ class AsyncWriteQueue:
                 if req.future is not None:
                     req.future.set_result(None)
             except Exception as e:
+                logger.warning("async write transaction failed, rolling back: %s", e)
                 try:
                     self._p.conn.execute("ROLLBACK")
                 except Exception:
-                    pass
+                    logger.exception("ROLLBACK failed after write error; connection may be corrupt")
                 if req.future is not None:
                     req.future.set_exception(e)
 
