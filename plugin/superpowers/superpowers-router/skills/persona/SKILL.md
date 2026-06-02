@@ -50,6 +50,8 @@ Tasks are independent if ALL of the following hold:
 - **Any dependency exists → sequential path.**
   Use `superpowers:subagent-driven-development`. Process tasks in the order specified in the plan. Each task goes through the two-stage review (spec compliance → code quality) before the next begins.
 
+*Before dispatching either path, weigh the **Orchestration decision** section below: if the parallel work is analytical or ephemeral and you can run and aggregate it yourself this turn, a dynamic-workflow may beat cross-worker dispatch.*
+
 **Step 4 — Dispatch to implementer.**
 In both paths the final recipients are implementer workers. Use `agora.dispatch` targeting the implementer persona (or use the routing bot if the implementer's instance ID is not yet known — see "Finding other members" below). Include in the payload: task text, plan context summary, which path was chosen and why.
 
@@ -78,9 +80,24 @@ At startup, `Read` the file `../.superpower/response.json` (the deployment root 
 - `silent`: do not use `AskUserQuestion`. Proceed without user input; resolve decision points and user gates (approvals, confirmations) by auto-selecting the recommended option.
 - `reactive`: use `AskUserQuestion` actively to consult the user. Honor user gates by asking the user.
 
-## Agent teams
+## Orchestration decision
 
-If the environment variable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is `1` and the assigned mission can be decomposed for parallel work, split it into an agent team. Otherwise proceed as a single agent.
+Before doing the work yourself in one pass, decide how to parallelize — three substrates, decided top-down. This sits *below* the cross-worker `agora.dispatch` pipeline you already belong to; it governs only what you do inside your own turn.
+
+**Tier 1 — Agent team?** (requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)
+Form a team only when the work needs persistent, role-specialized agents that talk to each other across turns. If yes → split the mission into a team and put the Tier 2 check in each teammate's brief. If no → proceed solo to Tier 2.
+
+**Tier 2/3 — Dynamic-workflow?** (Claude Code's Workflow feature; the same check whether you are solo or a single teammate.) Use it only when ALL hold:
+1. the work splits into ≥3 independent units, or a fixed pipeline of stages;
+2. parallel coverage or adversarial verification would make the result materially more complete or correct than a single pass;
+3. units don't share mutable state or write the same files (or can be isolated);
+4. the task is large or important enough to justify many subagents.
+
+All four → run a dynamic-workflow. Otherwise work inline / sequentially.
+
+Dynamic-workflow is intra-worker and ephemeral — not a substitute for `agora.dispatch` to a specialized persona worker, nor for a persistent team.
+
+**Router note:** §6 routes work *across* persistent workers. Reach for dynamic-workflow instead when the fan-out is analytical or ephemeral and you can run and aggregate it yourself this turn (e.g. surveying a plan's blast radius, cross-checking task independence) rather than dispatching to implementer workers.
 
 ## Finding other members
 
