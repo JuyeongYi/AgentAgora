@@ -159,7 +159,9 @@ transport를 계속 쓰는 것이 옳다. 관건은 **mcp 라이브러리가 sta
   남은 항목인 **런타임 schema 영속 복원은 보류** — `__main__.py:106-108`이 명시하듯
   비복원은 *의도적 설계*다(ref-counting 하에서 holder가 죽어 orphan ref가 되므로;
   봇·워커는 재접속 시 재등록). 복원하면 봇 미재접속 시 orphan schema가 남는
-  역효과. trade-off가 있어 사용자와 재논의 후 결정. JOIN 쿼리 자체는 동작(테스트 통과).
+  역효과. **결정(2026-06-03): 의도적 비복원 유지 — 미변경으로 닫음.** 재접속 재등록이
+  복구 경로이고 재시작 직후 공백은 짧게 자가치유. 실제 "재시작 직후 dispatch 실패" 통증이
+  관측되면 그때 permanent-복원 또는 grace-holder로 재논의.
 - ~~**routing-bot ACL 우회**~~ — ✅ 완료(2026-06-02 Plan B). `--bot-emit-recheck-acl`
   opt-in 플래그(기본 off). 켜면 `bot_emit(target=워커)`도 comm-matrix 재검사
   (`dispatcher._bot_emit_recheck_acl`). 봇도 `instance_id`가 있어 매트릭스 패턴 매칭 가능.
@@ -229,6 +231,10 @@ unregister/dead-sweep 레이어 churn 완화). drop된 `registry-last-seen-test-
     아니라 ACL로 강제된다. `improver` 행은 `reviewer`에서만 `>0`이 되도록 구성하면
     reviewer→improver 게이트가 토폴로지에 박힌다. team spawn 시 함께 적용할
     comm-matrix CSV 프리셋을 제공하면 운영자 수작업도 줄어든다.
+    - ✅ **프리셋 제공(2026-06-03)**: `plugin/cc-agora-ops/presets/review-gated.csv`
+      (+ `README.md`). coder↛writer 직접 금지, reviewer→writer만 허용 — 리뷰 게이트를
+      ACL로 강제. 서버 `.agentagora/comm-matrix.csv`로 적용. 테스트
+      `tests/test_comm_matrix_preset.py`. (persona SKILL.md 자율 준수 보강 옵션은 보조로 남김.)
 
 ## 미수정 버그
 
