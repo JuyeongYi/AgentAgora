@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from agent_agora.errors import AgoraError
@@ -16,6 +16,13 @@ from agent_agora.errors import AgoraError
 def register(app: Starlette, *, file_store, file_policy) -> None:
     """app에 파일 업로드·다운로드 라우트를 등록한다."""
 
+    max_bytes = file_store.max_bytes
+
+    def _too_large(size: int) -> JSONResponse:
+        return JSONResponse(
+            {"error": str(AgoraError("file_too_large", size=size, limit=max_bytes))},
+            status_code=413)
+
     async def upload(request: Request) -> JSONResponse:
         worker = request.headers.get("X-Agora-Instance-Id", "")
         name = request.headers.get("X-Agora-File-Name", "upload.bin")
@@ -23,7 +30,23 @@ def register(app: Starlette, *, file_store, file_policy) -> None:
             return JSONResponse(
                 {"error": str(AgoraError("file_upload_denied", worker=worker, name=name))},
                 status_code=403)
-        data = await request.body()
+        # Content-Length guard: reject before reading the body into memory.
+        cl = request.headers.get("content-length")
+        if cl is not None:
+            try:
+                if int(cl) > max_bytes:
+                    return _too_large(int(cl))
+            except ValueError:
+                pass
+        # Stream with a cumulative cap — covers missing/chunked/forged Content-Length.
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > max_bytes:
+                return _too_large(total)
+            chunks.append(chunk)
+        data = b"".join(chunks)
         try:
             handle = file_store.store_bytes(data, name, worker or None)
         except AgoraError as e:
@@ -48,8 +71,8 @@ def register(app: Starlette, *, file_store, file_policy) -> None:
             return JSONResponse(
                 {"error": str(AgoraError("unknown_file", file_id=file_id))},
                 status_code=404)
-        return Response(path.read_bytes(), media_type=meta["content_type"]
-                        or "application/octet-stream")
+        return FileResponse(path, media_type=meta["content_type"]
+                            or "application/octet-stream")
 
     app.router.routes.append(Route("/files", upload, methods=["POST"]))
     app.router.routes.append(Route("/files/{file_id}", download, methods=["GET"]))

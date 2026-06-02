@@ -84,3 +84,22 @@ async def test_wait_omitted_timeout_uses_server_default(client):
     r = tc.get("/channel/wait", params={"instance_id": "Inst2"})
     assert r.status_code == 200
     assert r.json()["pending"] == 0
+
+
+@pytest.mark.asyncio
+async def test_wait_timeout_clamped_to_upper_bound():
+    """An excessive timeout_ms is clamped to the upper bound (caps unbounded
+    waits). Omitted timeout still resolves to the server default (separate test)."""
+    seen = {}
+
+    class _FakeDispatcher:
+        async def wait_notify(self, *, instance_id, timeout_ms):
+            seen["timeout_ms"] = timeout_ms
+            return {"instance_id": instance_id, "pending": 0, "sources": []}
+
+    app = Starlette()
+    register(app, dispatcher=_FakeDispatcher())
+    tc = TestClient(app)
+    r = tc.get("/channel/wait", params={"instance_id": "Inst2", "timeout_ms": 999999})
+    assert r.status_code == 200
+    assert seen["timeout_ms"] == 60000

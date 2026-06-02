@@ -59,3 +59,44 @@ def test_download_denied_403(tmp_path):
     r = client.get(f"/files/{file_id}",
                    headers={"X-Agora-Instance-Id": "Reviewer1"})
     assert r.status_code == 403
+
+
+def _client_max(tmp_path, max_bytes):
+    p = Persistence(tmp_path / "agora.db")
+    p.migrate()
+    store = FileStore(tmp_path, p, max_bytes=max_bytes)
+    policy = FilePolicy()
+    app = Starlette()
+    register(app, file_store=store, file_policy=policy)
+    return TestClient(app)
+
+
+def test_upload_rejected_when_content_length_exceeds_max(tmp_path):
+    # Content-Length guard: 413 before the body is read into memory.
+    client = _client_max(tmp_path, 10)
+    r = client.post("/files", content=b"x" * 20,
+                    headers={"X-Agora-Instance-Id": "Coder1",
+                             "X-Agora-File-Name": "big.bin"})
+    assert r.status_code == 413
+
+
+def test_upload_rejected_when_streamed_body_exceeds_max(tmp_path):
+    # No Content-Length (chunked): the streaming accumulation cap must still 413.
+    client = _client_max(tmp_path, 10)
+
+    def gen():
+        yield b"x" * 20
+
+    r = client.post("/files", content=gen(),
+                    headers={"X-Agora-Instance-Id": "Coder1",
+                             "X-Agora-File-Name": "big.bin"})
+    assert r.status_code == 413
+
+
+def test_upload_within_limit_succeeds(tmp_path):
+    client = _client_max(tmp_path, 1000)
+    r = client.post("/files", content=b"small payload",
+                    headers={"X-Agora-Instance-Id": "Coder1",
+                             "X-Agora-File-Name": "ok.md"})
+    assert r.status_code == 200
+    assert "file_id" in r.json()

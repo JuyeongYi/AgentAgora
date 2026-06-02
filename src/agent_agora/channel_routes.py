@@ -17,6 +17,11 @@ from starlette.routing import Route
 
 from agent_agora.dispatcher import DispatcherClosed
 
+# Upper bound for a single long-poll wait. Caps unbounded waits (a forged/huge
+# timeout_ms can't pin a waiter indefinitely). Must exceed the channel adapter's
+# heartbeat (30000ms). Omitted timeout still falls through to the server default.
+_MAX_WAIT_MS = 60_000
+
 
 def register(app: Starlette, *, dispatcher) -> None:
     """app에 GET /channel/wait 라우트를 등록한다."""
@@ -36,6 +41,9 @@ def register(app: Starlette, *, dispatcher) -> None:
                 return JSONResponse(
                     {"error": "timeout_ms must be an integer"},
                     status_code=400)
+            # Cap only the upper bound; omitted timeout (None) keeps the server
+            # default, and small/0/negative values are passed through unchanged.
+            timeout_ms = min(timeout_ms, _MAX_WAIT_MS)
         try:
             result = await dispatcher.wait_notify(
                 instance_id=instance_id, timeout_ms=timeout_ms)

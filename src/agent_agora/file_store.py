@@ -36,6 +36,11 @@ class FileStore:
         self._persistence = persistence
         self._max_bytes = max_bytes
 
+    @property
+    def max_bytes(self) -> int:
+        """Upload size limit in bytes — HTTP routes guard against it before buffering."""
+        return self._max_bytes
+
     def _record(self, file_id, name, size, sha, ctype, registered_by) -> dict:
         self._persistence.save_file(file_id, name, size, sha, ctype,
                                     registered_by, _now_iso())
