@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -180,8 +181,23 @@ def _build_app(
     return mcp
 
 
+def _setup_console_logging() -> None:
+    """agent_agora.* 로그를 stdout에 bare 포맷으로 보낸다 — dispatcher 라우팅 배너
+    (과거 print(flush=True))를 보존하고 warning/exception을 콘솔에 노출. 멱등."""
+    log = logging.getLogger("agent_agora")
+    if any(getattr(h, "_agora_console", False) for h in log.handlers):
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler._agora_console = True  # type: ignore[attr-defined]
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+
 async def run_server(args: argparse.Namespace) -> None:
     import uvicorn
+    _setup_console_logging()
 
     from agent_agora.auto_register import AutoRegisterMiddleware
     from agent_agora.certs import ensure_certs

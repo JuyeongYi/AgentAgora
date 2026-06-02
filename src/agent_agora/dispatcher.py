@@ -362,12 +362,11 @@ class Dispatcher:
             )
 
             _to = _colored(target) if target is not None else "(schema-routed)"
-            print(
+            logger.info(
                 f"[agora] {_colored(source)} -> {_to}"
                 + (f" (cc: {','.join(_colored(c) for c in cc_deliver)})" if cc_deliver else "")
                 + (f" (bots: {','.join(_colored(b) for b in subscriber_bots)})" if subscriber_bots else "")
-                + f" : {_fmt_payload(payload)}",
-                flush=True,
+                + f" : {_fmt_payload(payload)}"
             )
 
         dispatched_to: list[dict[str, str]] = []
@@ -545,11 +544,10 @@ class Dispatcher:
                 is_broadcast=True,
             )
 
-            print(
+            logger.info(
                 f"[agora] {_colored(source)} "
                 + ("Announcement" if closing else "Broadcast")
-                + f" : {_fmt_payload(payload)}",
-                flush=True,
+                + f" : {_fmt_payload(payload)}"
             )
 
         return {
@@ -662,11 +660,10 @@ class Dispatcher:
                 env=None, cc_envs=envs, skipped_full=skipped_full,
                 payload_bytes=payload_bytes, priority_rank=priority_rank,
             )
-            print(
+            logger.info(
                 f"[agora] {_colored(source)} bot_emit"
                 + (f" -> {_colored(reply_target)}" if reply_target else " (schema-routed)")
-                + f" : {_fmt_payload(payload)}",
-                flush=True,
+                + f" : {_fmt_payload(payload)}"
             )
 
         return {
