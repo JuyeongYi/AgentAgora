@@ -174,6 +174,26 @@ class Dispatcher:
             raise AgoraError("schema_violation", detail=detail)
         return msgtype
 
+    def _fanout_to_bots(self, bot_ids, *, delivered_as, exclude, state,
+                        skipped_full, make_env, now):
+        """Lock-held 봇 fan-out (dispatch 전용). exclude에 없고 인박스가 만석이 아닌
+        각 봇에: delivered_as 봉투를 큐에 넣고, cc 참가자로 등록하고, _wake한다.
+        만석 봇은 skipped_full에 누적. 생성된 봉투 리스트를 반환한다."""
+        envs: list[Envelope] = []
+        for bot_id in bot_ids:
+            if bot_id in exclude:
+                continue
+            if len(self._queues[bot_id]) >= self._max_inbox_depth:
+                skipped_full.append(bot_id)
+                continue
+            e = make_env(bot_id, delivered_as, er=False, cl=False)
+            envs.append(e)
+            self._queues[bot_id].append(e)
+            self._conv.add_participant(state, bot_id, role="cc", delivered=True)
+            self._last_dispatch_to[bot_id] = now
+            self._wake(bot_id)
+        return envs
+
     async def dispatch(
         self,
         source: str,
@@ -306,34 +326,14 @@ class Dispatcher:
                 self._wake(c)
 
             # subscriber 봇 fan-out (delivered_as=subscribed). target과 같은 봇은 중복 제외.
-            sub_envs: list[Envelope] = []
-            for bot_id in subscriber_bots:
-                if bot_id == target:
-                    continue
-                if len(self._queues[bot_id]) >= self._max_inbox_depth:
-                    skipped_full.append(bot_id)
-                    continue
-                e = _make(bot_id, "subscribed", er=False, cl=False)
-                sub_envs.append(e)
-                self._queues[bot_id].append(e)
-                self._conv.add_participant(state, bot_id, role="cc", delivered=True)
-                self._last_dispatch_to[bot_id] = now
-                self._wake(bot_id)
+            sub_envs = self._fanout_to_bots(
+                subscriber_bots, delivered_as="subscribed", exclude={target},
+                state=state, skipped_full=skipped_full, make_env=_make, now=now)
 
-            # observer 봇 fan-out (delivered_as=cc)
-            obs_envs: list[Envelope] = []
-            for bot_id in observer_bots:
-                if bot_id == target or bot_id in subscriber_bots:
-                    continue
-                if len(self._queues[bot_id]) >= self._max_inbox_depth:
-                    skipped_full.append(bot_id)
-                    continue
-                e = _make(bot_id, "cc", er=False, cl=False)
-                obs_envs.append(e)
-                self._queues[bot_id].append(e)
-                self._conv.add_participant(state, bot_id, role="cc", delivered=True)
-                self._last_dispatch_to[bot_id] = now
-                self._wake(bot_id)
+            # observer 봇 fan-out (delivered_as=cc). target·subscriber 중복 제외.
+            obs_envs = self._fanout_to_bots(
+                observer_bots, delivered_as="cc", exclude={target, *subscriber_bots},
+                state=state, skipped_full=skipped_full, make_env=_make, now=now)
 
             # reply correlation: decrement in_flight for original source
             if in_reply_to is not None:
