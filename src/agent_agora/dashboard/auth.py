@@ -7,8 +7,12 @@ basic 모드: Authorization: Basic <b64(user:pass)> 검증. users는 username→
             ({SHA256}<b64> 또는 pbkdf2_sha256$<iters>$<salt_b64>$<hash_b64>) 맵. 신규
             의존성 0(hashlib+hmac). EventSource는 Authorization 헤더를 못 실으므로
             basic 모드에서 SSE(/stream)는 401 — SSE가 필요하면 token/trust 사용.
+jwt 모드: Authorization: Bearer <HS256 JWT> 검증(정적 시크릿). 서명·alg(HS256 강제로
+            alg:none/혼동 공격 차단)·exp를 hmac+hashlib로 로컬 검증하고 sub 클레임을
+            username으로 쓴다. 신규 의존성 0(PyJWT 불요). query fallback(?t=<jwt>)으로
+            SSE도 지원. 외부 IdP가 필요한 full OIDC의 검증가능 대체.
 
-OIDC는 외부 IdP 없이 로컬 검증 불가라 스코프 아웃 — _VALID_MODES에 넣지 않는다.
+full OIDC(JWKS·토큰 교환)는 외부 IdP 없이 로컬 검증 불가라 스코프 아웃.
 """
 from __future__ import annotations
 
@@ -16,19 +20,22 @@ import base64
 import binascii
 import hashlib
 import hmac
+import json
+import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-_VALID_MODES = ("trust", "token", "basic")
+_VALID_MODES = ("trust", "token", "basic", "jwt")
 
 
 class DashboardAuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, *, mode: str, tokens: dict[str, str],
                  protected_paths: list[str],
                  query_param_paths: list[str] | None = None,
-                 users: dict[str, str] | None = None) -> None:
+                 users: dict[str, str] | None = None,
+                 jwt_secret: str | None = None) -> None:
         if mode not in _VALID_MODES:
             raise ValueError(
                 f"unknown auth mode {mode!r}; expected one of {_VALID_MODES}"
@@ -45,6 +52,8 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             self._token_to_user[token] = user
         # basic 모드 lookup: username → passhash
         self._users: dict[str, str] = dict(users or {})
+        # jwt 모드 HS256 시크릿
+        self._jwt_secret = jwt_secret
         self._protected = tuple(protected_paths)
         self._query_param_paths = tuple(query_param_paths or [])
 
@@ -99,6 +108,18 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
                 return username
             return None
 
+        if self._mode == "jwt":
+            # Authorization: Bearer <HS256 JWT>. query fallback(?t=)으로 SSE도 지원.
+            auth = request.headers.get("authorization", "")
+            token = None
+            if auth.startswith("Bearer "):
+                token = auth[len("Bearer "):].strip()
+            elif allow_query:
+                token = request.query_params.get("t")
+            if not token:
+                return None
+            return verify_jwt(token, self._jwt_secret or "")
+
         # trust mode — mode는 __init__에서 _VALID_MODES로 검증됨
         user = (request.headers.get("x-agora-operator-user") or "").strip()
         if user:
@@ -133,6 +154,35 @@ def verify_password(plain: str, stored: str) -> bool:
     except (ValueError, binascii.Error):
         return False
     return False
+
+
+def _b64url_decode(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def verify_jwt(token: str, secret: str) -> str | None:
+    """HS256 JWT를 정적 시크릿으로 검증하고 sub(username)를 반환. 실패 시 None.
+
+    보안: 헤더 alg를 'HS256'으로 강제(alg:none·알고리즘 혼동 공격 차단), 서명을
+    상수시간 비교, exp 클레임이 있으면 만료 확인. 신규 의존성 0(hmac+hashlib).
+    """
+    try:
+        header_b64, payload_b64, sig_b64 = token.split(".")
+        header = json.loads(_b64url_decode(header_b64))
+        if header.get("alg") != "HS256":
+            return None
+        signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+        expected = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+        if not hmac.compare_digest(expected, _b64url_decode(sig_b64)):
+            return None
+        payload = json.loads(_b64url_decode(payload_b64))
+        exp = payload.get("exp")
+        if exp is not None and time.time() >= float(exp):
+            return None
+        sub = payload.get("sub")
+        return sub if isinstance(sub, str) and sub else None
+    except (ValueError, KeyError, TypeError, binascii.Error):
+        return None
 
 
 def parse_basic_users(env_value: str) -> dict[str, str]:

@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
+import json
+import time
 
 import pytest
 from starlette.applications import Starlette
@@ -14,8 +17,22 @@ from starlette.testclient import TestClient
 from agent_agora.dashboard import DashboardAuthMiddleware, parse_tokens
 
 
+def _b64url(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
+
+def _make_jwt(payload: dict, secret: str, *, alg: str = "HS256") -> str:
+    header = _b64url(json.dumps({"alg": alg, "typ": "JWT"}).encode())
+    body = _b64url(json.dumps(payload).encode())
+    signing_input = f"{header}.{body}".encode()
+    if alg == "none":
+        return f"{header}.{body}."
+    sig = _b64url(hmac.new(secret.encode(), signing_input, hashlib.sha256).digest())
+    return f"{header}.{body}.{sig}"
+
+
 def _make_app(mode: str, tokens: dict | None = None,
-              users: dict | None = None) -> Starlette:
+              users: dict | None = None, jwt_secret: str | None = None) -> Starlette:
     async def whoami(req: Request) -> JSONResponse:
         return JSONResponse({"user": req.state.operator_user})
 
@@ -27,7 +44,8 @@ def _make_app(mode: str, tokens: dict | None = None,
         Route("/auth-mode", auth_mode),
     ])
     app.add_middleware(DashboardAuthMiddleware, mode=mode, tokens=tokens or {},
-                       protected_paths=["/whoami"], users=users or {})
+                       protected_paths=["/whoami"], users=users or {},
+                       query_param_paths=["/stream"], jwt_secret=jwt_secret)
     # Force middleware stack build so __init__ errors surface eagerly
     # (Starlette는 첫 요청 전까지 미들웨어를 instantiate하지 않음).
     app.build_middleware_stack()
@@ -214,12 +232,74 @@ def test_parse_basic_users_format_and_malformed():
         parse_basic_users("alice:h1,alice:h2")
 
 
-def test_unknown_mode_still_raises_basic_is_valid():
-    # basic은 유효 — 빈 users 허용
+def test_unknown_mode_still_raises_basic_and_jwt_valid():
+    # basic·jwt는 유효 — 빈 users/secret 허용
     _make_app("basic")
+    _make_app("jwt", jwt_secret="s3cr3t")
     # oidc는 스코프 아웃 — 여전히 unknown
     with pytest.raises(ValueError, match="unknown auth mode"):
         _make_app("oidc")
+
+
+def test_jwt_mode_accepts_valid_token():
+    secret = "topsecret"
+    client = TestClient(_make_app("jwt", jwt_secret=secret))
+    tok = _make_jwt({"sub": "alice", "exp": time.time() + 3600}, secret)
+    r = client.get("/whoami", headers={"Authorization": "Bearer " + tok})
+    assert r.status_code == 200
+    assert r.json() == {"user": "alice"}
+
+
+def test_jwt_mode_rejects_wrong_secret():
+    client = TestClient(_make_app("jwt", jwt_secret="topsecret"))
+    tok = _make_jwt({"sub": "alice", "exp": time.time() + 3600}, "WRONG")
+    r = client.get("/whoami", headers={"Authorization": "Bearer " + tok})
+    assert r.status_code == 401
+
+
+def test_jwt_mode_rejects_alg_none():
+    """alg:none 공격 차단 — 서명 없는 토큰 거부."""
+    client = TestClient(_make_app("jwt", jwt_secret="topsecret"))
+    tok = _make_jwt({"sub": "alice"}, "topsecret", alg="none")
+    r = client.get("/whoami", headers={"Authorization": "Bearer " + tok})
+    assert r.status_code == 401
+
+
+def test_jwt_mode_rejects_expired():
+    secret = "topsecret"
+    client = TestClient(_make_app("jwt", jwt_secret=secret))
+    tok = _make_jwt({"sub": "alice", "exp": time.time() - 10}, secret)
+    r = client.get("/whoami", headers={"Authorization": "Bearer " + tok})
+    assert r.status_code == 401
+
+
+def test_jwt_mode_rejects_tampered_payload():
+    secret = "topsecret"
+    tok = _make_jwt({"sub": "alice", "exp": time.time() + 3600}, secret)
+    head, body, sig = tok.split(".")
+    forged_body = _b64url(json.dumps({"sub": "admin", "exp": time.time() + 3600}).encode())
+    forged = f"{head}.{forged_body}.{sig}"  # 서명 불일치
+    client = TestClient(_make_app("jwt", jwt_secret=secret))
+    r = client.get("/whoami", headers={"Authorization": "Bearer " + forged})
+    assert r.status_code == 401
+
+
+def test_jwt_mode_no_sub_rejected():
+    secret = "topsecret"
+    client = TestClient(_make_app("jwt", jwt_secret=secret))
+    tok = _make_jwt({"exp": time.time() + 3600}, secret)  # sub 없음
+    r = client.get("/whoami", headers={"Authorization": "Bearer " + tok})
+    assert r.status_code == 401
+
+
+def test_verify_jwt_unit():
+    from agent_agora.dashboard import verify_jwt
+    secret = "k"
+    assert verify_jwt(_make_jwt({"sub": "bob"}, secret), secret) == "bob"
+    assert verify_jwt(_make_jwt({"sub": "bob"}, secret), "other") is None
+    assert verify_jwt(_make_jwt({"sub": "bob"}, secret, alg="none"), secret) is None
+    assert verify_jwt("not.a.jwt", secret) is None
+    assert verify_jwt("", secret) is None
 
 
 def test_token_mode_stream_path_allows_token_query():

@@ -312,6 +312,11 @@ async def run_server(args: argparse.Namespace) -> None:
         _inbox_isolation = os.environ.get(
             "AGORA_DASHBOARD_INBOX_ISOLATION", "").strip().lower() in (
                 "1", "true", "yes", "on")
+        _jwt_secret = os.environ.get("AGORA_DASHBOARD_JWT_SECRET") or None
+        if _dash_auth_mode == "jwt" and not _jwt_secret:
+            print("[agent_agora] error: auth mode 'jwt' requires AGORA_DASHBOARD_JWT_SECRET",
+                  file=sys.stderr)
+            sys.exit(1)
 
         _health = HealthCollector(
             started_at=_time.time(),
@@ -339,6 +344,7 @@ async def run_server(args: argparse.Namespace) -> None:
             mode=_dash_auth_mode,
             tokens=_dash_tokens,
             users=_dash_users,
+            jwt_secret=_jwt_secret,
             protected_paths=DASHBOARD_PROTECTED_PATHS,
             query_param_paths=DASHBOARD_QUERY_PARAM_PATHS,
         )

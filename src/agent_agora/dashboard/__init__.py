@@ -8,6 +8,7 @@ from agent_agora.dashboard.auth import (
     DashboardAuthMiddleware,
     parse_basic_users,
     parse_tokens,
+    verify_jwt,
     verify_password,
 )
 from agent_agora.dashboard.events import EventBroker
@@ -25,6 +26,7 @@ __all__ = [
     "parse_tokens",
     "parse_basic_users",
     "verify_password",
+    "verify_jwt",
     "EventBroker",
     "HealthCollector",
     "MetricsCollector",
