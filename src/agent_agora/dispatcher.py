@@ -197,11 +197,29 @@ class Dispatcher:
         validator = self._schema_registry.validator(msgtype)
         if validator is None:
             raise AgoraError("unknown_msgtype", msgtype=msgtype)
+        self._autofill_timestamp(payload, msgtype)
         errors = sorted(validator.iter_errors(payload), key=lambda e: list(e.absolute_path))
         if errors:
             detail = "; ".join(e.message for e in errors[:3])
             raise AgoraError("schema_violation", detail=detail)
         return msgtype
+
+    def _autofill_timestamp(self, payload: dict, msgtype: str) -> None:
+        """스키마가 선언한 timestamp 필드(ts/timestamp)를 서버 시각으로 자동 채운다(없을 때).
+
+        보내는 쪽이 직접 넣었으면 보존(덮지 않음). ts/timestamp를 *선언하지 않은* 스키마는
+        건드리지 않는다 — additionalProperties=false 스키마에 미선언 필드를 넣어 검증을
+        깨뜨리지 않기 위해. (모든 메시지는 envelope.created_at으로 서버 시각을 별도 보유.)"""
+        entry = self._schema_registry.get(msgtype)
+        if entry is None or not isinstance(entry.body, dict):
+            return
+        props = entry.body.get("properties", {})
+        if not isinstance(props, dict):
+            return
+        now = _now_iso()
+        for field in ("ts", "timestamp"):
+            if field in props and field not in payload:
+                payload[field] = now
 
     def _fanout_to_bots(self, bot_ids, *, delivered_as, exclude, state,
                         skipped_full, make_env, now, add_participant=True):
