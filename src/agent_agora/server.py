@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from mcp.server import FastMCP
 from mcp.server.fastmcp import Context
+from mcp.server.transport_security import TransportSecuritySettings
 
 from agent_agora.registry import BotRegistry
 from agent_agora.comm_matrix import CommMatrix
@@ -107,6 +108,11 @@ def create_agora_app(
         name="AgentAgora",
         host="127.0.0.1",
         port=port,
+        # 신뢰망 전용(--no-tls·무인증)이라 DNS rebinding protection을 끈다. 기본값은
+        # localhost(127.0.0.1/localhost/[::1])만 Host로 허용해, LAN IP(예 192.168.0.2)로
+        # 접속하는 다른 PC 워커를 421 Misdirected Request로 막는다. 분산 셋업을 위해 끈다.
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False),
     )
     mcp._agora_file_store = file_store  # type: ignore[attr-defined]
     mcp._agora_file_policy = file_policy  # type: ignore[attr-defined]
