@@ -20,6 +20,7 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
 [project.scripts]
 agent-agora = "agent_agora.__main__:main"
 agora-channel = "agent_agora.channel_adapter:cli"
+agora-init = "agent_agora.provisioning.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -27,6 +28,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "agent_agora.storage" = ["default_schemas.jsonl"]
 "agent_agora.dashboard" = ["*.html", "dashboard_static/**/*"]
+"agent_agora.provisioning" = ["templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
