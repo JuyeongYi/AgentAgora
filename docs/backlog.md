@@ -3,6 +3,7 @@
 ## 후보 / 아이디어
 
 - **run-all Windows zellij 전환**: agora-init `run-all.ps1`은 현재 `wt.exe` 탭(없으면 `Start-Process` 새 창)으로 워커를 띄운다. 향후 **Windows도 zellij 기반으로 통일**해 워커 기동 멀티플렉서를 OS 무관하게 일원화하는 안 검토. (리눅스 `run-all.sh`는 이미 zellij 전용)
+- **파일 공유 라이브 round-trip 통합 테스트**: `file.put → agora.dispatch(file_share) → file.get`을 라이브 브로커(bind 0.0.0.0, 분산 모사)로 검증하는 통합 테스트. 현재는 단위 mock만 있음(`test_broker_http_files`·`test_channel_file_tools`·`test_file_routes`). spec `2026-06-03-file-sharing-unification-design.md` §테스트(67) 후속.
 
 ## 완료
 
