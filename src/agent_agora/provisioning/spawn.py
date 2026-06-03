@@ -189,8 +189,10 @@ def write_run_all(parent_dir: Path,
                   include_server: bool = True,
                   platform: str | None = None) -> None:
     """parent_dir에 전체 실행 스크립트 생성. (include_server면) 서버 기동 → 포트 대기 →
-    `.mcp.json`이 있는 하위 워커 순차 기동. Windows는 run-all.ps1(wt.exe 탭/새 창), POSIX는
-    run-all.sh(zellij 전용). 비-로컬 server_url이면 서버에 --bind-host 0.0.0.0.
+    `.mcp.json`이 있는 하위 워커 순차 기동. Windows는 run-all.ps1, POSIX는 run-all.sh —
+    **둘 다 zellij 전용**(OS 무관 통일; Windows 네이티브 zellij ≥0.44.0 필요). zellij 세션
+    안이면 현재 세션에 탭 추가, 밖이면 임시 layout으로 새 세션을 띄워 재실행. 비-로컬
+    server_url이면 서버에 --bind-host 0.0.0.0.
 
     include_server=False(server_launcher 비활성과 연동)면 서버 기동 부분을 생략하고 워커만
     기동한다 — 서버는 외부에서 이미 떠 있다고 가정한다."""
@@ -200,7 +202,9 @@ def write_run_all(parent_dir: Path,
     enc = "ascii" if plat == "win32" else "utf-8"
     if include_server:
         if plat == "win32":
-            block = f'Start-Pane $root "agent-agora --dir ""$root"" --port $port --no-tls {bind_opt}"'
+            # PowerShell은 변수 값을 단어 분리하지 않으므로 $root/$port를 따옴표 없이 넘긴다.
+            block = ('zellij action new-tab --name server --cwd $root -- '
+                     f'agent-agora --dir $root --port $port --no-tls {bind_opt}')
         else:
             block = ('zellij action new-tab --name server --cwd "$root" -- '
                      f'agent-agora --dir "$root" --port "$port" --no-tls {bind_opt}')
