@@ -15,6 +15,12 @@ from . import manifest as _manifest
 from . import matrix as _matrix
 from . import roles as _roles
 from . import spawn as _spawn
+from . import tui as _tui
+
+
+def _role_to_id(role: str) -> str:
+    """role을 워커 id(PascalCase)로 변환. 'sp-planner' -> 'SpPlanner'."""
+    return "".join(p.capitalize() for p in role.replace("_", "-").split("-") if p)
 
 
 def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
@@ -81,23 +87,26 @@ def _interactive(stdin=sys.stdin, stdout=sys.stdout) -> dict:
     else:
         repo = ask("  GitHub repo (owner/repo)", _manifest.DEFAULT_MARKETPLACE_REPO)
         marketplace = {"type": "github", "repo": repo}
-    print(f"  사용 가능 role: {', '.join(sorted(_roles.ROLES))}", file=stdout)
+    # role 다중 선택(체크박스; 비-tty면 번호 입력 폴백) → 각 role당 워커 1명
+    role_list = list(_roles.ROLES)
+    picked = _tui.checkbox_select(role_list, stdin=stdin, stdout=stdout,
+                                  prompt="스폰할 role 선택")
+    use_persona = ask("페르소나 플러그인 사용? (y/n)", "y").lower()
+    persona = None if use_persona == "y" else "none"
+    comm = ask("워커 간 통신 (1=모두 서로, 2=없음)", "1")
+    allow = ["*"] if comm != "2" else []
 
+    seen: dict[str, int] = {}
     team = []
-    while True:
-        iid = ask("워커 id(빈칸이면 종료)")
-        if not iid:
-            break
-        role = ask("  role", "general")
-        use_persona = ask("  페르소나 플러그인 사용? (y/n)", "y").lower()
-        persona = None if use_persona == "y" else "none"
-        desc = ask("  description", iid)
-        allow_raw = ask("  allow(쉼표구분 id/정규식; 빈칸=없음, *=전체)")
-        allow = [t.strip() for t in allow_raw.split(",") if t.strip()]
-        team.append({"id": iid, "role": role, "description": desc, "allow": allow,
-                     "persona": persona})
-        if ask("워커 더 추가? (y/n)", "y").lower() != "y":
-            break
+    for role in picked:
+        iid = _role_to_id(role)
+        if iid in seen:
+            seen[iid] += 1
+            iid = f"{iid}{seen[iid]}"
+        else:
+            seen[iid] = 1
+        team.append({"id": iid, "role": role, "description": role,
+                     "allow": list(allow), "persona": persona})
 
     return {"version": 1, "spawn_dir": spawn_dir, "server_url": server_url,
             "marketplace": marketplace, "team": team}

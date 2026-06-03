@@ -96,11 +96,13 @@ agora-init --manifest team.json     # 비대화형 — 기존 manifest로 재실
 ```
 
 대화형은 스폰 위치·서버 URL·마켓플레이스 소스(기본 GitHub
-`JuyeongYi/AgentAgora-ClaudePlugins`, 또는 로컬 plugin 경로)를 먼저 묻고, 워커마다
-`id`·`role`·페르소나 플러그인 사용 여부(y/n)·`description`·`allow`(dispatch 가능 대상
-id/정규식, 쉼표구분; 빈칸=없음, `*`=전체)를 묻는다. 페르소나를 `n`으로 하면 역할
-페르소나 플러그인 없이 `cc-agora` 통신 코어만 활성화한다(비대화형은 워커에
-`"persona": "none"`). 생성물(스폰 위치 아래):
+`JuyeongYi/AgentAgora-ClaudePlugins`, 또는 로컬 plugin 경로)를 묻고, 이어서 **role을
+체크박스로 다중 선택**(↑↓ 이동·스페이스 체크·엔터 확정; tty가 아닌 환경은 번호 입력
+폴백)한 뒤 페르소나 사용 여부(y/n)와 워커 간 통신(1=모두 서로, 2=없음)을 공통으로
+묻는다. 선택한 role마다 워커 1명이 생성된다 — id는 role의 PascalCase(예 `coder`→`Coder`,
+`sp-planner`→`SpPlanner`), description은 role명. 페르소나를 `n`으로 하면 역할 페르소나
+플러그인 없이 `cc-agora` 통신 코어만 활성화한다. 워커별 세밀 제어(개별 id·description·
+allow·persona)가 필요하면 비대화형 `--manifest team.json`을 쓴다. 생성물(스폰 위치 아래):
 
 - 각 워커 디렉토리 — `CLAUDE.md`·`.mcp.json`·`run.bat`(Windows) 또는 `run.sh`(리눅스/맥,
   실행 OS 자동 감지)·`.claude/settings.local.json`
