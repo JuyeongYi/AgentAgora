@@ -119,7 +119,8 @@ agora-init --manifest team.json     # 비대화형 — 기존 manifest로 재실
   있는 하위 워커를 순차 기동. Windows는 `wt.exe` 탭, 리눅스는 **zellij 탭**(세션 안이면
   현재 세션에 탭 추가, 세션 밖이면 새 zellij 세션을 자동으로 띄워 그 안에서 구성).
   `server_url`이 비-로컬 IP면 런처가 서버를 `--bind-host 0.0.0.0`으로 띄워 **다른 PC에서
-  접속 가능**(분산 셋업; 포트도 `server_url`에서)
+  접속 가능**(분산 셋업; 포트도 `server_url`에서). 서버 실행 스크립트를 끄면(n) run-all도
+  서버 기동을 생략하고 **워커만** 띄운다(서버는 외부에서 따로 기동)
 
 마켓플레이스 별칭은 `marketplace.json`의 `name`과 같은 `agent-agora`로 고정된다 —
 `/plugin marketplace add JuyeongYi/AgentAgora-ClaudePlugins`로 수동 등록한 경우와

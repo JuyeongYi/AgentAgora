@@ -51,9 +51,11 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
     if norm.get("server_launcher", True):
         _spawn.write_server_launcher(spawn_dir, server_url)
 
-    # 4b) 전체 실행 스크립트(옵션). 서버→포트대기→워커 순차 기동.
+    # 4b) 전체 실행 스크립트(옵션). 서버→포트대기→워커 순차 기동. server_launcher가
+    #     꺼져 있으면 run-all도 서버를 띄우지 않고 워커만 기동(서버는 외부 기동 가정).
     if norm.get("run_all", True):
-        _spawn.write_run_all(spawn_dir, server_url)
+        _spawn.write_run_all(spawn_dir, server_url,
+                             include_server=norm.get("server_launcher", True))
 
     # 5) 서버 가동 중 & 토큰 있으면 매트릭스 즉시 적용
     token = os.environ.get("AGORA_ADMIN_TOKEN")

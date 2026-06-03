@@ -186,18 +186,33 @@ def write_server_launcher(parent_dir: Path,
 
 def write_run_all(parent_dir: Path,
                   server_url: str = "http://127.0.0.1:8420/mcp",
+                  include_server: bool = True,
                   platform: str | None = None) -> None:
-    """parent_dir에 전체 실행 스크립트 생성. 서버 기동 → 포트 대기 → `.mcp.json`이 있는
-    하위 워커 순차 기동. Windows는 run-all.ps1(wt.exe 탭/새 창), POSIX는 run-all.sh
-    (zellij 전용 — zellij 세션 안에서 각 워커를 새 탭으로). 비-로컬 server_url이면 서버에
-    --bind-host 0.0.0.0."""
+    """parent_dir에 전체 실행 스크립트 생성. (include_server면) 서버 기동 → 포트 대기 →
+    `.mcp.json`이 있는 하위 워커 순차 기동. Windows는 run-all.ps1(wt.exe 탭/새 창), POSIX는
+    run-all.sh(zellij 전용). 비-로컬 server_url이면 서버에 --bind-host 0.0.0.0.
+
+    include_server=False(server_launcher 비활성과 연동)면 서버 기동 부분을 생략하고 워커만
+    기동한다 — 서버는 외부에서 이미 떠 있다고 가정한다."""
     plat = platform or sys.platform
-    if plat == "win32":
-        _write_bat(Path(parent_dir) / "run-all.ps1",
-                   _render_launcher("run-all.ps1", server_url))
+    port, bind_opt = _server_url_parts(server_url)
+    name = "run-all.ps1" if plat == "win32" else "run-all.sh"
+    enc = "ascii" if plat == "win32" else "utf-8"
+    if include_server:
+        if plat == "win32":
+            block = f'Start-Pane $root "agent-agora --dir ""$root"" --port $port --no-tls {bind_opt}"'
+        else:
+            block = ('zellij action new-tab --name server --cwd "$root" -- '
+                     f'agent-agora --dir "$root" --port "$port" --no-tls {bind_opt}')
     else:
-        sh = Path(parent_dir) / "run-all.sh"
-        _write_text(sh, _render_launcher("run-all.sh", server_url))
+        block = "# server is expected to be already running (server launcher disabled)"
+    text = (_TPL_DIR / name).read_text(encoding=enc)
+    text = text.replace("{{SERVER_BLOCK}}", block).replace("{{PORT}}", port)
+    if plat == "win32":
+        _write_bat(Path(parent_dir) / name, text)
+    else:
+        sh = Path(parent_dir) / name
+        _write_text(sh, text)
         try:
             sh.chmod(0o755)
         except OSError:

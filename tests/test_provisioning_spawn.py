@@ -116,6 +116,24 @@ def test_write_run_all_posix_zellij_only(tmp_path):
     assert not (tmp_path / "run-all.ps1").exists()
 
 
+def test_write_run_all_without_server(tmp_path):
+    # server_launcher=False(include_server=False) → run-all은 서버를 띄우지 않고 워커만 기동.
+    spawn.write_run_all(tmp_path, server_url="http://192.168.0.2:8420/mcp",
+                        include_server=False, platform="linux")
+    sh = (tmp_path / "run-all.sh").read_text(encoding="utf-8")
+    assert "new-tab --name server" not in sh   # 서버 탭 안 만듦
+    assert ".mcp.json" in sh                    # 워커 판정/기동은 유지
+    assert "run.sh" in sh
+
+
+def test_write_run_all_with_server(tmp_path):
+    spawn.write_run_all(tmp_path, server_url="http://192.168.0.2:8420/mcp",
+                        include_server=True, platform="linux")
+    sh = (tmp_path / "run-all.sh").read_text(encoding="utf-8")
+    assert "new-tab --name server" in sh        # 서버 탭 생성
+    assert "agent-agora" in sh
+
+
 def test_spawn_worker_no_persona_core_only(tmp_path):
     # persona="none" → 페르소나 플러그인 없이 cc-agora만 활성화.
     spawn.spawn_worker(

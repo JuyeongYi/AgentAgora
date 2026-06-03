@@ -11,8 +11,8 @@ function Start-Pane($dir, $cmd) {
     else { Start-Process cmd -ArgumentList "/k", $cmd -WorkingDirectory $dir }
 }
 
-# 1) server
-Start-Pane $root "agent-agora --dir ""$root"" --port $port --no-tls {{BIND_OPT}}"
+# 1) server (started only if this script manages it)
+{{SERVER_BLOCK}}
 
 # 2) wait for the server port to open
 for ($i = 0; $i -lt 60; $i++) {

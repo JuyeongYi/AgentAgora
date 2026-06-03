@@ -22,8 +22,8 @@ if [ -z "${ZELLIJ:-}" ]; then
   exec zellij --layout "$layout"
 fi
 
-# Inside a session: server tab
-zellij action new-tab --name server --cwd "$root" -- agent-agora --dir "$root" --port "$port" --no-tls {{BIND_OPT}}
+# Inside a session: start server (only if this script manages it)
+{{SERVER_BLOCK}}
 
 # wait for the server port to open
 for _ in $(seq 1 60); do
