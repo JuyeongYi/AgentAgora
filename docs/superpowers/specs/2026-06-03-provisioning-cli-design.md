@@ -26,7 +26,8 @@
 **비목표 (YAGNI)**
 - 슬래시/Claude 통합(이 CLI는 AI 무관).
 - `status`/`test-dispatch` 등 조회 서브커맨드.
-- 워커 자동 기동(Claude Code 제어는 CLI 범위 밖 — 사용자가 `run.bat` 실행).
+- 워커 자동 기동(Claude Code 제어는 CLI 범위 밖 — 사용자가 `run.bat`/`run.sh` 실행).
+- 서버 기동 및 서버 기동 스크립트 생성 — agora-init은 에이전트 스폰 전용, 서버는 `agent-agora`로 따로 띄운다.
 
 ## 위치 / 형태
 
@@ -75,9 +76,8 @@
 ## 산출물
 
 - `spawn_dir/team.json`
-- 각 워커 디렉터리 4파일: `CLAUDE.md`·`.mcp.json`·`run.bat`·`.claude/settings.local.json`
+- 각 워커 디렉터리: `CLAUDE.md`·`.mcp.json`·`run.bat`(Windows) 또는 `run.sh`(POSIX, 실행 OS 자동 감지)·`.claude/settings.local.json`
 - `spawn_dir/.agentagora/comm-matrix.csv`
-- `spawn_dir/run-server.bat` (서버 기동)
 - 서버가 이미 떠 있고 `AGORA_ADMIN_TOKEN` 있으면 매트릭스 즉시 POST. 아니면 파일만 — 서버가 시작 시 `.agentagora/comm-matrix.csv` 로드.
 
 ## `allow` → CSV 변환
@@ -114,4 +114,5 @@
 - `comm-matrix.csv` 행/열 방향 — `comm_matrix.py`의 `_weights[to_pat][from_pat]` 규약에 맞춰 **행=수신자(to), 열=발신자(from)**, 코너셀 없는 정사각 NxN으로 확정. `matrix.py`의 round-trip 테스트가 `CommMatrix.load_csv`로 방향 정합을 가드한다.
 - `extraKnownMarketplaces` source — 기본 **github**(repo=`JuyeongYi/AgentAgora-ClaudePlugins`), 또는 **directory**(로컬 plugin 경로, `find_marketplace()` 탐색/프롬프트) 선택 가능(manifest `marketplace:{type,repo|path}`, 레거시 `marketplace_path`는 directory로 매핑). 별칭은 `marketplace.json`의 `name`과 같은 **`agent-agora`**로 고정해 `/plugin marketplace add`(식별자=name)와 충돌하지 않게 한다. `enabledPlugins`는 `<plugin>@agent-agora`.
 - cp949 콘솔 안전 — 사용자 대면 print는 ASCII+한글만(em dash 등 cp949 밖 문자 금지). 회귀 테스트(`test_generate_output_is_cp949_safe`)로 가드.
+- 실행 스크립트 크로스플랫폼 — `spawn_worker(platform=)`(기본 `sys.platform`)이 win32면 `run.bat`(ASCII+CRLF), POSIX면 `run.sh`(LF + 0o755 실행권한)를 생성. 서버 기동 스크립트는 생성하지 않음(에이전트 스폰 전용).
 - plugin `cc-agora-ops/scripts/spawn.py`와의 중복은 의도적 수용(정식 버전은 src). 추후 plugin이 src를 얇게 호출하도록 정리할지는 별건.

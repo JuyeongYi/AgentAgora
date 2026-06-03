@@ -28,8 +28,8 @@ def test_noninteractive_generates_all_artifacts(tmp_path):
     assert (tmp_path / "Reviewer1" / "run.bat").is_file()
     # team.json 보존(spawn_dir에)
     assert (tmp_path / "team.json").is_file()
-    # 서버 기동 스크립트
-    assert (tmp_path / "run-server.bat").is_file()
+    # agora-init은 에이전트 스폰만 — 서버 기동 스크립트는 만들지 않는다
+    assert not (tmp_path / "run-server.bat").exists()
     # settings: github source + agent-agora 별칭
     settings = json.loads(
         (tmp_path / "Coder1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))

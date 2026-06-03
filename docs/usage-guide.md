@@ -100,19 +100,22 @@ agora-init --manifest team.json     # 비대화형 — 기존 manifest로 재실
 `id`·`role`·`description`·`allow`(dispatch 가능 대상 id/정규식, 쉼표구분; 빈칸=없음,
 `*`=전체)를 묻는다. 생성물(스폰 위치 아래):
 
-- 각 워커 디렉토리 4파일 — `CLAUDE.md`·`.mcp.json`·`run.bat`·`.claude/settings.local.json`
+- 각 워커 디렉토리 — `CLAUDE.md`·`.mcp.json`·`run.bat`(Windows) 또는 `run.sh`(리눅스/맥,
+  실행 OS 자동 감지)·`.claude/settings.local.json`
   (마켓플레이스 `agent-agora`를 신뢰 등록 + 페르소나 플러그인 활성화)
 - `team.json` — 입력 보존(재실행용)
 - `.agentagora/comm-matrix.csv` — `allow` 목록에서 생성한 통신 매트릭스(행=수신자/열=발신자)
-- `run-server.bat` — 서버 기동 스크립트
 
 마켓플레이스 별칭은 `marketplace.json`의 `name`과 같은 `agent-agora`로 고정된다 —
 `/plugin marketplace add JuyeongYi/AgentAgora-ClaudePlugins`로 수동 등록한 경우와
 식별자가 일치해 충돌하지 않는다.
 
-다음 단계: `run-server.bat`으로 서버를 띄우고 각 워커에서 `run.bat`을 실행하면
-`.mcp.json` 헤더로 자동 등록된다. 서버가 이미 떠 있고 `AGORA_ADMIN_TOKEN`이
-설정돼 있으면 매트릭스를 즉시 적용(POST)하고, 아니면 파일만 두어 서버가 시작 시 로드한다.
+`agora-init`은 **에이전트 스폰 전용**이라 서버 기동 스크립트는 만들지 않는다 — 서버는
+`agent-agora --dir <스폰 위치> --port 8420 --no-tls`로 따로 띄운다.
+
+다음 단계: 서버를 띄운 뒤 각 워커에서 `run.bat`(리눅스/맥은 `run.sh`)을 실행하면
+`.mcp.json` 헤더로 자동 등록된다. 서버가 이미 떠 있고 `AGORA_ADMIN_TOKEN`이 설정돼
+있으면 `agora-init`이 매트릭스를 즉시 적용(POST)하고, 아니면 파일만 두어 서버가 시작 시 로드한다.
 
 ### 스크립트로
 

@@ -93,8 +93,13 @@ def _render_settings_local(*, persona_plugin: str, marketplace: dict) -> str:
 
 def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: Path,
                  server_url: str, marketplace: dict, force: bool,
+                 platform: str | None = None,
                  stderr=sys.stderr, stdout=sys.stdout) -> int:
-    """parent_dir/<instance_id>/에 채널 모드 워커 4파일 생성. 0=성공, 1=실패."""
+    """parent_dir/<instance_id>/에 채널 모드 워커 파일 생성. 0=성공, 1=실패.
+
+    실행 스크립트는 platform(기본 sys.platform)에 따라 win32면 run.bat(ASCII+CRLF),
+    그 외(리눅스/맥)면 run.sh(LF + 실행권한)를 만든다. 서버 기동 스크립트는 만들지
+    않는다 — agora-init은 에이전트 스폰 전용이고 서버는 `agent-agora`로 따로 띄운다."""
     persona_plugin = _roles.plugin_for(role) or _roles.FALLBACK_PLUGIN
     if not _roles.is_defined(role):
         print(_roles.undefined_role_warning(role), file=stderr)
@@ -110,16 +115,19 @@ def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: P
     _write_text(wd / ".mcp.json",
                 _render_mcp_json(server_url=server_url, instance_id=instance_id, role=role,
                                  description=description, cwd=wd.resolve().as_posix()))
-    _write_bat(wd / "run.bat", (_TPL_DIR / "run.bat").read_text(encoding="ascii"))
+    plat = platform or sys.platform
+    if plat == "win32":
+        _write_bat(wd / "run.bat", (_TPL_DIR / "run.bat").read_text(encoding="ascii"))
+    else:
+        sh = wd / "run.sh"
+        _write_text(sh, (_TPL_DIR / "run.sh").read_text(encoding="utf-8"))
+        try:
+            sh.chmod(0o755)
+        except OSError:
+            pass
     _write_text(wd / ".claude" / "settings.local.json",
                 _render_settings_local(persona_plugin=persona_plugin,
                                         marketplace=marketplace))
     print(f"[agora-init] '{instance_id}/' 생성 (role={role}, persona={persona_plugin}).",
           file=stdout)
     return 0
-
-
-def write_server_launcher(parent_dir: Path) -> None:
-    """parent_dir/run-server.bat 생성(ASCII+CRLF)."""
-    _write_bat(Path(parent_dir) / "run-server.bat",
-               (_TPL_DIR / "run-server.bat").read_text(encoding="ascii"))

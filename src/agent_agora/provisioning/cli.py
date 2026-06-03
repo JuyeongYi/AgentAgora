@@ -44,10 +44,8 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
     csv = _matrix.build_csv(norm["team"])
     _spawn._write_text(spawn_dir / ".agentagora" / "comm-matrix.csv", csv)
 
-    # 4) run-server.bat
-    _spawn.write_server_launcher(spawn_dir)
-
-    # 5) 서버 가동 중 & 토큰 있으면 매트릭스 즉시 적용
+    # 4) 서버 가동 중 & 토큰 있으면 매트릭스 즉시 적용(서버 기동 스크립트는 만들지 않음 —
+    #    agora-init은 에이전트 스폰 전용, 서버는 agent-agora로 따로 띄운다)
     token = os.environ.get("AGORA_ADMIN_TOKEN")
     if token:
         try:
