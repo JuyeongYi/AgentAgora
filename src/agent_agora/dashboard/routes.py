@@ -15,7 +15,7 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -26,6 +26,12 @@ from agent_agora.registry import NotRegisteredError, is_operator, operator_id
 logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).with_name("dashboard.html")
+
+# 스키마별 HTML 포맷 — 기본 제공분은 패키지에 동봉(dashboard_static/formats/), 런타임에
+# 등록되는 스키마의 포맷은 agora_dir/formats/에 둔다. GET /dashboard/format/{msgtype}가
+# 런타임 → 동봉 순으로 서빙한다(런타임이 동봉을 덮어쓸 수도 있음).
+_BUNDLED_FORMATS_DIR = Path(__file__).with_name("dashboard_static") / "formats"
+_FORMAT_NAME_RE = re.compile(r"[\w.\-]+")
 
 
 def _bust_static_cache(html: str) -> str:
@@ -312,6 +318,34 @@ def register(
             logger.warning("dashboard_static StaticFiles mount 실패: %s", exc)
 
     # ------------------------------------------------------------------
+    # 스키마별 HTML 포맷 — GET /dashboard/format/{msgtype}
+    # 런타임(agora_dir/formats/) → 동봉(_BUNDLED_FORMATS_DIR) 순. 기본 스키마는 패키지에,
+    # 런타임에 등록한 스키마의 포맷은 agora_dir/formats/<msgtype>.html 에 두면 같이 서빙된다.
+    # ------------------------------------------------------------------
+    runtime_formats_dir = (
+        Path(persistence.db_path).parent / "formats" if persistence is not None else None)
+
+    async def format_endpoint(request: Request) -> Response:
+        msgtype = request.path_params["msgtype"]
+        if ".." in msgtype or not _FORMAT_NAME_RE.fullmatch(msgtype):
+            return Response(status_code=404)  # path traversal·잘못된 이름 거부
+        candidates = []
+        if runtime_formats_dir is not None:
+            candidates.append(runtime_formats_dir / (msgtype + ".html"))
+        candidates.append(_BUNDLED_FORMATS_DIR / (msgtype + ".html"))
+        for f in candidates:
+            try:
+                if f.is_file():
+                    return HTMLResponse(f.read_text(encoding="utf-8"),
+                                        headers={"Cache-Control": "no-cache"})
+            except OSError:
+                continue
+        return Response(status_code=404)
+
+    app.router.routes.append(
+        Route("/dashboard/format/{msgtype}", format_endpoint, methods=["GET"]))
+
+    # ------------------------------------------------------------------
     # operator action endpoints (require persistence + write_queue)
     # ------------------------------------------------------------------
     if persistence is None or write_queue is None:
@@ -341,6 +375,7 @@ def register(
         payload = body.get("payload", {})
         reply_only = bool(body.get("reply_only", False))
         conv = body.get("conversation_id")
+        in_reply_to = body.get("in_reply_to")  # 특정 메시지에 답장 — command_id 연결
 
         if not to:
             return JSONResponse({"error": "to required"}, status_code=422)
@@ -365,6 +400,7 @@ def register(
                 target=to,
                 payload=payload,
                 conversation_id=conv,
+                in_reply_to=in_reply_to,
                 reply_only=reply_only,
             )
         except Exception as exc:  # noqa: BLE001 — mapped to status by _error_to_response

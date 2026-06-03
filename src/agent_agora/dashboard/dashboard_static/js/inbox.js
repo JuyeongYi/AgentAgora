@@ -11,23 +11,40 @@ window.agoraInbox = (function() {
     } catch (e) { console.error('inbox refresh', e); }
   }
 
+  function bodyHtml(m) {
+    // 등록된 스키마 포맷이 있으면 그 HTML로, 없으면 JSON 폴백.
+    const fmt = window.agoraFormats && window.agoraFormats.render(m.payload);
+    return fmt || `<div class="payload">${escape(JSON.stringify(m.payload).slice(0, 200))}</div>`;
+  }
+
   function render() {
     const lis = messages.map(m => `
-      <div class="message-card" data-id="${m.message_id}">
+      <div class="message-card" data-id="${escape(m.message_id)}">
         <div><span class="sender">${escape(m.sender)}</span>
              <span class="timestamp">${escape(m.created_at)}</span></div>
         <div class="schema">schema: ${escape((m.payload && m.payload.msgtype) || '')}</div>
-        <div class="payload">${escape(JSON.stringify(m.payload).slice(0,200))}</div>
+        ${bodyHtml(m)}
         ${m.reply_only ? '<div class="reply-only">reply_only</div>' : ''}
-        <button class="ack-btn" data-id="${m.message_id}">ack</button>
+        <div class="card-actions">
+          <button class="reply-btn" data-id="${escape(m.message_id)}">답장</button>
+          <button class="ack-btn" data-id="${escape(m.message_id)}">ack</button>
+        </div>
       </div>`).join('') || '<p>(메시지 없음)</p>';
     el().innerHTML = `<h3>운영자 인박스 (${messages.length})</h3>` + lis;
     el().querySelectorAll('.ack-btn').forEach(btn => {
-      btn.onclick = (e) => ack([e.target.dataset.id]);
+      btn.onclick = (e) => { e.stopPropagation(); ack([e.target.dataset.id]); };
+    });
+    el().querySelectorAll('.reply-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const m = messages.find(x => x.message_id === e.target.dataset.id);
+        if (m && window.agoraDispatch) window.agoraDispatch.prefillReply(
+          {to: m.sender, conversation_id: m.conversation_id, in_reply_to: m.message_id});
+      };
     });
     el().querySelectorAll('.message-card').forEach(card => {
       card.onclick = (e) => {
-        if (e.target.classList.contains('ack-btn')) return;
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
         const id = card.dataset.id;
         const m = messages.find(x => x.message_id === id);
         if (m) window.agoraDrilldown.openMessage(m);

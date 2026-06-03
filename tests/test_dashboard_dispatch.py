@@ -509,6 +509,47 @@ def test_metrics_is_protected_path():
     assert "/dashboard/metrics" in DASHBOARD_PROTECTED_PATHS
 
 
+def test_format_endpoint_serves_bundled(dashboard_client):
+    """GET /dashboard/format/{msgtype} — 패키지 동봉 스키마 포맷 HTML을 서빙."""
+    r = dashboard_client.get("/dashboard/format/operator_message")
+    assert r.status_code == 200
+    assert "{{text}}" in r.text  # 동봉 템플릿
+
+
+def test_format_endpoint_unknown_404(dashboard_client):
+    assert dashboard_client.get("/dashboard/format/no_such_schema_xyz").status_code == 404
+
+
+def test_format_endpoint_runtime_overrides_bundled(dashboard_client, real_server_app):
+    """런타임 등록 스키마 포맷 — agora_dir/formats/<msgtype>.html 이 동봉을 우선/보완."""
+    import pathlib
+    fmt_dir = pathlib.Path(real_server_app.state.persistence.db_path).parent / "formats"
+    fmt_dir.mkdir(parents=True, exist_ok=True)
+    (fmt_dir / "my_runtime_schema.html").write_text("<div>RUNTIME {{x}}</div>", encoding="utf-8")
+    r = dashboard_client.get("/dashboard/format/my_runtime_schema")
+    assert r.status_code == 200 and "RUNTIME" in r.text
+    # 동봉 스키마도 런타임 파일로 덮어쓸 수 있다
+    (fmt_dir / "operator_message.html").write_text("<div>OVERRIDE</div>", encoding="utf-8")
+    assert "OVERRIDE" in dashboard_client.get("/dashboard/format/operator_message").text
+
+
+def test_format_endpoint_rejects_traversal(dashboard_client):
+    # 핸들러에 닿는 '..' 포함 msgtype은 가드가 거부(URL의 단독 '..'는 클라이언트가 정규화).
+    assert dashboard_client.get("/dashboard/format/a..b").status_code == 404
+
+
+def test_dispatch_accepts_in_reply_to(dashboard_client, register_worker, persistence):
+    """특정 메시지에 답장 — dispatch body의 in_reply_to가 전달 메시지에 기록된다."""
+    register_worker("W1")
+    d = dashboard_client.post(
+        "/dashboard/dispatch", headers=_auth("alice"),
+        json={"to": "W1", "schema": "operator_message",
+              "payload": {"text": "답장"}, "in_reply_to": "cmd-xyz"}).json()
+    msgs = persistence.fetch_messages_for(recipient="W1", include_acked=True)
+    m = next(m for m in msgs if m["message_id"] == d["message_id"])
+    assert m["in_reply_to"] == "cmd-xyz"
+
+
 def test_logs_is_protected_path(dashboard_client):
     """/dashboard/logs는 보호 경로 — 운영자 헤더 없으면 거부(trust 모드는 통과지만
     경로 자체가 protected 목록에 있어야 한다)."""

@@ -19,7 +19,7 @@ def test_js_modules_present():
     for name in ("api.js", "stream.js", "login.js", "dashboard.js",
                  "health.js", "dispatch.js", "inbox.js", "drilldown.js",
                  "schemas.js", "logs.js", "files.js", "flow.js", "actions.js",
-                 "search.js", "sparkline.js"):
+                 "search.js", "sparkline.js", "formats.js"):
         assert (STATIC_DIR / "js" / name).is_file(), f"missing js/{name}"
 
 

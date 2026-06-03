@@ -33,6 +33,8 @@
     window.agoraStream.on('message_dispatched', () => refresh());
     window.agoraStream.on('deadline_expired', (evt) => { console.warn('deadline expired', evt); refresh(); });
     window.agoraStream.on('operator_inbox_message', (evt) => window.agoraInbox.push(evt));
+    // 스키마별 HTML 포맷 템플릿(별도 파일)을 인박스 렌더 전에 미리 로드.
+    if (window.agoraFormats) { try { await window.agoraFormats.preload(); } catch (e) {} }
     window.agoraInbox.refresh();
     window.agoraStream.connect();
 

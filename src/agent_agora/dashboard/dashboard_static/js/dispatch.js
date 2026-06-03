@@ -5,9 +5,24 @@ window.agoraDispatch = (function() {
   let editor = null;
   let schemas = [];
   let instances = [];
+  let replyCtx = null;  // {conversation_id, in_reply_to} — 특정 메시지 답장 시 설정
+
+  // 특정 인박스/대화 메시지에 답장 — 대상·대화·in_reply_to를 prefill하고 패널로 스크롤.
+  function prefillReply(opts) {
+    if (!panel()) return;
+    const single = document.querySelector('input[name="dmode"][value="single"]');
+    if (single) { single.checked = true; setupTargetPicker(); }
+    const toSel = document.getElementById('dispatch-to');
+    if (toSel && opts.to) toSel.value = opts.to;
+    replyCtx = {conversation_id: opts.conversation_id || null, in_reply_to: opts.in_reply_to || null};
+    const short = (opts.in_reply_to || '').slice(0, 8);
+    status('답장: ' + (opts.to || '') + (short ? ' (in_reply_to ' + short + '…)' : ''), true);
+    panel().scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
 
   async function render() {
     if (!panel()) return;
+    replyCtx = null;  // 새로 렌더되면 답장 컨텍스트 초기화
     schemas = (await window.agoraApi.get('/dashboard/schemas').catch(() => ({schemas: []}))).schemas || [];
     const snap = await window.agoraApi.get('/dashboard/data').catch(() => ({instances: []}));
     instances = snap.instances || [];
@@ -122,7 +137,10 @@ window.agoraDispatch = (function() {
       let skipped = [];
       if (mode === 'single') {
         const to = document.getElementById('dispatch-to').value;
-        const res = await window.agoraApi.post('/dashboard/dispatch', {to, schema, payload, reply_only});
+        const body = {to, schema, payload, reply_only};
+        if (replyCtx && replyCtx.conversation_id) body.conversation_id = replyCtx.conversation_id;
+        if (replyCtx && replyCtx.in_reply_to) body.in_reply_to = replyCtx.in_reply_to;
+        const res = await window.agoraApi.post('/dashboard/dispatch', body);
         skipped = res.skipped_full || [];
       } else {
         const targets = Array.from(document.querySelectorAll('#dispatch-targets-list input:checked')).map(c => c.value);
@@ -131,7 +149,8 @@ window.agoraDispatch = (function() {
         skipped = (res.results || []).flatMap(r => r.skipped_full || []);
       }
       if (skipped.length) status('일부 누락(인박스 만석): ' + skipped.join(', '), false);
-      else status('보냄 ✓', true);
+      else status('보냄 ✓' + (replyCtx ? ' (답장)' : ''), true);
+      replyCtx = null;  // 답장 1회 후 초기화
       if (window._refresh) window._refresh();
     } catch (e) {
       const msg = (e && e.body && e.body.error) || e.message || String(e);
@@ -139,5 +158,5 @@ window.agoraDispatch = (function() {
     }
   }
 
-  return {render, refreshTargets};
+  return {render, refreshTargets, prefillReply};
 })();

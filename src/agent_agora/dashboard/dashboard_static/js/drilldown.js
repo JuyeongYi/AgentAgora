@@ -18,14 +18,35 @@ window.agoraDrilldown = (function() {
     const cmd = m.message_id || m.command_id || '';
     const covSlot = cmd
       ? `<span class="coverage-inline" data-cmd="${escape(cmd)}"></span>` : '';
+    // 등록된 스키마 포맷이 있으면 그 HTML로, 없으면 JSON 폴백.
+    const fmt = window.agoraFormats && window.agoraFormats.render(m.payload);
+    const body = fmt || `<pre class="payload">${escape(JSON.stringify(m.payload, null, 2))}</pre>`;
+    const replyBtn = (m.sender && cmd)
+      ? `<button class="reply-btn" data-to="${escape(m.sender)}" ` +
+        `data-conv="${escape(m.conversation_id || '')}" data-irt="${escape(cmd)}">답장</button>` : '';
     return `<div class="message-card">
       <div><span class="sender">${escape(m.sender)}</span>
            → <span>${escape(m.target)}</span>
            <span class="timestamp">${escape(m.created_at)}</span>${covSlot}</div>
       <div>schema: ${escape((m.payload && m.payload.msgtype) || '')}</div>
-      <pre class="payload">${escape(JSON.stringify(m.payload, null, 2))}</pre>
+      ${body}
       ${m.reply_only ? '<div class="reply-only">reply_only</div>' : ''}
+      <div class="card-actions">${replyBtn}</div>
     </div>`;
+  }
+
+  // 답장 버튼 → dispatch 패널 prefill(대상=발신자, in_reply_to=메시지) 후 모달 닫기.
+  function wireReply() {
+    modal().querySelectorAll('.reply-btn').forEach(btn => {
+      btn.onclick = () => {
+        if (window.agoraDispatch) window.agoraDispatch.prefillReply({
+          to: btn.getAttribute('data-to'),
+          conversation_id: btn.getAttribute('data-conv') || null,
+          in_reply_to: btn.getAttribute('data-irt'),
+        });
+        close();
+      };
+    });
   }
 
   // expect_result 메시지의 coverage(pending/responded/expired)를 lazy 인라인 표시.
@@ -55,6 +76,7 @@ window.agoraDrilldown = (function() {
       const html = byTime(d.messages).map(msgCard).join('') || '<p>(빈 thread)</p>';
       show('대화 ' + convId, html);
       hydrateCoverage();
+      wireReply();
     } catch (e) { show('대화 ' + convId, '<p>로드 실패: ' + escape(e.message) + '</p>'); }
   }
 
@@ -65,10 +87,11 @@ window.agoraDrilldown = (function() {
       const html = byTime(d.messages).map(msgCard).join('') || '<p>(빈 인박스)</p>';
       show(instId + ' 인박스', html);
       hydrateCoverage();
+      wireReply();
     } catch (e) { show(instId + ' 인박스', '<p>로드 실패: ' + escape(e.message) + '</p>'); }
   }
 
-  function openMessage(m) { show('메시지', msgCard(m)); }
+  function openMessage(m) { show('메시지', msgCard(m)); wireReply(); }
 
   function show(title, html) {
     modal().innerHTML = `<div class="modal-card">
