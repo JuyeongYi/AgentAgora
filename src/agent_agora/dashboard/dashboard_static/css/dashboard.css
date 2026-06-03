@@ -17,23 +17,41 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 #health-summary { font-size:12px; color:#9aa; }
 #logout { background:none; border:1px solid #33334d; color:#e8e8e8; padding:4px 10px; cursor:pointer; border-radius:4px; }
 
-#main { display:grid; grid-template-columns:280px 1fr; gap:12px; padding:12px; }
-#left-panel section { background:#252542; padding:12px; border-radius:6px; margin-bottom:12px; }
+#main { padding:12px; }
 
-/* 메시지 보내기 패널 — summary 카드와 테이블 사이에 embed(center-panel 내부 full-width). */
-#dispatch-panel { background:#252542; padding:12px; border-radius:6px; margin-bottom:12px; }
+/* 탭바 — 메시지 보내기 패널 아래. .tab-pane는 active만 표시. */
+#tabs { display:flex; gap:4px; padding:0 12px; background:#252542; border-bottom:1px solid #33334d; }
+.tab-btn { background:none; border:none; color:#9aa; padding:10px 18px; cursor:pointer; font-size:13px; border-bottom:2px solid transparent; }
+.tab-btn:hover { color:#cdd; }
+.tab-btn.active { color:#e8e8e8; border-bottom-color:#7a7ad0; font-weight:600; }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+/* 통신 매트릭스 탭 — comm-matrix(정적 ACL) + flow-view(in-flight)를 좌우 배치 */
+#tab-matrix.active { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+@media (max-width:1100px) { #tab-matrix.active { grid-template-columns:1fr; } }
+/* 최상단 행(헤더 아래, 탭 위): 메시지 보내기 : 메트릭 : 서버 헬스 = 2:1:1 */
+#top-row { display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px; margin:12px; align-items:start; }
+#top-row > section { background:#252542; padding:12px; border-radius:6px; }
+#metrics-panel, #health-detail { overflow:auto; max-height:46vh; }
+#inbox-panel { background:#252542; padding:12px; border-radius:6px; }
+#tab-inbox #inbox-panel { min-height:60vh; }
+@media (max-width:1000px) { #top-row { grid-template-columns:1fr; } }
+
+/* 메시지 보내기 패널 — 항상 최상단(헤더 아래, 탭 위). 컨트롤 행 → payload → 보내기. */
+#dispatch-panel { background:#252542; padding:12px; border-radius:6px; }
 #dispatch-panel h3 { margin:0 0 8px; font-size:14px; }
-#dispatch-panel .dispatch-grid { display:grid; grid-template-columns:260px 1fr; gap:16px; align-items:start; }
-#dispatch-panel .dispatch-field { display:block; margin:6px 0; }
-#dispatch-panel select, #dispatch-panel textarea { width:100%; background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:4px; }
+#dispatch-panel .dispatch-controls-row { display:flex; flex-wrap:wrap; gap:18px; align-items:center; margin-bottom:8px; }
+#dispatch-panel .dispatch-field { display:inline-block; margin:4px 0; }
+#dispatch-panel select { background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:4px; }
+#dispatch-panel textarea { width:100%; background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:4px; }
 #dispatch-panel .dispatch-modes label { margin-right:12px; }
 #dispatch-panel .dispatch-hint { color:#9aa; font-size:10px; }
 #dispatch-panel .dispatch-tgt { display:inline-block; font-size:12px; margin-right:10px; }
-#dispatch-panel #payload-edit { background:#1a1a2e; border-radius:4px; padding:6px; max-height:34vh; overflow:auto; }
+#dispatch-panel #payload-edit { background:#1a1a2e; border-radius:4px; padding:6px; max-height:40vh; overflow:auto; }
+#dispatch-panel .dispatch-send-row { margin-top:10px; }
 .dispatch-status { display:inline-block; margin-left:8px; font-size:11px; }
 .dispatch-status.ok { color:#7ed321; }
 .dispatch-status.err { color:#ff6b6b; }
-@media (max-width:900px) { #dispatch-panel .dispatch-grid { grid-template-columns:1fr; } }
 #summary-cards { display:flex; gap:12px; margin-bottom:12px; }
 #summary-cards .card { background:#252542; padding:12px 18px; border-radius:6px; flex:1; }
 #summary-cards .card b { font-size:22px; display:block; }

@@ -27,18 +27,27 @@
   <button id="open-files">파일</button>
   <button id="logout">로그아웃</button>
 </header>
+<div id="top-row" class="hidden">
+  <section id="dispatch-panel"></section>
+  <section id="metrics-panel"></section>
+  <section id="health-detail"></section>
+</div>
+<nav id="tabs" class="hidden">
+  <button class="tab-btn active" data-tab="status">현황</button>
+  <button class="tab-btn" data-tab="inbox">운영자 인박스</button>
+  <button class="tab-btn" data-tab="matrix">통신 매트릭스</button>
+</nav>
 <main id="main" class="hidden">
-  <aside id="left-panel">
-    <section id="inbox-panel"></section>
-    <section id="metrics-panel"></section>
-    <section id="health-detail"></section>
-  </aside>
-  <section id="center-panel">
+  <section id="tab-status" class="tab-pane active">
     <div id="summary-cards"></div>
-    <section id="dispatch-panel"></section>
     <div id="instances-table"></div>
     <div id="conversations-table"></div>
     <div id="bots-table"></div>
+  </section>
+  <section id="tab-inbox" class="tab-pane">
+    <section id="inbox-panel"></section>
+  </section>
+  <section id="tab-matrix" class="tab-pane">
     <div id="comm-matrix"></div>
     <div id="flow-view"></div>
   </section>

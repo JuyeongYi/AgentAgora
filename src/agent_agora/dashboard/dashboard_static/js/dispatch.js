@@ -14,26 +14,24 @@ window.agoraDispatch = (function() {
 
     panel().innerHTML = `
       <h3>메시지 보내기</h3>
-      <div class="dispatch-grid">
-        <div class="dispatch-controls">
-          <div class="dispatch-modes">
-            <label><input type="radio" name="dmode" value="single" checked>단일</label>
-            <label><input type="radio" name="dmode" value="broadcast">브로드캐스트</label>
-          </div>
-          <div id="dispatch-target"></div>
-          <label class="dispatch-field">Schema (= msgtype)
-            <select id="dispatch-schema">${
-              schemas.map(s => `<option value="${escapeAttr(s.id)}">${escapeAttr(s.id)}</option>`).join('')
-            }</select>
-          </label>
-          <label class="dispatch-field"><input type="checkbox" id="dispatch-reply-only">reply_only</label>
-          <button id="dispatch-send" class="action-btn">보내기</button>
-          <span id="dispatch-status" class="dispatch-status"></span>
+      <div class="dispatch-controls-row">
+        <div class="dispatch-modes">
+          <label><input type="radio" name="dmode" value="single" checked>단일</label>
+          <label><input type="radio" name="dmode" value="broadcast">브로드캐스트</label>
         </div>
-        <div class="dispatch-payload-col">
-          <label class="dispatch-field">Payload <span class="dispatch-hint">(msgtype는 스키마 선택, ts는 서버가 자동)</span></label>
-          <div id="dispatch-payload"></div>
-        </div>
+        <div id="dispatch-target"></div>
+        <label class="dispatch-field">Schema (= msgtype)
+          <select id="dispatch-schema">${
+            schemas.map(s => `<option value="${escapeAttr(s.id)}">${escapeAttr(s.id)}</option>`).join('')
+          }</select>
+        </label>
+        <label class="dispatch-field"><input type="checkbox" id="dispatch-reply-only">reply_only</label>
+      </div>
+      <label class="dispatch-field">Payload <span class="dispatch-hint">(msgtype는 스키마 선택, ts/from은 서버가 자동)</span></label>
+      <div id="dispatch-payload"></div>
+      <div class="dispatch-send-row">
+        <button id="dispatch-send" class="action-btn">보내기</button>
+        <span id="dispatch-status" class="dispatch-status"></span>
       </div>`;
 
     setupTargetPicker();

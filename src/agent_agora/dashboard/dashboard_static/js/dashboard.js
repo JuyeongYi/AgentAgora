@@ -2,6 +2,22 @@
 (async function() {
   document.getElementById('logout').onclick = () => window.agoraLogin.logout();
 
+  // 탭 전환 — .tab-btn 클릭 시 해당 .tab-pane만 보이고 콘텐츠 상단으로 스크롤.
+  function setupTabs() {
+    const btns = Array.from(document.querySelectorAll('.tab-btn'));
+    const tabsTop = document.getElementById('tabs');
+    btns.forEach(btn => {
+      btn.onclick = () => {
+        const tab = btn.getAttribute('data-tab');
+        btns.forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.tab-pane').forEach(p =>
+          p.classList.toggle('active', p.id === 'tab-' + tab));
+        if (tabsTop) window.scrollTo({top: tabsTop.offsetTop, behavior: 'smooth'});
+      };
+    });
+  }
+  setupTabs();
+
   await window.agoraLogin.init(async (user) => {
     // 인증 완료 → 초기 hydration + SSE 연결
     try {

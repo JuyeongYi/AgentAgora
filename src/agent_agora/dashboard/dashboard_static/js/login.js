@@ -78,8 +78,10 @@ window.agoraLogin = (function() {
   }
 
   function showApp(user) {
-    document.getElementById('header').classList.remove('hidden');
-    document.getElementById('main').classList.remove('hidden');
+    ['header', 'top-row', 'tabs', 'main'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('hidden');
+    });
     document.getElementById('who').textContent = 'operator:' + user;
     if (onAuthenticated) onAuthenticated(user);
   }
