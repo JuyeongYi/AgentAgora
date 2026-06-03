@@ -117,10 +117,11 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .matrix-edit-host { max-height:55vh; overflow:auto; }
 .matrix-edit { border-collapse:collapse; }
 .matrix-edit th, .matrix-edit td { border:1px solid #33334d; padding:2px; }
-.matrix-edit .matrix-pat { width:120px; background:#1a1a2e; color:#bbf; border:1px solid #44446a; font-size:11px; }
-.matrix-edit .matrix-rowlabel { color:#bbf; font-size:11px; text-align:right; padding:2px 6px; white-space:nowrap; }
+.matrix-edit .matrix-corner { color:#9aa; font-size:10px; white-space:nowrap; }
+.matrix-edit .matrix-pat-wrap { display:flex; align-items:center; gap:2px; }
+.matrix-edit .matrix-pat { width:110px; background:#1a1a2e; color:#bbf; border:1px solid #44446a; font-size:11px; }
 .matrix-edit .matrix-w { width:44px; background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; text-align:center; }
-.matrix-edit .matrix-del { background:none; border:none; color:#ff6b6b; cursor:pointer; }
+.matrix-edit .matrix-del { background:none; border:none; color:#ff6b6b; cursor:pointer; padding:0 2px; }
 
 /* 전문 검색 */
 #search-input { background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:3px 8px; }

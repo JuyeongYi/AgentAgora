@@ -4,3 +4,6 @@ dist/
 build/
 .venv/
 .agentagora/
+
+# Playwright MCP 아티팩트
+.playwright-mcp/

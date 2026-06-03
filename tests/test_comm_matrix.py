@@ -123,3 +123,29 @@ def test_clear_resets_and_deactivates():
     assert cm.active is False
     assert cm.snapshot() == {}
     assert cm.is_allowed(from_="Worker1", to="Worker2") is True
+
+
+def test_load_matrix_nonsquare():
+    """load_matrix는 to-패턴 집합 ≠ from-패턴 집합(비정사각)을 허용한다."""
+    cm = CommMatrix()
+    # 행(to) 1개, 열(from) 2개 — 비정사각
+    cm.load_matrix({"(?i)coder.*": {"(?i)reviewer.*": 1, "(?i)tester.*": 0}})
+    assert cm.active is True
+    assert cm.is_allowed(from_="Reviewer1", to="Coder1") is True   # weight 1
+    assert cm.is_allowed(from_="Tester1", to="Coder1") is False    # weight 0
+    snap = cm.snapshot()
+    assert snap == {"(?i)coder.*": {"(?i)reviewer.*": 1, "(?i)tester.*": 0}}
+
+
+def test_load_matrix_invalid_pattern_raises():
+    cm = CommMatrix()
+    with pytest.raises(AgoraError) as ei:
+        cm.load_matrix({"(": {"x.*": 1}})  # 컴파일 불가 패턴
+    assert ei.value.code == "comm_matrix_invalid_pattern"
+
+
+def test_load_matrix_negative_cell_raises():
+    cm = CommMatrix()
+    with pytest.raises(AgoraError) as ei:
+        cm.load_matrix({"a.*": {"b.*": -1}})
+    assert ei.value.code == "comm_matrix_invalid_cell"

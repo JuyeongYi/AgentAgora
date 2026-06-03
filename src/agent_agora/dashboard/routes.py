@@ -576,8 +576,9 @@ def register(
     async def comm_matrix_endpoint(request: Request) -> JSONResponse:
         """GET /dashboard/comm-matrix — 상태 조회. POST — 토글/CSV 교체.
 
-        POST body {active?: bool} → set_active, {csv?: str} → load_csv. 둘 다 없으면 422.
-        AgoraError(빈 매트릭스 활성화·CSV shape/cell/pattern 오류)는 422로 매핑."""
+        POST body {active?: bool} → set_active, {csv?: str} → load_csv,
+        {matrix?: {to_pat:{from_pat:w}}} → load_matrix(비정사각 허용). 모두 없으면 422.
+        AgoraError(빈 매트릭스 활성화·shape/cell/pattern 오류)는 422로 매핑."""
         if request.method == "GET":
             return JSONResponse({
                 "active": comm_matrix.active,
@@ -587,10 +588,13 @@ def register(
         body, _err = await _parse_json_body(request)
         if _err:
             return _err
-        if not isinstance(body, dict) or ("active" not in body and "csv" not in body):
-            return JSONResponse({"error": "active or csv required"}, status_code=422)
+        if not isinstance(body, dict) or not (
+                "active" in body or "csv" in body or "matrix" in body):
+            return JSONResponse({"error": "active, csv, or matrix required"}, status_code=422)
         try:
-            if "csv" in body:
+            if "matrix" in body:
+                comm_matrix.load_matrix(body["matrix"])
+            elif "csv" in body:
                 comm_matrix.load_csv(body["csv"])
             if "active" in body:
                 comm_matrix.set_active(bool(body["active"]))

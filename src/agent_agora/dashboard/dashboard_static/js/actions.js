@@ -85,91 +85,94 @@ window.agoraActions = (function() {
     _open(card);
   }
 
-  // 통신 매트릭스 표 편집 — N×N 그리드(행=to 패턴, 열=from 패턴, 셀=weight 정수).
-  // 적용 시 CSV로 변환해 POST(=활성화). 패턴 추가/삭제로 N을 조절.
+  // 통신 매트릭스 표 편집 — 행(to)·열(from) 독립 그리드(비정사각 허용). 셀=weight 정수.
+  // 행/열을 따로 추가·삭제. 적용 시 {matrix} dict로 POST(=활성화).
   async function matrixEdit() {
     const data = await window.agoraApi.get('/dashboard/comm-matrix').catch(() => ({matrix: {}}));
     const matrix = data.matrix || {};
-    let patterns = Object.keys(matrix);
-    if (!patterns.length) patterns = ['(?i)orchestrator.*', '(?i)coder.*'];
-    let weights = patterns.map(to => patterns.map(from => Number((matrix[to] || {})[from]) || 0));
+    let rows = Object.keys(matrix);                 // to-패턴(행)
+    let cols = [];                                  // from-패턴(열, 합집합)
+    rows.forEach(r => Object.keys(matrix[r] || {}).forEach(c => { if (!cols.includes(c)) cols.push(c); }));
+    if (!rows.length) rows = ['(?i)orchestrator.*'];
+    if (!cols.length) cols = ['(?i)coder.*'];
+    let weights = rows.map(r => cols.map(c => Number((matrix[r] || {})[c]) || 0));
 
     const card = _card('통신 매트릭스 편집');
     const help = document.createElement('p');
-    help.textContent = '행=받는 쪽(to), 열=보내는 쪽(from), 셀=weight(0=차단, ≥1=허용). 헤더는 정규식. 적용 시 활성화.';
+    help.textContent = '행=받는 쪽(to), 열=보내는 쪽(from), 셀=weight(0=차단, ≥1=허용). 헤더는 정규식. 행·열 독립 추가. 적용 시 활성화.';
     help.className = 'matrix-help';
     card.appendChild(help);
     const host = document.createElement('div');
     host.className = 'matrix-edit-host';
     card.appendChild(host);
 
+    function patInput(arr, idx, onDel, delTitle) {
+      const wrap = document.createElement('span');
+      wrap.className = 'matrix-pat-wrap';
+      const inp = document.createElement('input');
+      inp.value = arr[idx]; inp.className = 'matrix-pat';
+      inp.oninput = () => { arr[idx] = inp.value; };
+      const del = document.createElement('button');
+      del.textContent = '✕'; del.className = 'matrix-del'; del.title = delTitle;
+      del.onclick = onDel;
+      wrap.appendChild(inp); wrap.appendChild(del);
+      return wrap;
+    }
+
     function rebuild() {
       host.innerHTML = '';
       const tbl = document.createElement('table');
       tbl.className = 'matrix-edit';
-      // 헤더 행: 코너 + from 패턴 입력 + 삭제
+      // 헤더 행: 코너 + from(열) 패턴 입력
       const head = document.createElement('tr');
-      head.appendChild(document.createElement('th'));  // corner
-      patterns.forEach((pat, j) => {
+      const corner = document.createElement('th');
+      corner.textContent = 'to ＼ from'; corner.className = 'matrix-corner';
+      head.appendChild(corner);
+      cols.forEach((c, j) => {
         const th = document.createElement('th');
-        const inp = document.createElement('input');
-        inp.value = pat; inp.className = 'matrix-pat';
-        inp.oninput = () => { patterns[j] = inp.value; syncRowLabels(); };
-        th.appendChild(inp);
+        th.appendChild(patInput(cols, j,
+          () => { cols.splice(j, 1); weights.forEach(r => r.splice(j, 1)); rebuild(); }, '열 삭제'));
         head.appendChild(th);
       });
-      head.appendChild(document.createElement('th'));  // del col header
       tbl.appendChild(head);
-      // 데이터 행
-      patterns.forEach((pat, i) => {
+      // 데이터 행: to(행) 패턴 입력 + weight 셀
+      rows.forEach((r, i) => {
         const tr = document.createElement('tr');
-        const rowLabel = document.createElement('th');
-        rowLabel.className = 'matrix-rowlabel';
-        rowLabel.textContent = pat;  // from 헤더 입력과 동기(syncRowLabels)
-        tr.appendChild(rowLabel);
-        patterns.forEach((_from, j) => {
+        const rh = document.createElement('th');
+        rh.appendChild(patInput(rows, i,
+          () => { rows.splice(i, 1); weights.splice(i, 1); rebuild(); }, '행 삭제'));
+        tr.appendChild(rh);
+        cols.forEach((_c, j) => {
           const td = document.createElement('td');
-          const inp = document.createElement('input');
-          inp.type = 'number'; inp.min = '0'; inp.value = String(weights[i][j]);
-          inp.className = 'matrix-w';
-          inp.oninput = () => { weights[i][j] = Math.max(0, parseInt(inp.value, 10) || 0); };
-          td.appendChild(inp);
+          const w = document.createElement('input');
+          w.type = 'number'; w.min = '0'; w.value = String(weights[i][j]);
+          w.className = 'matrix-w';
+          w.oninput = () => { weights[i][j] = Math.max(0, parseInt(w.value, 10) || 0); };
+          td.appendChild(w);
           tr.appendChild(td);
         });
-        const delTd = document.createElement('td');
-        const del = document.createElement('button');
-        del.textContent = '✕'; del.title = '행/열 삭제'; del.className = 'matrix-del';
-        del.onclick = () => { patterns.splice(i, 1); weights.splice(i, 1); weights.forEach(r => r.splice(i, 1)); rebuild(); };
-        delTd.appendChild(del);
-        tr.appendChild(delTd);
         tbl.appendChild(tr);
       });
       host.appendChild(tbl);
-      const add = document.createElement('button');
-      add.textContent = '+ 패턴 추가'; add.className = 'action-btn';
-      add.onclick = () => {
-        patterns.push('(?i)new.*');
-        weights.forEach(r => r.push(0));
-        weights.push(patterns.map(() => 0));
-        rebuild();
-      };
-      host.appendChild(add);
+      const addRow = document.createElement('button');
+      addRow.textContent = '+ 행(to)'; addRow.className = 'action-btn';
+      addRow.onclick = () => { rows.push('(?i)new.*'); weights.push(cols.map(() => 0)); rebuild(); };
+      const addCol = document.createElement('button');
+      addCol.textContent = '+ 열(from)'; addCol.className = 'action-btn';
+      addCol.onclick = () => { cols.push('(?i)new.*'); weights.forEach(r => r.push(0)); rebuild(); };
+      host.appendChild(addRow);
+      host.appendChild(addCol);
     }
 
-    function syncRowLabels() {
-      const labels = host.querySelectorAll('.matrix-rowlabel');
-      labels.forEach((el, i) => { el.textContent = patterns[i]; });
-    }
-
-    function buildCsv() {
-      const rows = [patterns.join(',')];
-      weights.forEach(r => rows.push(r.join(',')));
-      return rows.join('\n');
+    function buildMatrix() {
+      const m = {};
+      rows.forEach((r, i) => { m[r] = {}; cols.forEach((c, j) => { m[r][c] = weights[i][j]; }); });
+      return m;
     }
 
     rebuild();
     _buttons(card, '적용', () => _run(
-      window.agoraApi.post('/dashboard/comm-matrix', {csv: buildCsv()})), false);
+      window.agoraApi.post('/dashboard/comm-matrix', {matrix: buildMatrix()})), false);
     _open(card);
   }
 

@@ -71,6 +71,48 @@ class CommMatrix:
         self._compiled = compiled
         self.active = True
 
+    def load_matrix(self, weights: dict) -> None:
+        """{to_pattern: {from_pattern: weight}} dict로 매트릭스를 *제자리 교체*한다.
+
+        load_csv와 달리 비정사각(to-패턴 집합 ≠ from-패턴 집합)을 허용한다 — 대시보드
+        표 편집기가 행(to)·열(from)을 독립적으로 추가할 수 있게. 컴파일된 패턴 집합은
+        to·from 패턴의 합집합. 컴파일 불가 패턴 → comm_matrix_invalid_pattern, 비정수·
+        음수 셀 → comm_matrix_invalid_cell."""
+        if not isinstance(weights, dict):
+            raise AgoraError("comm_matrix_shape_mismatch", detail="matrix는 객체여야 함")
+        pats: set[str] = set(weights.keys())
+        norm: dict[str, dict[str, int]] = {}
+        for to_pat, row in weights.items():
+            if not isinstance(row, dict):
+                raise AgoraError(
+                    "comm_matrix_shape_mismatch", detail=f"행 '{to_pat}'는 객체여야 함")
+            row_weights: dict[str, int] = {}
+            for from_pat, w in row.items():
+                pats.add(from_pat)
+                try:
+                    wi = int(w)
+                except (ValueError, TypeError):
+                    raise AgoraError(
+                        "comm_matrix_invalid_cell",
+                        detail=f"'{to_pat}'→'{from_pat}' 셀 '{w}'는 정수가 아님") from None
+                if wi < 0:
+                    raise AgoraError(
+                        "comm_matrix_invalid_cell",
+                        detail=f"'{to_pat}'→'{from_pat}' 셀 {wi}는 음수")
+                row_weights[from_pat] = wi
+            norm[to_pat] = row_weights
+        compiled: dict[str, re.Pattern[str]] = {}
+        for p in pats:
+            try:
+                compiled[p] = re.compile(p)
+            except re.error as e:
+                raise AgoraError(
+                    "comm_matrix_invalid_pattern",
+                    detail=f"패턴 '{p}'는 정규식이 아님: {e}") from None
+        self._weights = norm
+        self._compiled = compiled
+        self.active = True
+
     def set_active(self, active: bool) -> None:
         """활성 토글. active=False는 매트릭스 내용을 보존(다시 켜면 복원). active=True인데
         매트릭스가 비어있으면 거부(comm_matrix_empty) — 빈 매트릭스 활성화는 operator
