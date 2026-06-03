@@ -31,6 +31,12 @@ end-to-end로 굴려보는 로컬 테스트 환경이다.
 | `spawn-all.bat` | `team-manifest.json`으로 워커 디렉토리 재생성 (`--force`) |
 | `run.bat` (각 워커) | 해당 워커를 채널 모드로 기동 |
 
+> **설치 버전으로 실행**: 브로커는 `uv tool install`로 설치한 `agent-agora`를, 워커
+> 채널 어댑터는 `agora-channel`을 쓴다(둘 다 같은 설치 버전 → 버전 불일치 없음). 운영
+> 스크립트(comm_matrix/spawn_team/seed-demo)는 stdlib만 쓰므로 시스템 `python`으로 돈다.
+> **repo 코드를 고친 뒤 그 변경을 반영하려면** repo 루트에서 `uv tool install --force .`로
+> 재설치한다(설치본은 editable이 아닌 스냅샷).
+>
 > 모든 `.bat`은 ASCII + CRLF로 생성된다 — cp949 Windows의 cmd.exe가 LF+한글(멀티바이트)
 > `.bat`의 줄을 잘못 쪼개기 때문(주석/경로는 영어·forward slash). 워커 이름은 폴더 basename이
 > 자동으로 `--name`·instance-id가 된다(`run.bat`의 `%~nxI`). `run.bat`은
@@ -95,10 +101,12 @@ instance_id 접두사 정규식(`(?i)coder.*` 등)으로 매칭되므로 워커 
 
 ## 전제
 
-- `..\.venv\Scripts\python.exe` 에 `agent_agora`가 설치돼 있어야 한다 (저장소 루트의
-  테스트 venv). 브로커는 이 인터프리터로 뜬다.
-- `agora-channel` 콘솔 스크립트가 PATH에 있어야 워커의 stdio 어댑터가 동작한다
-  (venv 활성화 또는 `..\.venv\Scripts` 를 PATH에).
+- `uv tool install`로 `agent-agora`가 설치돼 `agent-agora`·`agora-channel` 콘솔
+  스크립트가 PATH에 있어야 한다. 브로커(`agent-agora`)와 워커 채널 어댑터
+  (`agora-channel`)가 같은 설치 버전을 쓴다 → 버전 불일치 없음. repo 코드 변경을
+  반영하려면 repo 루트에서 `uv tool install --force .`.
+- 운영 스크립트(comm_matrix/spawn_team/seed-demo)는 stdlib만 쓰므로 시스템 `python`이
+  PATH에 있으면 된다(agent_agora 미의존).
 - 워커 디렉토리(`Coder/` 등)와 `.agentagora/` 런타임 데이터는 `.gitignore` 처리된다 —
   `.mcp.json`에 머신별 절대경로가 박히므로 커밋하지 않고 `spawn-all.bat`로 재생성한다.
 
