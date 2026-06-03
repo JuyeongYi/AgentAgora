@@ -317,6 +317,42 @@ def test_instance_inbox_isolation_on_blocks_cross_operator(tmp_path):
         assert r3.status_code == 200
 
 
+def _seed_conv(persistence, source, target, conv_id):
+    """대화 conv_id에 source→target 메시지 1건을 직접 적재(테스트용)."""
+    import json as _json, uuid as _uuid, datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    conn = persistence.conn
+    conn.execute("INSERT OR IGNORE INTO conversations "
+                 "(conversation_id,status,started_at,last_message_at,kind) "
+                 "VALUES (?,'open',?,?,'direct')", (conv_id, now, now))
+    conn.execute("INSERT INTO messages (command_id,target,conversation_id,source,created_at,"
+                 "expect_result,delivered_as,dispatch_kind,closing,priority,priority_rank,"
+                 "payload,reply_only) VALUES (?,?,?,?,?,0,'primary','direct',0,'normal',1,?,0)",
+                 (str(_uuid.uuid4()), target, conv_id, source, now,
+                  _json.dumps({"msgtype": "status_report"})))
+
+
+def test_conversation_acl_isolation_on(tmp_path):
+    """격리 on — operator 참가 대화는 본인 참가일 때만 200, 타 운영자 대화는 403.
+    워커-워커 대화(operator 참가자 없음)는 허용."""
+    app = _build_real_server_app(tmp_path, inbox_isolation=True)
+    p = app.state.persistence
+    _seed_conv(p, "W1", "operator:bob", "cBob")
+    _seed_conv(p, "W1", "operator:alice", "cAlice")
+    _seed_conv(p, "W1", "W2", "cWorker")
+    with TestClient(app, raise_server_exceptions=True) as client:
+        assert client.get("/dashboard/conversation/cBob", headers=_auth("alice")).status_code == 403
+        assert client.get("/dashboard/conversation/cAlice", headers=_auth("alice")).status_code == 200
+        assert client.get("/dashboard/conversation/cWorker", headers=_auth("alice")).status_code == 200
+
+
+def test_conversation_acl_isolation_off_allows_all(dashboard_client, persistence):
+    """격리 off(기본) — 타 운영자 참가 대화도 read-all."""
+    _seed_conv(persistence, "W1", "operator:bob", "cBob2")
+    r = dashboard_client.get("/dashboard/conversation/cBob2", headers=_auth("alice"))
+    assert r.status_code == 200
+
+
 def test_operator_inbox_always_self_scoped(dashboard_client, post_reply_from_worker):
     """격리 무관 — /dashboard/operator/inbox는 항상 본인(operator:alice) 메시지만."""
     post_reply_from_worker("W1", "operator:alice", {"text": "for alice"})

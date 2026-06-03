@@ -422,9 +422,23 @@ def register(
     # ------------------------------------------------------------------
 
     async def conversation_endpoint(request: Request) -> JSONResponse:
-        """GET /dashboard/conversation/{conversation_id} — 대화 스레드 전체."""
+        """GET /dashboard/conversation/{conversation_id} — 대화 스레드 전체.
+
+        inbox_isolation=True면 operator 참가자가 있는 대화는 caller가 그 참가자일 때만
+        열람 가능(아니면 403). operator 참가자가 없는 워커-워커 대화는 허용."""
         conv_id = request.path_params["conversation_id"]
         msgs = persistence.fetch_messages_for(conversation_id=conv_id, include_acked=True)
+        if inbox_isolation:
+            operators = {
+                p for m in msgs for p in (m.get("source"), m.get("target"))
+                if p and is_operator(p)
+            }
+            if operators:
+                caller = operator_id(getattr(request.state, "operator_user", ""))
+                if caller not in operators:
+                    return JSONResponse(
+                        {"error": "forbidden: not a conversation participant"},
+                        status_code=403)
         return JSONResponse({"messages": msgs})
 
     async def instance_inbox_endpoint(request: Request) -> JSONResponse:
