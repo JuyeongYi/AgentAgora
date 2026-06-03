@@ -188,7 +188,7 @@ class Dispatcher:
             if not f.done():
                 f.set_result(None)
 
-    def _validate_payload(self, payload: Any) -> str:
+    def _validate_payload(self, payload: Any, source: str | None = None) -> str:
         """payload의 msgtype을 검증하고 schema validate. msgtype 문자열을 반환.
         실패 시 AgoraError(payload_missing_msgtype | unknown_msgtype | schema_violation)."""
         if not isinstance(payload, dict) or "msgtype" not in payload:
@@ -197,19 +197,20 @@ class Dispatcher:
         validator = self._schema_registry.validator(msgtype)
         if validator is None:
             raise AgoraError("unknown_msgtype", msgtype=msgtype)
-        self._autofill_timestamp(payload, msgtype)
+        self._autofill_fields(payload, msgtype, source)
         errors = sorted(validator.iter_errors(payload), key=lambda e: list(e.absolute_path))
         if errors:
             detail = "; ".join(e.message for e in errors[:3])
             raise AgoraError("schema_violation", detail=detail)
         return msgtype
 
-    def _autofill_timestamp(self, payload: dict, msgtype: str) -> None:
-        """스키마가 선언한 timestamp 필드(ts/timestamp)를 서버 시각으로 자동 채운다(없을 때).
+    def _autofill_fields(self, payload: dict, msgtype: str, source: str | None) -> None:
+        """스키마가 선언한 서버-결정 필드를 자동 채운다(없을 때만 — sender 제공값 보존):
+        ts/timestamp = 서버 시각, from = dispatch source(보낸 워커/운영자).
 
-        보내는 쪽이 직접 넣었으면 보존(덮지 않음). ts/timestamp를 *선언하지 않은* 스키마는
-        건드리지 않는다 — additionalProperties=false 스키마에 미선언 필드를 넣어 검증을
-        깨뜨리지 않기 위해. (모든 메시지는 envelope.created_at으로 서버 시각을 별도 보유.)"""
+        *선언하지 않은* 필드는 건드리지 않는다 — additionalProperties=false 스키마에
+        미선언 필드를 넣어 검증을 깨뜨리지 않기 위해. (모든 메시지는 envelope.created_at·
+        envelope.source로 서버 권위 시각·발신자를 별도 보유.)"""
         entry = self._schema_registry.get(msgtype)
         if entry is None or not isinstance(entry.body, dict):
             return
@@ -220,6 +221,8 @@ class Dispatcher:
         for field in ("ts", "timestamp"):
             if field in props and field not in payload:
                 payload[field] = now
+        if source is not None and "from" in props and "from" not in payload:
+            payload["from"] = source
 
     def _fanout_to_bots(self, bot_ids, *, delivered_as, exclude, state,
                         skipped_full, make_env, now, add_participant=True):
@@ -276,7 +279,7 @@ class Dispatcher:
             raise DispatcherClosed("Dispatcher is closed")
         if target is not None and (not isinstance(target, str) or not target):
             raise ValueError("target must be a non-empty instance_id string or None")
-        msgtype = self._validate_payload(payload)
+        msgtype = self._validate_payload(payload, source)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority(priority)
 
@@ -476,7 +479,7 @@ class Dispatcher:
     ) -> dict[str, Any]:
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
-        msgtype = self._validate_payload(payload)
+        msgtype = self._validate_payload(payload, source)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority(priority)
         if reply_to is not None:
@@ -620,7 +623,7 @@ class Dispatcher:
         """
         if self._closed:
             raise DispatcherClosed("Dispatcher is closed")
-        msgtype = self._validate_payload(payload)
+        msgtype = self._validate_payload(payload, source)
         payload_bytes = validate_payload_size(payload)
         priority_rank = validate_priority("normal")
 

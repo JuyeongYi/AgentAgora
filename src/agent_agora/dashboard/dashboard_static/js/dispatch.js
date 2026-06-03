@@ -14,21 +14,27 @@ window.agoraDispatch = (function() {
 
     panel().innerHTML = `
       <h3>메시지 보내기</h3>
-      <div class="dispatch-modes">
-        <label><input type="radio" name="dmode" value="single" checked>단일</label>
-        <label><input type="radio" name="dmode" value="broadcast">브로드캐스트</label>
-      </div>
-      <div id="dispatch-target"></div>
-      <label class="dispatch-field">Schema
-        <select id="dispatch-schema">${
-          schemas.map(s => `<option value="${escapeAttr(s.id)}">${escapeAttr(s.id)}</option>`).join('')
-        }</select>
-      </label>
-      <label class="dispatch-field">Payload <span class="dispatch-hint">(스키마 필드 자동; ts는 서버가 채움)</span></label>
-      <div id="dispatch-payload"></div>
-      <label class="dispatch-field"><input type="checkbox" id="dispatch-reply-only">reply_only</label>
-      <button id="dispatch-send" class="action-btn">보내기</button>
-      <span id="dispatch-status" class="dispatch-status"></span>`;
+      <div class="dispatch-grid">
+        <div class="dispatch-controls">
+          <div class="dispatch-modes">
+            <label><input type="radio" name="dmode" value="single" checked>단일</label>
+            <label><input type="radio" name="dmode" value="broadcast">브로드캐스트</label>
+          </div>
+          <div id="dispatch-target"></div>
+          <label class="dispatch-field">Schema (= msgtype)
+            <select id="dispatch-schema">${
+              schemas.map(s => `<option value="${escapeAttr(s.id)}">${escapeAttr(s.id)}</option>`).join('')
+            }</select>
+          </label>
+          <label class="dispatch-field"><input type="checkbox" id="dispatch-reply-only">reply_only</label>
+          <button id="dispatch-send" class="action-btn">보내기</button>
+          <span id="dispatch-status" class="dispatch-status"></span>
+        </div>
+        <div class="dispatch-payload-col">
+          <label class="dispatch-field">Payload <span class="dispatch-hint">(msgtype는 스키마 선택, ts는 서버가 자동)</span></label>
+          <div id="dispatch-payload"></div>
+        </div>
+      </div>`;
 
     setupTargetPicker();
     setupPayloadEditor();
@@ -67,12 +73,16 @@ window.agoraDispatch = (function() {
     }
   }
 
-  // 서버가 자동 주입하는 timestamp 필드는 폼에서 제거(중복/빈값 검증 실패 방지).
+  // 폼에서 자동 결정 필드를 제거한다(서버가 채움):
+  //  - msgtype: 스키마 드롭다운 선택값으로 서버가 주입(_inject_msgtype).
+  //  - ts/timestamp: dispatch 시 서버 시각.
+  //  - from: dispatch source(보내는 운영자/워커)로 서버가 주입.
+  const _AUTO_FIELDS = ['msgtype', 'ts', 'timestamp', 'from'];
   function stripServerFields(schema) {
     if (!schema || typeof schema !== 'object') return schema;
     const s = JSON.parse(JSON.stringify(schema));
-    if (s.properties) { delete s.properties.ts; delete s.properties.timestamp; }
-    if (Array.isArray(s.required)) s.required = s.required.filter(k => k !== 'ts' && k !== 'timestamp');
+    if (s.properties) _AUTO_FIELDS.forEach(k => delete s.properties[k]);
+    if (Array.isArray(s.required)) s.required = s.required.filter(k => !_AUTO_FIELDS.includes(k));
     return s;
   }
 

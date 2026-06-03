@@ -65,6 +65,27 @@ async def test_timestamp_field_autofilled_for_default_schema(disp):
 
 
 @pytest.mark.asyncio
+async def test_from_autofilled_with_source(disp):
+    """worker_freeform은 from이 required — 생략하면 서버가 dispatch source로 채운다."""
+    await disp.dispatch(
+        source="Inst1", target="Inst2",
+        payload={"msgtype": "worker_freeform", "type": "task", "message": "hi"})  # from 생략
+    inbox = await disp.flush(instance_id="Inst2")
+    msg = next(m for m in inbox if m["payload"].get("msgtype") == "worker_freeform")
+    assert msg["payload"]["from"] == "Inst1"
+
+
+@pytest.mark.asyncio
+async def test_sender_provided_from_preserved(disp):
+    await disp.dispatch(
+        source="Inst1", target="Inst2",
+        payload={"msgtype": "worker_freeform", "type": "task", "message": "hi", "from": "custom"})
+    inbox = await disp.flush(instance_id="Inst2")
+    msg = next(m for m in inbox if m["payload"].get("msgtype") == "worker_freeform")
+    assert msg["payload"]["from"] == "custom"  # 덮지 않음
+
+
+@pytest.mark.asyncio
 async def test_schema_without_ts_field_untouched(disp):
     """ts/timestamp를 선언 안 한 스키마(test_any)는 주입하지 않는다(검증 안전)."""
     await disp.dispatch(

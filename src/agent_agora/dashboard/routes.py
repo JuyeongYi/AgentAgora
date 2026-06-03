@@ -10,6 +10,7 @@ import asyncio
 import datetime
 import json as _json
 import logging
+import re
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -25,6 +26,20 @@ from agent_agora.registry import NotRegisteredError, is_operator, operator_id
 logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).with_name("dashboard.html")
+
+
+def _bust_static_cache(html: str) -> str:
+    """HTML의 /dashboard/static/*.js|.css 참조에 ?v=<static mtime>을 붙인다.
+
+    정적 파일이 바뀌면 토큰이 바뀌어 URL이 달라지므로 브라우저가 새로 받는다(F5만으로
+    최신 반영). 변경이 없으면 토큰이 안정적이라 캐시가 유지된다. _NoCacheStaticFiles의
+    재검증과 합쳐 대시보드 갱신이 stale로 남지 않게 한다."""
+    static_dir = Path(__file__).with_name("dashboard_static")
+    try:
+        token = str(int(max(p.stat().st_mtime for p in static_dir.rglob("*") if p.is_file())))
+    except (ValueError, OSError):
+        return html
+    return re.sub(r'(/dashboard/static/[^"\']+\.(?:js|css))', r'\1?v=' + token, html)
 
 
 class _NoCacheStaticFiles(StaticFiles):
@@ -197,7 +212,7 @@ def register(
             health_collector=health_collector))
 
     async def page_endpoint(request: Request) -> HTMLResponse:
-        return HTMLResponse(_DASHBOARD_HTML.read_text(encoding="utf-8"))
+        return HTMLResponse(_bust_static_cache(_DASHBOARD_HTML.read_text(encoding="utf-8")))
 
     async def auth_mode_endpoint(request: Request) -> JSONResponse:
         """GET /dashboard/auth-mode — 인증 없이 접근 가능."""
