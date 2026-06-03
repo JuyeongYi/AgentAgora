@@ -71,8 +71,11 @@ def register(app: Starlette, *, file_store, file_policy) -> None:
             return JSONResponse(
                 {"error": str(AgoraError("unknown_file", file_id=file_id))},
                 status_code=404)
-        return FileResponse(path, media_type=meta["content_type"]
-                            or "application/octet-stream")
+        return FileResponse(
+            path,
+            media_type=meta["content_type"] or "application/octet-stream",
+            filename=meta["name"],
+        )
 
     app.router.routes.append(Route("/files", upload, methods=["POST"]))
     app.router.routes.append(Route("/files/{file_id}", download, methods=["GET"]))

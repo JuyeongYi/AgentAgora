@@ -32,6 +32,21 @@ def test_upload_then_download(tmp_path):
     assert r2.content == b"hello bytes"
 
 
+def test_download_includes_filename_disposition(tmp_path):
+    # 어댑터가 ./agora-inbox/<원래이름>에 저장하려면 원래 파일명을 알아야 한다.
+    client, _, _ = _client(tmp_path)
+    r = client.post("/files", content=b"contents",
+                    headers={"X-Agora-Instance-Id": "Coder1",
+                             "X-Agora-File-Name": "r.txt"})
+    assert r.status_code == 200
+    fid = r.json()["file_id"]
+    r2 = client.get(f"/files/{fid}", headers={"X-Agora-Instance-Id": "Reviewer1"})
+    assert r2.status_code == 200
+    disposition = r2.headers.get("content-disposition", "")
+    assert "filename" in disposition
+    assert "r.txt" in disposition
+
+
 def test_download_unknown_404(tmp_path):
     client, _, _ = _client(tmp_path)
     r = client.get("/files/nope", headers={"X-Agora-Instance-Id": "X"})
