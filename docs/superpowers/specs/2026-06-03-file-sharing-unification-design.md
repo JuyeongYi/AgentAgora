@@ -75,5 +75,6 @@
 ## 미해결 / 구현 시 확인
 
 - MCP 도구명에 점(`file.put`) 사용 — `agora.flush` 등 점 포함 도구가 이미 동작하므로 문제없을 것이나 등록 시 확인.
-- `agora-channel`의 `Server` lowlevel에 `list_tools`/`call_tool`을 추가할 때 기존 알림/watch 루프와의 동시 실행(같은 stdio 세션) 정합 확인.
-- 파일 크기 상한(100MB)에서 어댑터가 전체를 메모리에 버퍼하는지 스트리밍하는지 — `/files` 업로드는 스트리밍 cap이 있으나 어댑터측 읽기도 점검.
+- **도구 + 알림 공존 (확정)**: `agora-channel`을 `Server.run`(표준 도구 처리)으로 전환한다. `Server.run(read_stream, write_stream, init_opts, ...)`이 **write 스트림을 인자로 받으므로**, `stdio_server()`가 준 `write_stream`을 보유한 채 `run`에 넘기고 백그라운드 watch가 **같은 `write_stream`으로 claude/channel 알림을 emit**한다(anyio 스트림은 SessionMessage 객체 단위 send라 동시성 안전). MCP 서버는 agora-channel 1개 유지(추가 없음). watch는 run과 동시 시작하고, 핸드셰이크 직전 짧은 창의 emit 유실은 기존 reemit self-heal이 복구.
+- 수신 파일명 — `file.get`이 `inbox/<원래이름>`을 정하려면 이름이 필요하므로, `/files` 다운로드 응답에 `Content-Disposition: filename`을 실어(`FileResponse(filename=meta["name"])`) 어댑터가 추출한다. dest_path를 주면 그 경로 우선.
+- 파일 크기 상한(100MB)에서 어댑터가 전체를 메모리에 버퍼하는지 스트리밍하는지 — `/files` 업로드는 스트리밍 cap이 있으나 어댑터측 읽기도 점검(초판은 전체 read_bytes, 추후 스트리밍).
