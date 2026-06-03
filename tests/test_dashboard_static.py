@@ -46,6 +46,16 @@ def test_static_route_served(real_server_app):
         assert r.status_code == 404
 
 
+def test_static_assets_sent_no_cache(real_server_app):
+    """정적 자산은 Cache-Control: no-cache — 브라우저가 매번 재검증해 대시보드 갱신을
+    즉시 반영(기본 StaticFiles는 헤더 없어 stale JS가 남음)."""
+    from starlette.testclient import TestClient
+    with TestClient(real_server_app, raise_server_exceptions=True) as client:
+        r = client.get("/dashboard/static/js/dashboard.js")
+        assert r.status_code == 200
+        assert "no-cache" in r.headers.get("cache-control", "")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures (local — mirrors test_dashboard_dispatch.py setup without auth)
 # ---------------------------------------------------------------------------

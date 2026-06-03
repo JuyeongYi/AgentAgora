@@ -12,8 +12,8 @@
     }
 
     window.agoraStream.on('data_snapshot', (evt) => renderSnapshot(evt.payload));
-    window.agoraStream.on('instance_registered', () => refresh());
-    window.agoraStream.on('instance_unregistered', () => refresh());
+    window.agoraStream.on('instance_registered', () => { refresh(); if (window.agoraDispatch) window.agoraDispatch.refreshTargets(); });
+    window.agoraStream.on('instance_unregistered', () => { refresh(); if (window.agoraDispatch) window.agoraDispatch.refreshTargets(); });
     window.agoraStream.on('message_dispatched', () => refresh());
     window.agoraStream.on('deadline_expired', (evt) => { console.warn('deadline expired', evt); refresh(); });
     window.agoraStream.on('operator_inbox_message', (evt) => window.agoraInbox.push(evt));
@@ -25,6 +25,8 @@
       window.agoraSparkline.refresh();
       setInterval(() => window.agoraSparkline.refresh(), 10000);
     }
+    // 상시 메시지 보내기 패널 렌더.
+    if (window.agoraDispatch) window.agoraDispatch.render();
   });
 
   function renderSnapshot(d) {

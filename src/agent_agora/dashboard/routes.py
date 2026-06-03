@@ -26,6 +26,19 @@ logger = logging.getLogger(__name__)
 
 _DASHBOARD_HTML = Path(__file__).with_name("dashboard.html")
 
+
+class _NoCacheStaticFiles(StaticFiles):
+    """대시보드 정적 자산(js/css)에 Cache-Control: no-cache를 붙인다.
+
+    기본 StaticFiles는 Cache-Control을 보내지 않아 브라우저가 heuristic 캐싱으로
+    재검증 없이 stale JS를 쓴다 — 대시보드 갱신이 안 보이는 문제. no-cache는 매 요청
+    재검증(ETag 304)하게 해 갱신을 즉시 반영하면서도 변경 없으면 304로 효율 유지."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
 # 대시보드 대화 목록에 싣는 최근 대화 수 (전체가 아닌 최근 N개).
 _RECENT_CONVERSATIONS = 50
 
@@ -278,7 +291,7 @@ def register(
     if static_dir.exists():
         try:
             app.router.routes.append(
-                Mount("/dashboard/static", app=StaticFiles(directory=static_dir))
+                Mount("/dashboard/static", app=_NoCacheStaticFiles(directory=static_dir))
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("dashboard_static StaticFiles mount 실패: %s", exc)
