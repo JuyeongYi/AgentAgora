@@ -39,7 +39,8 @@ window.agoraInbox = (function() {
         e.stopPropagation();
         const m = messages.find(x => x.message_id === e.target.dataset.id);
         if (m && window.agoraDispatch) window.agoraDispatch.prefillReply(
-          {to: m.sender, conversation_id: m.conversation_id, in_reply_to: m.message_id});
+          {to: m.sender, conversation_id: m.conversation_id, in_reply_to: m.message_id,
+           msgtype: m.payload && m.payload.msgtype});
       };
     });
     el().querySelectorAll('.message-card').forEach(card => {

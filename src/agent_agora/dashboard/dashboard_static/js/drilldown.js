@@ -23,7 +23,8 @@ window.agoraDrilldown = (function() {
     const body = fmt || `<pre class="payload">${escape(JSON.stringify(m.payload, null, 2))}</pre>`;
     const replyBtn = (m.sender && cmd)
       ? `<button class="reply-btn" data-to="${escape(m.sender)}" ` +
-        `data-conv="${escape(m.conversation_id || '')}" data-irt="${escape(cmd)}">답장</button>` : '';
+        `data-conv="${escape(m.conversation_id || '')}" data-irt="${escape(cmd)}" ` +
+        `data-mt="${escape((m.payload && m.payload.msgtype) || '')}">답장</button>` : '';
     return `<div class="message-card">
       <div><span class="sender">${escape(m.sender)}</span>
            → <span>${escape(m.target)}</span>
@@ -43,6 +44,7 @@ window.agoraDrilldown = (function() {
           to: btn.getAttribute('data-to'),
           conversation_id: btn.getAttribute('data-conv') || null,
           in_reply_to: btn.getAttribute('data-irt'),
+          msgtype: btn.getAttribute('data-mt') || undefined,
         });
         close();
       };
