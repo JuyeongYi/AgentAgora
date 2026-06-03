@@ -212,14 +212,20 @@ unregister/dead-sweep 레이어 churn 완화). drop된 `registry-last-seen-test-
 - **comm-matrix 루프 진단** — ✅ `cycles()` 오버레이(SCC/self-loop, 거부 아님 진단).
 - **dispatch 전달 결과 노출** — ✅ `/dashboard/dispatch` 응답에 deliveries/skipped_full/target_inbox_depth_after.
 
+### ✅ 구현 완료 (2026-06-03 — 잔여 후속 전량, 설계 워크플로 기반)
+
+- ~~**워크플로 파이프라인 시각화**~~ — ✅ `dispatcher.in_flight_edges()` + `build_dashboard_data['in_flight']` + `flow.js`(comm-matrix SVG 패턴 확장, 인스턴스 노드 + in-flight source→target 펄스 엣지). Cytoscape 미도입(기존 inline-SVG 재사용).
+- ~~**운영자 액션 (state-changing)**~~ — ✅ `operator_close_conversation`/`operator_unregister` + `CommMatrix.set_active`/`clear` + `POST /dashboard/operator/conversation/{id}/close`·`/instance/{id}/unregister`·`GET|POST /dashboard/comm-matrix` + `actions.js`(확인 모달). admin 토큰 대신 operator 인증 라우트(audit 신원 보존).
+- ~~**드릴다운 트랜스크립트 강화 + 시계열 차트**~~ — ✅ `MetricsCollector`(in-memory ring buffer) + `GET /dashboard/metrics` + `sparkline.js`(inline-SVG) + `drilldown.js` coverage 인라인 배지.
+- ~~**추가 인증 모드 (basic)**~~ — ✅ `auth.py` 'basic' 모드 + `verify_password`({SHA256}/pbkdf2)/`parse_basic_users`. oidc는 외부 IdP 없이 로컬 검증 불가 → 스코프 아웃(테스트가 'unknown auth mode'로 pin). 검증가능 대체(HS256/HMAC bearer)는 아래 잔여.
+- ~~**운영자별 inbox 격리 옵션**~~ — ✅ `AGORA_DASHBOARD_INBOX_ISOLATION` 토글 — on이면 타 운영자 operator:<other> inbox 조회 403.
+- ~~**검색 엔진**~~ — ✅ SQLite FTS5(`messages_fts` + AFTER INSERT 트리거 + backfill) + `GET /dashboard/search`(MATCH/snippet, LIKE 폴백) + `search.js` 헤더 검색바.
+
 ### 남은 후속 (deferred)
 
-- **워크플로 파이프라인 시각화** — superpowers persona 체인(planner→router→implementer→tester→reviewer→improver)을 Sankey/파이프라인 뷰로 시각화. in-flight 메시지를 위치 표시. Cytoscape.js 도입 필요.
-- **운영자 액션 (state-changing)** — 멈춘 대화 close, dead 워커 unregister, comm-matrix 토글·편집·시각 편집. 이미 존재하는 `admin_routes.py`의 `AGORA_ADMIN_TOKEN` 게이트를 dashboard UI에서 사용.
-- **드릴다운 트랜스크립트 강화 + 시계열 차트** — 메시지 카드에 coverage 인라인 표시, 워커별 인박스 depth·dispatch rate(분당)·에러율 sparkline. SVG/Canvas 인라인.
-- **추가 인증 모드** — `basic`(htpasswd), `oidc` — `dashboard_auth.py`에 모드 분기 추가만 하면 엔드포인트 코드 변경 0.
-- **운영자별 inbox 격리 옵션** — 현재는 read-all 정책(다른 운영자 inbox 조회 가능). 비공개 정책 옵션을 환경변수 또는 설정으로 토글.
-- **검색 엔진** — FTS5 기반 메시지·대화 full-text 검색. dashboard에 검색바 + 결과 뷰.
+- **검증가능 인증 대체(jwt)** — oidc 대신 정적 시크릿 HS256 JWT/HMAC bearer 모드(hmac+hashlib 로컬 검증, 의존성 0). basic 모드 SSE는 EventSource 헤더 제약으로 미지원 — token/trust 권고(문서화 완료).
+- **대화 ACL 격리** — inbox_isolation은 instance inbox만 다룸. `/dashboard/conversation/{id}`는 여전히 전체 열람 — 완전 격리는 별도 스코프.
+- **검색 본문 정밀화** — 현재 payload(JSON) 전량 인덱싱(msgtype 등 키도 매칭). 특정 키만 추출 인덱싱은 스키마 런타임 가변이라 보류.
 
 ## 워크플로 이슈
 
