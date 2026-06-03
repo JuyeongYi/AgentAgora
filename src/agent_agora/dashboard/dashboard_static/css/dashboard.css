@@ -76,6 +76,8 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .message-card .reply-btn { background:#3d3d6b; color:#e8e8e8; border:none; padding:2px 10px; border-radius:4px; cursor:pointer; font-size:11px; }
 .message-card .reply-btn:hover { background:#4d4d8b; }
 .message-card .ack-btn { background:none; border:1px solid #44446a; color:#9aa; padding:2px 10px; border-radius:4px; cursor:pointer; font-size:11px; }
+.ack-all-btn { background:#3d3d6b; color:#e8e8e8; border:none; padding:2px 10px; border-radius:4px; cursor:pointer; font-size:12px; vertical-align:middle; }
+.ack-all-btn:hover { background:#4d4d8b; }
 
 /* 스키마별 포맷 렌더(formats.js) */
 .fmt { font-size:12px; padding:2px 0; }

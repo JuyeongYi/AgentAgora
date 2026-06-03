@@ -18,7 +18,10 @@ window.agoraInbox = (function() {
   }
 
   function render() {
-    const lis = messages.map(m => `
+    // 시간 내림차순(최신이 위). ISO 8601은 사전식 정렬이 시간순과 일치.
+    const sorted = messages.slice().sort(
+      (a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const lis = sorted.map(m => `
       <div class="message-card" data-id="${escape(m.message_id)}">
         <div><span class="sender">${escape(m.sender)}</span>
              <span class="timestamp">${escape(m.created_at)}</span></div>
@@ -30,7 +33,14 @@ window.agoraInbox = (function() {
           <button class="ack-btn" data-id="${escape(m.message_id)}">ack</button>
         </div>
       </div>`).join('') || '<p>(메시지 없음)</p>';
-    el().innerHTML = `<h3>운영자 인박스 (${messages.length})</h3>` + lis;
+    const ackAll = messages.length
+      ? ` <button class="ack-all-btn">전체 ack (${messages.length})</button>` : '';
+    el().innerHTML = `<h3>운영자 인박스 (${messages.length})${ackAll}</h3>` + lis;
+    const aab = el().querySelector('.ack-all-btn');
+    if (aab) aab.onclick = (e) => {
+      e.stopPropagation();
+      ack(messages.map(m => m.message_id));
+    };
     el().querySelectorAll('.ack-btn').forEach(btn => {
       btn.onclick = (e) => { e.stopPropagation(); ack([e.target.dataset.id]); };
     });
