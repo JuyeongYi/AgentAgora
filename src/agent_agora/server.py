@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import os.path
-import shutil
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -665,46 +663,5 @@ def create_agora_app(
                 return json.dumps(result, ensure_ascii=False)
             except DispatcherClosed:
                 return json.dumps({"error": "server is shutting down"})
-
-    if file_store is not None:
-        @mcp.tool(name="agora.share_file")
-        async def agora_share_file(ctx: Context, path: str) -> str:
-            """Share a local file through the store. Returns a handle to dispatch
-            in a file_share message."""
-            session_id, _err = _session_or_error(ctx)
-            if _err:
-                return _err
-            caller = _resolve_caller(session_id, instance_registry, bot_registry)
-            name = os.path.basename(path)
-            if file_policy is not None and not file_policy.can_upload(caller, name):
-                return json.dumps({"error": str(AgoraError(
-                    "file_upload_denied", worker=caller, name=name))})
-            try:
-                handle = file_store.store_path(Path(path), name, caller)
-            except (AgoraError, OSError) as e:
-                return _error_json(e)
-            return json.dumps({"status": "ok", "handle": handle}, ensure_ascii=False)
-
-        @mcp.tool(name="agora.fetch_file")
-        async def agora_fetch_file(ctx: Context, file_id: str, dest_path: str) -> str:
-            """Fetch a shared file from the store into dest_path."""
-            session_id, _err = _session_or_error(ctx)
-            if _err:
-                return _err
-            caller = _resolve_caller(session_id, instance_registry, bot_registry)
-            meta = file_store.meta(file_id)
-            if meta is None:
-                return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
-            if file_policy is not None and not file_policy.can_download(caller, meta["name"]):
-                return json.dumps({"error": str(AgoraError(
-                    "file_download_denied", worker=caller, name=meta["name"]))})
-            src = file_store.path_of(file_id)
-            if src is None:
-                return json.dumps({"error": str(AgoraError("unknown_file", file_id=file_id))})
-            try:
-                shutil.copyfile(src, dest_path)
-            except OSError as e:
-                return json.dumps({"error": f"fetch failed: {e}"})
-            return json.dumps({"status": "ok", "name": meta["name"], "size": meta["size"]})
 
     return mcp
