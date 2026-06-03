@@ -121,6 +121,17 @@ def test_spawn_run_bat_launches_channel_mode(tmp_path: Path) -> None:
     assert "server:agora-channel" in run_bat
     assert "@echo off" in run_bat
     assert "%*" in run_bat
+    # 폴더 basename → --name 자동 등록 (사용자 요구 — 폴더명이 곧 instance id).
+    assert 'AGORA_NAME=%%~nxI' in run_bat
+    assert '--name "%AGORA_NAME%"' in run_bat
+
+
+def test_spawn_run_bat_is_ascii_crlf(tmp_path: Path) -> None:
+    """run.bat은 ASCII + CRLF — cp949 Windows cmd.exe가 LF+멀티바이트 줄을 못 쪼개므로."""
+    assert _call(tmp_path, instance_id="W4", role="coder") == 0
+    raw = (tmp_path / "W4" / "run.bat").read_bytes()
+    assert all(b < 128 for b in raw), "run.bat은 ASCII만 — 한글 주석 금지"
+    assert b"\r\n" in raw and raw.count(b"\n") == raw.count(b"\r\n"), "모든 줄이 CRLF"
 
 
 def test_spawn_undefined_role_falls_back_to_general(

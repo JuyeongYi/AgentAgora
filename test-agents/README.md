@@ -26,9 +26,29 @@ end-to-end로 굴려보는 로컬 테스트 환경이다.
 | `start-all.bat` | **전체 기동** — 브로커 탭 → 헬스 대기 → comm-matrix 적용 → 워커 7개 탭 (Windows Terminal 필요) |
 | `start-all.ps1` | 위의 PowerShell 본체 |
 | `start-broker.bat` | 브로커만 기동 (포그라운드, `--no-tls --no-timeout`, 데이터는 `./.agentagora/`) |
+| `seed-demo.bat` / `seed-demo.py` | **실제 워커 없이** 대시보드에 데모 트래픽 주입(인스턴스·대화·검색·메트릭·comm-matrix). 빠른 미리보기용 |
 | `apply-comm-matrix.bat` | review-gated 통신 매트릭스 적용 (coder↛writer — 리뷰어 게이트) |
 | `spawn-all.bat` | `team-manifest.json`으로 워커 디렉토리 재생성 (`--force`) |
 | `run.bat` (각 워커) | 해당 워커를 채널 모드로 기동 |
+
+> 모든 `.bat`은 ASCII + CRLF로 생성된다 — cp949 Windows의 cmd.exe가 LF+한글(멀티바이트)
+> `.bat`의 줄을 잘못 쪼개기 때문(주석/경로는 영어·forward slash). 워커 이름은 폴더 basename이
+> 자동으로 `--name`·instance-id가 된다(`run.bat`의 `%~nxI`).
+
+## 대시보드만 빠르게 보기 (워커 없이)
+
+7개 Claude 세션을 띄우지 않고 새 패널들(플로우·메트릭·검색·운영자 액션·로그·파일)을
+바로 보고 싶으면:
+
+```
+start-broker.bat        REM 한 창에서 브로커 기동(이 창 점유)
+REM 다른 창에서:
+seed-demo.bat           REM 가짜 인스턴스·대화·검색 데이터 주입
+```
+
+그다음 브라우저로 <http://127.0.0.1:8420/dashboard> (trust 모드 — username 아무거나).
+플로우 뷰의 in-flight 엣지와 coverage 배지는 워커↔워커 expect_result가 있어야 채워지므로
+실제 워커(아래)를 띄워야 보인다.
 
 ## 빠른 시작
 

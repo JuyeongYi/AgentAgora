@@ -20,13 +20,16 @@ DEFAULT_SERVER_URL = "http://127.0.0.1:8420/mcp"
 
 # 채널 모드 워커 기동 스크립트. agora-channel은 공식 allowlist에 없는 자작
 # 채널이라 --dangerously-load-development-channels 플래그가 필요하다.
+# ASCII 주석 + CRLF로 쓴다(_write_bat) — cp949 Windows cmd.exe는 LF+멀티바이트(한글)
+# .bat의 줄을 잘못 쪼개므로(예: set 변수명 분리) 한글 주석을 넣지 않는다.
+# 워커 이름 = run.bat 위치 폴더 basename → --name + 채널 instance-id로 자동 등록.
 _RUN_BAT = (
     "@echo off\n"
-    "REM 채널 모드 워커 기동. agora-channel은 공식 allowlist에 없는 자작 채널이라\n"
-    "REM --dangerously-load-development-channels 플래그가 필요하다.\n"
-    "REM autoCompact 임계값을 60%로 낮춰 워커가 컨텍스트 wall 전에 자주 compact하게 한다.\n"
+    "REM Channel-mode worker launcher. agora-channel is a self-made channel not on\n"
+    "REM the official allowlist, so --dangerously-load-development-channels is needed.\n"
+    "REM Lower autoCompact threshold to 60 percent so the worker compacts early.\n"
     "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60\n"
-    "REM 워커 이름 = run.bat 위치한 폴더 basename (instance_id와 일치).\n"
+    "REM Worker name = basename of this folder (matches the instance_id).\n"
     "for %%I in (\"%~dp0.\") do set \"AGORA_NAME=%%~nxI\"\n"
     "claude --name \"%AGORA_NAME%\" --dangerously-load-development-channels server:agora-channel %*\n"
 )
@@ -95,6 +98,14 @@ def _write_text(path: Path, content: str) -> None:
     """UTF-8 (BOM 없음) + LF 줄바꿈으로 쓴다 (forward-slash 규약)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(content)
+
+
+def _write_bat(path: Path, content: str) -> None:
+    """Windows .bat — ASCII + CRLF로 쓴다. cmd.exe는 CRLF를 기대하고, LF .bat은
+    멀티바이트 환경에서 줄 파싱이 깨질 수 있다. content의 '\\n'은 '\\r\\n'으로 변환된다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="ascii", newline="\r\n") as fh:
         fh.write(content)
 
 
@@ -230,7 +241,7 @@ def do_spawn(
 
     # 3. run.bat — 비커스텀 모드만. 커스텀 모드 실행 스크립트는 agora-run-script.
     if not custom:
-        _write_text(worker_dir / "run.bat", _RUN_BAT)
+        _write_bat(worker_dir / "run.bat", _RUN_BAT)
 
     # 4. .claude/settings.local.json — 페르소나 플러그인(커스텀이면 cc-agora) 활성화
     marketplace_path = plugin_root.parent.parent.as_posix()
