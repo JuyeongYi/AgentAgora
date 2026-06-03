@@ -47,12 +47,13 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
     _spawn._write_text(spawn_dir / ".agentagora" / "comm-matrix.csv", csv)
 
     # 4) 서버 기동 스크립트(옵션). agora-init이 서버를 직접 띄우진 않고 스크립트만 생성.
+    #    server_url이 비-로컬이면 런처가 --bind-host 0.0.0.0으로 LAN 바인딩한다(분산 셋업).
     if norm.get("server_launcher", True):
-        _spawn.write_server_launcher(spawn_dir)
+        _spawn.write_server_launcher(spawn_dir, server_url)
 
     # 4b) 전체 실행 스크립트(옵션). 서버→포트대기→워커 순차 기동.
     if norm.get("run_all", True):
-        _spawn.write_run_all(spawn_dir)
+        _spawn.write_run_all(spawn_dir, server_url)
 
     # 5) 서버 가동 중 & 토큰 있으면 매트릭스 즉시 적용
     token = os.environ.get("AGORA_ADMIN_TOKEN")

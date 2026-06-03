@@ -5,9 +5,9 @@ setlocal
 cd /d "%~dp0"
 where agent-agora >nul 2>nul
 if %ERRORLEVEL%==0 (
-    agent-agora --dir "%~dp0." --port 8420 --no-tls
+    agent-agora --dir "%~dp0." --port {{PORT}} --no-tls {{BIND_OPT}}
 ) else (
-    py -3.13 -m agent_agora --dir "%~dp0." --port 8420 --no-tls
+    py -3.13 -m agent_agora --dir "%~dp0." --port {{PORT}} --no-tls {{BIND_OPT}}
 )
 echo.
 echo Server stopped. Press any key to close.

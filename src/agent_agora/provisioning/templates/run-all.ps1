@@ -3,7 +3,7 @@
 # Uses Windows Terminal tabs (wt.exe) when available, otherwise separate windows.
 $ErrorActionPreference = "SilentlyContinue"
 $root = $PSScriptRoot
-$port = 8420
+$port = {{PORT}}
 $haveWt = $null -ne (Get-Command wt.exe -ErrorAction SilentlyContinue)
 
 function Start-Pane($dir, $cmd) {
@@ -12,7 +12,7 @@ function Start-Pane($dir, $cmd) {
 }
 
 # 1) server
-Start-Pane $root "agent-agora --dir ""$root"" --port $port --no-tls"
+Start-Pane $root "agent-agora --dir ""$root"" --port $port --no-tls {{BIND_OPT}}"
 
 # 2) wait for the server port to open
 for ($i = 0; $i -lt 60; $i++) {

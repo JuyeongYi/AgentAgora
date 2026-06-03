@@ -62,42 +62,55 @@ def test_spawn_worker_does_not_create_server_launcher(tmp_path):
     assert not (tmp_path / "run-server.bat").exists()
 
 
-def test_write_server_launcher_win(tmp_path):
-    spawn.write_server_launcher(tmp_path, platform="win32")
-    bat = (tmp_path / "run-server.bat").read_bytes()
-    assert b"\r\n" in bat              # CRLF
-    assert b"agent-agora" in bat
+def test_write_server_launcher_win_lan_bind(tmp_path):
+    spawn.write_server_launcher(tmp_path, server_url="http://192.168.0.2:8420/mcp", platform="win32")
+    bat = (tmp_path / "run-server.bat").read_text(encoding="utf-8")
+    assert "agent-agora" in bat
+    assert "8420" in bat
+    assert "--bind-host 0.0.0.0" in bat   # 비-로컬 호스트 → 전 인터페이스 바인딩
+    assert (tmp_path / "run-server.bat").read_bytes().count(b"\r\n") > 0  # CRLF
     assert not (tmp_path / "run-server.sh").exists()
 
 
+def test_write_server_launcher_local_no_bind(tmp_path):
+    spawn.write_server_launcher(tmp_path, server_url="http://127.0.0.1:8420/mcp", platform="win32")
+    bat = (tmp_path / "run-server.bat").read_text(encoding="utf-8")
+    assert "--bind-host" not in bat       # 로컬 호스트 → 기본(127.0.0.1)
+
+
 def test_write_server_launcher_posix(tmp_path):
-    spawn.write_server_launcher(tmp_path, platform="linux")
+    spawn.write_server_launcher(tmp_path, server_url="http://192.168.0.2:9000/mcp", platform="linux")
     sh = tmp_path / "run-server.sh"
     assert sh.is_file()
     text = sh.read_text(encoding="utf-8")
     assert text.startswith("#!/usr/bin/env bash")
     assert "agent-agora" in text
-    assert "\r\n" not in text          # LF
+    assert "9000" in text                 # server_url의 포트
+    assert "--bind-host 0.0.0.0" in text
+    assert "\r\n" not in text             # LF
     assert not (tmp_path / "run-server.bat").exists()
 
 
 def test_write_run_all_win(tmp_path):
-    spawn.write_run_all(tmp_path, platform="win32")
+    spawn.write_run_all(tmp_path, server_url="http://192.168.0.2:8420/mcp", platform="win32")
     ps = (tmp_path / "run-all.ps1").read_text(encoding="utf-8")
-    assert ".mcp.json" in ps           # 워커 디렉터리 판정
+    assert ".mcp.json" in ps              # 워커 디렉터리 판정
     assert "wt.exe" in ps or "Start-Process" in ps
+    assert "--bind-host 0.0.0.0" in ps
     assert not (tmp_path / "run-all.sh").exists()
 
 
-def test_write_run_all_posix(tmp_path):
-    spawn.write_run_all(tmp_path, platform="linux")
+def test_write_run_all_posix_zellij_only(tmp_path):
+    spawn.write_run_all(tmp_path, server_url="http://192.168.0.2:8420/mcp", platform="linux")
     sh = tmp_path / "run-all.sh"
     assert sh.is_file()
     text = sh.read_text(encoding="utf-8")
     assert text.startswith("#!/usr/bin/env bash")
-    assert "tmux" in text              # 기본 멀티플렉서
+    assert "zellij" in text               # zellij 전용
+    assert "tmux" not in text             # zellij 세션 안 tmux 중첩 방지
     assert ".mcp.json" in text
-    assert "\r\n" not in text          # LF
+    assert "--bind-host 0.0.0.0" in text
+    assert "\r\n" not in text             # LF
     assert not (tmp_path / "run-all.ps1").exists()
 
 

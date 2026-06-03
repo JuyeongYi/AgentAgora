@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import roles as _roles
 
@@ -146,35 +147,57 @@ def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: P
     return 0
 
 
-def write_server_launcher(parent_dir: Path, platform: str | None = None) -> None:
-    """parent_dir에 서버 기동 스크립트 생성(플랫폼별). agora-init은 서버를 직접 띄우지
-    않고 이 스크립트만 만든다 — 사용자가 실행해 `agent-agora` 서버를 기동한다.
-    win32면 run-server.bat(ASCII+CRLF), POSIX면 run-server.sh(LF + 0o755)."""
+def _server_url_parts(server_url: str) -> tuple[str, str]:
+    """server_url → (port, bind_opt). 호스트가 로컬(127.0.0.1/localhost)이 아니면
+    bind_opt='--bind-host 0.0.0.0'(전 인터페이스, 분산 셋업), 로컬이면 ''(기본 127.0.0.1)."""
+    u = urlparse(server_url)
+    port = str(u.port or 8420)
+    host = u.hostname or "127.0.0.1"
+    bind_opt = "" if host in ("127.0.0.1", "localhost") else "--bind-host 0.0.0.0"
+    return port, bind_opt
+
+
+def _render_launcher(template_name: str, server_url: str) -> str:
+    """런처 템플릿의 {{PORT}}·{{BIND_OPT}}를 server_url 기준으로 치환."""
+    port, bind_opt = _server_url_parts(server_url)
+    enc = "ascii" if template_name.endswith((".bat", ".ps1")) else "utf-8"
+    text = (_TPL_DIR / template_name).read_text(encoding=enc)
+    return text.replace("{{PORT}}", port).replace("{{BIND_OPT}}", bind_opt)
+
+
+def write_server_launcher(parent_dir: Path,
+                          server_url: str = "http://127.0.0.1:8420/mcp",
+                          platform: str | None = None) -> None:
+    """parent_dir에 서버 기동 스크립트 생성. agora-init은 서버를 직접 띄우지 않고 이
+    스크립트만 만든다. server_url의 호스트가 비-로컬이면 --bind-host 0.0.0.0을, 포트도
+    server_url에서 가져온다(분산 셋업). win32→run-server.bat(CRLF), POSIX→run-server.sh."""
     plat = platform or sys.platform
     if plat == "win32":
         _write_bat(Path(parent_dir) / "run-server.bat",
-                   (_TPL_DIR / "run-server.bat").read_text(encoding="ascii"))
+                   _render_launcher("run-server.bat", server_url))
     else:
         sh = Path(parent_dir) / "run-server.sh"
-        _write_text(sh, (_TPL_DIR / "run-server.sh").read_text(encoding="utf-8"))
+        _write_text(sh, _render_launcher("run-server.sh", server_url))
         try:
             sh.chmod(0o755)
         except OSError:
             pass
 
 
-def write_run_all(parent_dir: Path, platform: str | None = None) -> None:
-    """parent_dir에 전체 실행 스크립트 생성(플랫폼별). 서버 기동 → 포트 대기 →
-    `.mcp.json`이 있는 하위 디렉터리를 워커로 보고 순차 기동한다. Windows는
-    run-all.ps1(wt.exe 탭/새 창), POSIX는 run-all.sh(tmux window / zellij / nohup &;
-    실행 시 인자 tmux|zellij|bg로 강제 가능)."""
+def write_run_all(parent_dir: Path,
+                  server_url: str = "http://127.0.0.1:8420/mcp",
+                  platform: str | None = None) -> None:
+    """parent_dir에 전체 실행 스크립트 생성. 서버 기동 → 포트 대기 → `.mcp.json`이 있는
+    하위 워커 순차 기동. Windows는 run-all.ps1(wt.exe 탭/새 창), POSIX는 run-all.sh
+    (zellij 전용 — zellij 세션 안에서 각 워커를 새 탭으로). 비-로컬 server_url이면 서버에
+    --bind-host 0.0.0.0."""
     plat = platform or sys.platform
     if plat == "win32":
         _write_bat(Path(parent_dir) / "run-all.ps1",
-                   (_TPL_DIR / "run-all.ps1").read_text(encoding="ascii"))
+                   _render_launcher("run-all.ps1", server_url))
     else:
         sh = Path(parent_dir) / "run-all.sh"
-        _write_text(sh, (_TPL_DIR / "run-all.sh").read_text(encoding="utf-8"))
+        _write_text(sh, _render_launcher("run-all.sh", server_url))
         try:
             sh.chmod(0o755)
         except OSError:

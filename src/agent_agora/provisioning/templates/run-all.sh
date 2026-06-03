@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# AgentAgora run-all: start the server, wait for its port, then launch each worker.
+# AgentAgora run-all (zellij): open the server and each worker in a new zellij tab.
+# Run this INSIDE a zellij session (it uses `zellij action new-tab`).
 # Worker = a subdirectory that contains .mcp.json; runs its run.sh.
-# Multiplexer: pass tmux|zellij|bg as arg1, or auto-detect (tmux > zellij > bg).
 set -u
 root="$(cd "$(dirname "$0")" && pwd)"
-port=8420
-mux="${1:-auto}"
-if [ "$mux" = "auto" ]; then
-  if command -v tmux >/dev/null 2>&1; then mux=tmux
-  elif command -v zellij >/dev/null 2>&1; then mux=zellij
-  else mux=bg; fi
+port={{PORT}}
+
+if ! command -v zellij >/dev/null 2>&1; then
+  echo "zellij not found. Install zellij, then run this inside a zellij session." >&2
+  exit 1
+fi
+if [ -z "${ZELLIJ:-}" ]; then
+  echo "Run this inside a zellij session: start 'zellij' first, then ./run-all.sh" >&2
+  exit 1
 fi
 
-# 1) server
-case "$mux" in
-  tmux) tmux new-session -d -s agora -n server "agent-agora --dir '$root' --port $port --no-tls" ;;
-  *)    nohup agent-agora --dir "$root" --port "$port" --no-tls >"$root/server.log" 2>&1 & ;;
-esac
+# 1) server tab
+zellij action new-tab --name server --cwd "$root" -- agent-agora --dir "$root" --port "$port" --no-tls {{BIND_OPT}}
 
 # 2) wait for the server port to open
 for _ in $(seq 1 60); do
@@ -24,15 +24,10 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
-# 3) launch each worker (subdir with .mcp.json)
+# 3) one tab per worker (subdir with .mcp.json)
 for d in "$root"/*/; do
   [ -f "${d}.mcp.json" ] || continue
   [ -f "${d}run.sh" ] || continue
   name="$(basename "$d")"
-  case "$mux" in
-    tmux) tmux new-window -t agora -n "$name" "cd '$d' && ./run.sh" ;;
-    *)    ( cd "$d" && nohup ./run.sh >"${d}worker.log" 2>&1 & ) ;;
-  esac
+  zellij action new-tab --name "$name" --cwd "$d" -- bash run.sh
 done
-
-[ "$mux" = tmux ] && exec tmux attach -t agora
