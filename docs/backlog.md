@@ -217,15 +217,21 @@ unregister/dead-sweep 레이어 churn 완화). drop된 `registry-last-seen-test-
 - ~~**워크플로 파이프라인 시각화**~~ — ✅ `dispatcher.in_flight_edges()` + `build_dashboard_data['in_flight']` + `flow.js`(comm-matrix SVG 패턴 확장, 인스턴스 노드 + in-flight source→target 펄스 엣지). Cytoscape 미도입(기존 inline-SVG 재사용).
 - ~~**운영자 액션 (state-changing)**~~ — ✅ `operator_close_conversation`/`operator_unregister` + `CommMatrix.set_active`/`clear` + `POST /dashboard/operator/conversation/{id}/close`·`/instance/{id}/unregister`·`GET|POST /dashboard/comm-matrix` + `actions.js`(확인 모달). admin 토큰 대신 operator 인증 라우트(audit 신원 보존).
 - ~~**드릴다운 트랜스크립트 강화 + 시계열 차트**~~ — ✅ `MetricsCollector`(in-memory ring buffer) + `GET /dashboard/metrics` + `sparkline.js`(inline-SVG) + `drilldown.js` coverage 인라인 배지.
-- ~~**추가 인증 모드 (basic)**~~ — ✅ `auth.py` 'basic' 모드 + `verify_password`({SHA256}/pbkdf2)/`parse_basic_users`. oidc는 외부 IdP 없이 로컬 검증 불가 → 스코프 아웃(테스트가 'unknown auth mode'로 pin). 검증가능 대체(HS256/HMAC bearer)는 아래 잔여.
-- ~~**운영자별 inbox 격리 옵션**~~ — ✅ `AGORA_DASHBOARD_INBOX_ISOLATION` 토글 — on이면 타 운영자 operator:<other> inbox 조회 403.
+- ~~**추가 인증 모드 (basic)**~~ — ✅ `auth.py` 'basic' 모드 + `verify_password`({SHA256}/pbkdf2)/`parse_basic_users` + 프론트 배선(login.js/api.js Basic 헤더).
+- ~~**운영자별 inbox 격리 옵션**~~ — ✅ `AGORA_DASHBOARD_INBOX_ISOLATION` 토글 — on이면 타 운영자 operator:<other> inbox·대화 조회 403.
 - ~~**검색 엔진**~~ — ✅ SQLite FTS5(`messages_fts` + AFTER INSERT 트리거 + backfill) + `GET /dashboard/search`(MATCH/snippet, LIKE 폴백) + `search.js` 헤더 검색바.
+
+### ✅ 구현 완료 (2026-06-03 — 잔여 3종 전량 + 리뷰 confirmed 수정)
+
+- ~~**검증가능 인증 대체(jwt)**~~ — ✅ `auth.py` 'jwt' 모드 + `verify_jwt`(HS256, alg 강제로 alg:none 차단, exp 검증, sub→user, 의존성 0) + `AGORA_DASHBOARD_JWT_SECRET` + login.js JWT 배선. query fallback으로 SSE 지원.
+- ~~**대화 ACL 격리**~~ — ✅ `inbox_isolation`을 `/dashboard/conversation/{id}`로 확장 — operator 참가 대화는 본인 참가 시만 열람, 아니면 403.
+- ~~**검색 본문 정밀화**~~ — ✅ FTS 트리거를 `json_tree` 값 추출로 변경(키 이름 노이즈 제거) + `json_valid` 가드 + 트리거 변경 자동 재인덱스.
+- **리뷰 confirmed 수정** — ✅ MetricsCollector ghost 워커 prune(무한 증가 방지) + basic 인증 프론트 배선(api.js/login.js).
 
 ### 남은 후속 (deferred)
 
-- **검증가능 인증 대체(jwt)** — oidc 대신 정적 시크릿 HS256 JWT/HMAC bearer 모드(hmac+hashlib 로컬 검증, 의존성 0). basic 모드 SSE는 EventSource 헤더 제약으로 미지원 — token/trust 권고(문서화 완료).
-- **대화 ACL 격리** — inbox_isolation은 instance inbox만 다룸. `/dashboard/conversation/{id}`는 여전히 전체 열람 — 완전 격리는 별도 스코프.
-- **검색 본문 정밀화** — 현재 payload(JSON) 전량 인덱싱(msgtype 등 키도 매칭). 특정 키만 추출 인덱싱은 스키마 런타임 가변이라 보류.
+- **full OIDC** — JWKS·authorization-code 토큰 교환이 필요해 외부 IdP 없이는 로컬 검증 불가 → 범위 밖. 정적 시크릿이 가능한 경우 위의 jwt 모드로 대체.
+- **basic/jwt 모드 SSE** — EventSource는 Authorization 헤더 불가. jwt는 `?t=` query fallback으로 SSE 동작하나 basic은 password URL 노출 회피로 미지원 — basic+SSE 필요 시 token/trust 권고(문서화).
 
 ## 워크플로 이슈
 
