@@ -85,6 +85,29 @@ AgentAgora starting on http://127.0.0.1:8420/mcp
 워커 디렉토리·`CLAUDE.md`·hook까지 한 번에 찍어내는 Claude Code 플러그인은
 [`plugin/cc-agora/`](../plugin/cc-agora/)에 있다.
 
+### 최초 세팅을 한 번에: `agora-init`
+
+AI(Claude)를 거치지 않고 사람이 직접 실행하는 부트스트랩 CLI다. 팀 구성·스폰
+위치·통신 매트릭스를 입력받아 워커 디렉토리들과 설정 파일을 한 번에 찍는다.
+
+```bash
+agora-init                          # 대화형 — 프롬프트로 팀/위치/매트릭스 입력
+agora-init --manifest team.json     # 비대화형 — 기존 manifest로 재실행(CI)
+```
+
+대화형은 스폰 위치·서버 URL·마켓플레이스(plugin) 경로를 먼저 묻고, 워커마다
+`id`·`role`·`description`·`allow`(dispatch 가능 대상 id/정규식, 쉼표구분; 빈칸=없음,
+`*`=전체)를 묻는다. 생성물(스폰 위치 아래):
+
+- 각 워커 디렉토리 4파일 — `CLAUDE.md`·`.mcp.json`·`run.bat`·`.claude/settings.local.json`
+- `team.json` — 입력 보존(재실행용)
+- `.agentagora/comm-matrix.csv` — `allow` 목록에서 생성한 통신 매트릭스(행=수신자/열=발신자)
+- `run-server.bat` — 서버 기동 스크립트
+
+다음 단계: `run-server.bat`으로 서버를 띄우고 각 워커에서 `run.bat`을 실행하면
+`.mcp.json` 헤더로 자동 등록된다. 서버가 이미 떠 있고 `AGORA_ADMIN_TOKEN`이
+설정돼 있으면 매트릭스를 즉시 적용(POST)하고, 아니면 파일만 두어 서버가 시작 시 로드한다.
+
 ### 스크립트로
 
 MCP 클라이언트 라이브러리로 직접 붙을 수도 있다. `agora.register`를 호출해

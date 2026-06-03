@@ -1,6 +1,6 @@
 # 최초 세팅 CLI (`agora-init`) 설계
 
-**상태**: 설계 승인됨 (2026-06-03) — 구현 계획 대기
+**상태**: 구현 완료 (2026-06-03, 브랜치 `feat/provisioning-cli`)
 **토픽**: AI를 거치지 않고 사람이 직접 실행하는, 팀 워커 + 통신 매트릭스 최초 부트스트랩 CLI
 
 ## 배경 / 문제
@@ -109,8 +109,9 @@
 - 대화형은 stdin mock으로 핵심 경로 1개.
 - 생성된 CSV가 `comm_matrix.CommMatrix.load_csv`로 round-trip 로드되는지(방향 정합 가드).
 
-## 미해결 / 구현 시 확인
+## 구현 시 확정된 사항
 
-- `comm-matrix.csv` 행/열 방향 — `comm_matrix.py.load_csv` 정독 후 확정.
-- `.claude/settings.local.json`의 `extraKnownMarketplaces` 경로를 src CLI가 어떻게 해석할지(plugin 디렉터리 위치 결정 로직 — plugin `spawn.py` 참고).
+- `comm-matrix.csv` 행/열 방향 — `comm_matrix.py`의 `_weights[to_pat][from_pat]` 규약에 맞춰 **행=수신자(to), 열=발신자(from)**, 코너셀 없는 정사각 NxN으로 확정. `matrix.py`의 round-trip 테스트가 `CommMatrix.load_csv`로 방향 정합을 가드한다.
+- `extraKnownMarketplaces` 경로 — `spawn.find_marketplace()`가 패키지에서 위로 올라가며 `plugin/.claude-plugin/marketplace.json`을 탐색(작업트리면 자동), 못 찾으면 manifest의 `marketplace_path` 또는 대화형 프롬프트로 입력받는다(설치본 대응).
+- cp949 콘솔 안전 — 사용자 대면 print는 ASCII+한글만(em dash 등 cp949 밖 문자 금지). 회귀 테스트(`test_generate_output_is_cp949_safe`)로 가드.
 - plugin `cc-agora-ops/scripts/spawn.py`와의 중복은 의도적 수용(정식 버전은 src). 추후 plugin이 src를 얇게 호출하도록 정리할지는 별건.
