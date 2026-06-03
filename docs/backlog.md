@@ -1,5 +1,9 @@
 # Backlog — 미뤄둔 작업
 
+## 버그
+
+- **운영자 인박스가 안 지워짐** (2026-06-04 보고): 대시보드 운영자 인박스에서 ack(개별/전체) 후에도 메시지가 사라지지 않는다. 확인할 지점 — 프런트 `dashboard_static/js/inbox.js`의 `ack(ids)` → `POST /dashboard/operator/inbox/ack` → `refresh()` 흐름, 백엔드 ack 라우트가 실제로 인박스 항목을 제거/표시하는지(`dashboard/routes.py`), 그리고 운영자 인박스 소스가 ack 반영 없이 매 refresh마다 같은 목록을 다시 내려주는지(또는 SSE `operator_inbox_message` 재push로 되살아나는지). 재현·원인 미확정.
+
 ## 후보 / 아이디어
 
 - **파일 공유 라이브 round-trip 통합 테스트**: `file.put → agora.dispatch(file_share) → file.get`을 라이브 브로커(bind 0.0.0.0, 분산 모사)로 검증하는 통합 테스트. 현재는 단위 mock만 있음(`test_broker_http_files`·`test_channel_file_tools`·`test_file_routes`). spec `2026-06-03-file-sharing-unification-design.md` §테스트(67) 후속.
