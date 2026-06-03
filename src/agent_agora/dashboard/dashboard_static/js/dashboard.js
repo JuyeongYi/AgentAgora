@@ -27,6 +27,7 @@
     renderConversations(d.conversations);
     renderBots(d.bots);
     renderCommMatrix(d.comm_matrix);
+    if (window.agoraFlow) window.agoraFlow.render(d);
     if (d.server) window.agoraHealth.update(d.server);
   }
 

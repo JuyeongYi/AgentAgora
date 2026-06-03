@@ -1,6 +1,7 @@
 """팀 대시보드 라우트 테스트."""
 from __future__ import annotations
 
+import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
@@ -10,7 +11,7 @@ from agent_agora.dispatcher import Dispatcher
 from agent_agora.storage.persistence import AsyncWriteQueue, Persistence
 from agent_agora.registry import InstanceRegistry
 from agent_agora.dashboard import register, build_dashboard_data
-from _helpers import make_schema_registry
+from _helpers import make_schema_registry, tany
 
 
 def _deps(tmp_path):
@@ -32,13 +33,31 @@ def test_build_dashboard_data_shape(tmp_path):
     data = build_dashboard_data(
         dispatcher=d, instance_registry=reg, bot_registry=bot_registry, comm_matrix=cm)
     assert set(data) == {"generated_at", "summary", "instances", "bots",
-                         "conversations", "comm_matrix"}
+                         "conversations", "comm_matrix", "in_flight"}
+    assert data["in_flight"] == []  # 비어있는 dispatcher
     assert data["summary"]["instances"] == 2
     assert {i["instance_id"] for i in data["instances"]} == {"Inst1", "Coder1"}
     assert data["comm_matrix"]["active"] is False
     inst = next(i for i in data["instances"] if i["instance_id"] == "Inst1")
     assert set(inst) >= {"instance_id", "role", "inbox_depth", "in_flight",
                          "last_seen_at", "accepting"}
+
+
+@pytest.mark.asyncio
+async def test_in_flight_edges_appear_in_data(tmp_path):
+    """expect_result dispatch 후 build_dashboard_data['in_flight']에 엣지가 잡힌다."""
+    reg, persistence = _deps(tmp_path)
+    bot_registry = BotRegistry()
+    cm = CommMatrix()
+    queue = AsyncWriteQueue(persistence)
+    d = Dispatcher(reg, persistence, queue, schema_registry=make_schema_registry(),
+                   bot_registry=bot_registry, comm_matrix=cm)
+    async with queue:
+        await d.dispatch(source="Inst1", target="Coder1",
+                         payload=tany(text="task"), expect_result=True)
+    data = build_dashboard_data(
+        dispatcher=d, instance_registry=reg, bot_registry=bot_registry, comm_matrix=cm)
+    assert {"source": "Inst1", "target": "Coder1", "count": 1} in data["in_flight"]
 
 
 def test_data_route_returns_json(tmp_path):

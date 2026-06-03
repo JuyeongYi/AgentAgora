@@ -134,6 +134,8 @@ def build_dashboard_data(*, dispatcher, instance_registry, bot_registry,
             "matrix": comm_matrix.snapshot(),
             "cycles": comm_matrix.cycles(),  # 진단 — 라우팅 루프(SCC/self-loop). 거부 아님.
         },
+        # 플로우 뷰 — 미응답 expect_result의 source→target 엣지(동적 in-flight).
+        "in_flight": dispatcher.in_flight_edges(),
     }
     if health_collector is not None:
         data["server"] = health_collector.snapshot()

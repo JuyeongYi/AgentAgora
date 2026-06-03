@@ -898,6 +898,21 @@ class Dispatcher:
                     count += 1
         return count
 
+    def in_flight_edges(self) -> list[dict]:
+        """미응답 expect_result 메시지를 (source, target)별 건수로 집계한다.
+
+        대시보드 플로우 뷰가 '지금 누가 누구의 응답을 기다리는가'를 그리는 데 쓴다.
+        worker→worker expect_result만 추적한다(봇·non-expect_result는 _in_flight에
+        없음). 읽기 스냅샷이라 _lock 불필요 — peek/in_flight_count와 동일 관용구이되
+        동시 mutation 회피를 위해 항목을 복사해 순회한다."""
+        counts: dict[tuple[str, str], int] = {}
+        for source, pending_map in list(self._in_flight.items()):
+            for cmd_id, replyers in list(pending_map.items()):
+                for target in list(replyers):
+                    counts[(source, target)] = counts.get((source, target), 0) + 1
+        return [{"source": s, "target": t, "count": c}
+                for (s, t), c in counts.items()]
+
     def peek(self, targets: list[str] | None) -> dict[str, dict]:
         """Snapshot per target. Unregistered targets get registered=False."""
         if targets is None:

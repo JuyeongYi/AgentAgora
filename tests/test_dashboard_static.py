@@ -18,7 +18,7 @@ def test_vendor_libraries_present():
 def test_js_modules_present():
     for name in ("api.js", "stream.js", "login.js", "dashboard.js",
                  "health.js", "dispatch.js", "inbox.js", "drilldown.js",
-                 "schemas.js", "logs.js", "files.js"):
+                 "schemas.js", "logs.js", "files.js", "flow.js"):
         assert (STATIC_DIR / "js" / name).is_file(), f"missing js/{name}"
 
 

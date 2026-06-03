@@ -76,3 +76,13 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .files-table th { text-align:left; color:#9aa; padding:4px 8px; border-bottom:1px solid #44446a; }
 .files-table td { padding:4px 8px; border-bottom:1px solid #33334d; vertical-align:top; }
 .files-table a { color:#8cf; }
+
+/* 플로우 뷰 — in-flight (comm-matrix SVG 팔레트 재사용) */
+#flow-view { margin-top:12px; }
+#flow-view h3 { color:#9aa; font-size:13px; margin:4px 0; }
+#flow-view svg { background:#252542; border-radius:6px; }
+#flow-view .flow-note { color:#9aa; font-size:11px; margin-top:4px; }
+.edge-inflight { stroke:#f5a623; fill:none; stroke-width:2; stroke-dasharray:5 4;
+  animation: flowdash 1s linear infinite; }
+@keyframes flowdash { to { stroke-dashoffset:-18; } }
+.flow-badge { fill:#9aa; font-size:9px; text-anchor:middle; }
