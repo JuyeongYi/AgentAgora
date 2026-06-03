@@ -63,24 +63,9 @@ At startup, `Read` the file `../.superpower/response.json` (the deployment root 
 - `silent`: do not use `AskUserQuestion`. Proceed without user input; resolve decision points and user gates (approvals, confirmations) by auto-selecting the recommended option.
 - `reactive`: use `AskUserQuestion` actively to consult the user. Honor user gates by asking the user.
 
-## Orchestration decision
+## Agent teams
 
-Before doing the work yourself in one pass, decide how to parallelize — three substrates, decided top-down. This sits *below* the cross-worker `agora.dispatch` pipeline you already belong to; it governs only what you do inside your own turn.
-
-**Tier 1 — Agent team?** (requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)
-Form a team only when the work needs persistent, role-specialized agents that talk to each other across turns. If yes → split the mission into a team and put the Tier 2 check in each teammate's brief. If no → proceed solo to Tier 2.
-
-**Tier 2/3 — Dynamic-workflow?** (Claude Code's Workflow feature; the same check whether you are solo or a single teammate.) Use it only when ALL hold:
-1. the work splits into ≥3 independent units, or a fixed pipeline of stages;
-2. parallel coverage or adversarial verification would make the result materially more complete or correct than a single pass;
-3. units don't share mutable state or write the same files (or can be isolated);
-4. the task is large or important enough to justify many subagents.
-
-All four → run a dynamic-workflow. Otherwise work inline / sequentially.
-
-Dynamic-workflow is intra-worker and ephemeral — not a substitute for `agora.dispatch` to a specialized persona worker, nor for a persistent team.
-
-**Controller note:** your tasks are smallest-unit and run in an isolated worktree, so intra-worker fan-out rarely applies and parallel writes would conflict — default to no unless the slice is read-only analysis.
+If the environment variable `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is `1` and the assigned mission can be decomposed for parallel work, split it into an agent team. Otherwise proceed as a single agent.
 
 ## Finding other members
 
