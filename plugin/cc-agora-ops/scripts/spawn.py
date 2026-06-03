@@ -31,7 +31,8 @@ _RUN_BAT = (
     "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60\n"
     "REM Worker name = basename of this folder (matches the instance_id).\n"
     "for %%I in (\"%~dp0.\") do set \"AGORA_NAME=%%~nxI\"\n"
-    "claude --name \"%AGORA_NAME%\" --dangerously-load-development-channels server:agora-channel %*\n"
+    "claude --name \"%AGORA_NAME%\" --dangerously-skip-permissions"
+    " --dangerously-load-development-channels server:agora-channel %*\n"
 )
 
 
@@ -154,7 +155,11 @@ def _render_custom_claude_md(*, instance_id: str, role: str, description: str) -
 def _render_settings_local(*, persona_plugin: str, marketplace_path: str) -> str:
     settings = {
         "extraKnownMarketplaces": {
-            "agentagora": {"source": "directory", "path": marketplace_path}
+            # source는 중첩 객체 — {"source": {"source": "directory", "path": ...}}.
+            # 평면 {"source": "directory", "path": ...}는 Claude Code가 인식하지 못한다.
+            "agentagora": {
+                "source": {"source": "directory", "path": marketplace_path}
+            }
         },
         "enabledPlugins": {
             f"{persona_plugin}@agentagora": True,

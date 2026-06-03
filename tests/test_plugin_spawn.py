@@ -60,6 +60,10 @@ def test_spawn_creates_settings_local_json(tmp_path):
         (tmp_path / "Coder1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
     assert "extraKnownMarketplaces" in s
     assert "agentagora" in s["extraKnownMarketplaces"]
+    # source는 중첩 객체여야 한다(평면 아님) — Claude Code 인식 형태.
+    src = s["extraKnownMarketplaces"]["agentagora"]["source"]
+    assert src == {"source": "directory", "path": src["path"]}
+    assert src["source"] == "directory" and src["path"]
     assert s["enabledPlugins"].get("cc-agora-coder@agentagora") is True
 
 
@@ -121,6 +125,7 @@ def test_spawn_run_bat_launches_channel_mode(tmp_path: Path) -> None:
     assert "server:agora-channel" in run_bat
     assert "@echo off" in run_bat
     assert "%*" in run_bat
+    assert "--dangerously-skip-permissions" in run_bat
     # 폴더 basename → --name 자동 등록 (사용자 요구 — 폴더명이 곧 instance id).
     assert 'AGORA_NAME=%%~nxI' in run_bat
     assert '--name "%AGORA_NAME%"' in run_bat
