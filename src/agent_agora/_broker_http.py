@@ -64,3 +64,43 @@ async def http_wait_notify(wait_url: str, instance_id: str, timeout_ms: int) -> 
             return data if isinstance(data, dict) else {}
     except Exception as exc:  # noqa: BLE001 — connection failure is a backoff signal
         return {"error": f"channel/wait HTTP 호출 실패: {exc!r}"}
+
+
+def files_base_url(broker_mcp_url: str) -> str:
+    """브로커 /files 베이스 URL(= channel_wait_base_url + /files)."""
+    return channel_wait_base_url(broker_mcp_url) + "/files"
+
+
+async def upload_file(broker_mcp_url: str, *, instance_id: str, name: str,
+                      data: bytes) -> dict:
+    """워커 바이트를 브로커 POST /files로 업로드하고 핸들(dict)을 반환한다."""
+    url = files_base_url(broker_mcp_url)
+    headers = {"X-Agora-Instance-Id": instance_id, "X-Agora-File-Name": name}
+    async with httpx.AsyncClient(timeout=None) as http:
+        resp = await http.post(url, content=data, headers=headers)
+        resp.raise_for_status()
+        out = resp.json()
+        return out if isinstance(out, dict) else {}
+
+
+async def download_file(broker_mcp_url: str, *, instance_id: str,
+                        file_id: str) -> tuple[bytes, str]:
+    """브로커 GET /files/<id>에서 바이트와 원래 파일명(Content-Disposition)을 받는다."""
+    url = files_base_url(broker_mcp_url) + "/" + file_id
+    headers = {"X-Agora-Instance-Id": instance_id}
+    async with httpx.AsyncClient(timeout=None) as http:
+        resp = await http.get(url, headers=headers)
+        resp.raise_for_status()
+        name = _filename_from_disposition(resp.headers.get("content-disposition"))
+        return resp.content, name
+
+
+def _filename_from_disposition(disp: str | None) -> str:
+    """Content-Disposition에서 filename 추출. 없으면 빈 문자열."""
+    if not disp:
+        return ""
+    for part in disp.split(";"):
+        part = part.strip()
+        if part.lower().startswith("filename="):
+            return part[len("filename="):].strip().strip('"')
+    return ""
