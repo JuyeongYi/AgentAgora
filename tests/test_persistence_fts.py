@@ -66,6 +66,42 @@ def test_search_messages_special_chars_no_error(tmp_path):
     assert isinstance(res, list)
 
 
+def test_fts_indexes_values_not_keys(tmp_path):
+    """본문 정밀화 — payload의 값만 인덱싱하고 키 이름(text/msgtype)은 매칭 안 함."""
+    p = Persistence(tmp_path / "agora.db")
+    p.migrate()
+    if not p.fts_available:
+        pytest.skip("FTS5 unavailable")
+    _insert_message(p, "cv", "convV", "W1", "W2", "rocket engine")
+    # 값은 매칭
+    assert any(r["command_id"] == "cv" for r in p.search_messages("engine"))
+    assert any(r["command_id"] == "cv" for r in p.search_messages("status_report"))  # msgtype의 값
+    # 키 이름은 매칭 안 됨(노이즈 제거)
+    assert not any(r["command_id"] == "cv" for r in p.search_messages("msgtype"))
+    assert not any(r["command_id"] == "cv" for r in p.search_messages("text"))
+
+
+def test_fts_trigger_survives_malformed_payload(tmp_path):
+    """비-JSON payload가 와도 트리거가 dispatch 트랜잭션을 깨지 않는다(json_valid 가드)."""
+    p = Persistence(tmp_path / "agora.db")
+    p.migrate()
+    if not p.fts_available:
+        pytest.skip("FTS5 unavailable")
+    now = _now()
+    p.conn.execute(
+        "INSERT OR IGNORE INTO conversations "
+        "(conversation_id,status,started_at,last_message_at,kind) "
+        "VALUES (?,'open',?,?,'direct')", ("convBad", now, now))
+    # payload가 유효 JSON이 아님 — INSERT가 예외 없이 성공해야
+    p.conn.execute(
+        "INSERT INTO messages (command_id,target,conversation_id,source,created_at,"
+        "expect_result,delivered_as,dispatch_kind,closing,priority,priority_rank,"
+        "payload,reply_only) VALUES (?,?,?,?,?,0,'primary','direct',0,'normal',1,?,0)",
+        ("cbad", "W2", "convBad", "W1", now, "not-json raw text scanword"))
+    # 폴백으로 raw 텍스트가 인덱싱돼 검색 가능
+    assert any(r["command_id"] == "cbad" for r in p.search_messages("scanword"))
+
+
 def test_search_like_fallback_when_fts_unavailable(tmp_path):
     p = Persistence(tmp_path / "agora.db")
     p.migrate()

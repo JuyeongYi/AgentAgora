@@ -101,21 +101,36 @@ CREATE INDEX IF NOT EXISTS idx_files_created ON files(created_at);
 """
 
 
-# FTS5 전문 검색 (대시보드 /dashboard/search). messages.payload(JSON 문자열)를 body로
-# 인덱싱하고 메타는 UNINDEXED로 동거 — 결과 회수에 messages JOIN 불필요. AFTER INSERT
-# 트리거가 AsyncWriteQueue 트랜잭션 안에서 함께 발화하므로 hot-path는 손대지 않는다.
-# messages는 append-only(payload 불변, drained_at/acked_at만 UPDATE)라 UPDATE/DELETE
-# 트리거는 불필요. FTS5 미가용 빌드에선 CREATE가 OperationalError → LIKE 폴백.
+# FTS5 전문 검색 (대시보드 /dashboard/search). 메타는 UNINDEXED로 동거 — 결과 회수에
+# messages JOIN 불필요. AFTER INSERT 트리거가 AsyncWriteQueue 트랜잭션 안에서 함께
+# 발화하므로 hot-path는 손대지 않는다. messages는 append-only(payload 불변,
+# drained_at/acked_at만 UPDATE)라 UPDATE/DELETE 트리거는 불필요. FTS5 미가용 빌드에선
+# CREATE가 OperationalError → LIKE 폴백.
 _FTS_SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
   command_id UNINDEXED, conversation_id UNINDEXED, source UNINDEXED,
   target UNINDEXED, created_at UNINDEXED, body, tokenize='unicode61');
-CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
-  INSERT INTO messages_fts(command_id, conversation_id, source, target, created_at, body)
-  VALUES (new.command_id, new.conversation_id, new.source, new.target,
-          new.created_at, new.payload);
-END;
 """
+
+# body 표현식 — payload(JSON)의 *값*만 추출(json_tree atom)해 키 이름(msgtype 등)
+# 노이즈를 제거한다. 비-JSON payload는 json_valid 가드로 raw 텍스트 폴백(트리거가
+# dispatch 트랜잭션을 깨지 않게). {src}는 new.payload(트리거) 또는 messages.payload(backfill).
+def _fts_body_expr(src: str) -> str:
+    return (f"CASE WHEN json_valid({src}) "
+            f"THEN (SELECT group_concat(atom, ' ') FROM json_tree({src}) "
+            f"WHERE atom IS NOT NULL) ELSE {src} END")
+
+
+_FTS_TRIGGER_SQL = (
+    "CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN "
+    "INSERT INTO messages_fts(command_id, conversation_id, source, target, created_at, body) "
+    "VALUES (new.command_id, new.conversation_id, new.source, new.target, new.created_at, "
+    + _fts_body_expr("new.payload") + "); END")
+
+_FTS_BACKFILL_SQL = (
+    "INSERT INTO messages_fts(command_id, conversation_id, source, target, created_at, body) "
+    "SELECT command_id, conversation_id, source, target, created_at, "
+    + _fts_body_expr("messages.payload") + " FROM messages")
 
 _SEARCH_COLS = ("command_id", "conversation_id", "source", "target",
                 "created_at", "snippet")
@@ -148,22 +163,30 @@ class Persistence:
         cur.execute("INSERT OR IGNORE INTO schema_version VALUES (?, ?)", (target_version, now))
 
     def _setup_fts(self, cur: sqlite3.Cursor) -> None:
-        """messages_fts(FTS5) + 트리거를 만들고 기존 행을 1회 backfill한다.
-        FTS5 미가용 빌드면 _fts_available=False로 두고 조용히 폴백."""
+        """messages_fts(FTS5) + 트리거를 만들고 기존 행을 backfill한다.
+        FTS5 미가용 빌드면 _fts_available=False로 두고 조용히 폴백.
+
+        트리거는 최신 정의가 다르면 교체하고 인덱스를 재구축한다(인덱스는 messages에서
+        파생되는 캐시라 안전) — body 추출 방식 변경(전량→값만)의 자동 업그레이드 경로."""
         try:
-            cur.executescript(_FTS_SCHEMA)
+            cur.executescript(_FTS_SCHEMA)  # CREATE VIRTUAL TABLE (IF NOT EXISTS)
         except sqlite3.OperationalError as e:
             logger.warning("FTS5 unavailable — search falls back to LIKE scan: %s", e)
             self._fts_available = False
             return
         self._fts_available = True
-        # 인덱스가 비어있을 때만 기존 messages를 backfill (재실행 idempotent).
-        if cur.execute("SELECT 1 FROM messages_fts LIMIT 1").fetchone() is None:
-            cur.execute(
-                "INSERT INTO messages_fts"
-                "(command_id, conversation_id, source, target, created_at, body) "
-                "SELECT command_id, conversation_id, source, target, created_at, payload "
-                "FROM messages")
+        row = cur.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='messages_ai'"
+        ).fetchone()
+        if row is None or row[0] != _FTS_TRIGGER_SQL:
+            # 트리거 신규/정의 변경 — 교체 후 인덱스 재구축(파생 캐시).
+            cur.execute("DROP TRIGGER IF EXISTS messages_ai")
+            cur.execute(_FTS_TRIGGER_SQL)
+            cur.execute("DELETE FROM messages_fts")
+            cur.execute(_FTS_BACKFILL_SQL)
+        elif cur.execute("SELECT 1 FROM messages_fts LIMIT 1").fetchone() is None:
+            # 트리거는 같지만 인덱스가 비어있으면(신규 DB) backfill.
+            cur.execute(_FTS_BACKFILL_SQL)
 
     @property
     def fts_available(self) -> bool:
