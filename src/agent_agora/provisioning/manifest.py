@@ -111,7 +111,8 @@ def validate(data: object) -> tuple[dict, list[str]]:
         if not _roles.is_defined(role):
             warnings.append(_roles.undefined_role_warning(role))
         seen.add(iid)
-        cleaned.append({"id": iid, "role": role, "description": desc, "allow": allow})
+        cleaned.append({"id": iid, "role": role, "description": desc, "allow": allow,
+                        "persona": entry.get("persona")})
 
     if errors:
         return {}, errors
@@ -149,7 +150,8 @@ def dumps(norm: dict) -> str:
         "marketplace": norm.get("marketplace"),
         "team": [
             {"id": e["id"], "role": e["role"], "description": e["description"],
-             "allow": e["allow"]}
+             "allow": e["allow"],
+             **({"persona": e["persona"]} if e.get("persona") else {})}
             for e in norm["team"]
         ],
     }

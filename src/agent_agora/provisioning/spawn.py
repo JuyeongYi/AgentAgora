@@ -57,12 +57,18 @@ def _render_mcp_json(*, server_url: str, instance_id: str, role: str,
     return tpl
 
 
-def _render_claude_md(*, instance_id: str, role: str, description: str) -> str:
+def _render_claude_md(*, instance_id: str, role: str, description: str,
+                      persona_plugin: str | None) -> str:
+    if persona_plugin:
+        persona = (f"역할 페르소나는 `{persona_plugin}` 플러그인의 `persona` 스킬에 있다. "
+                   f"기동 시 적용한다.")
+    else:
+        persona = ("별도 페르소나 플러그인 없이 `cc-agora` 통신 코어만 사용한다. "
+                   "위 역할·책임에 따라 직접 수행한다.")
     return (
         f"# {instance_id} ({role})\n\n"
         f"이 인스턴스는 **{instance_id}** 워커이다. 역할: **{role}**. 책임: {description}.\n\n"
-        f"## 페르소나\n\n"
-        f"역할 페르소나는 `cc-agora-{role}` 플러그인의 `persona` 스킬에 있다. 기동 시 적용한다.\n\n"
+        f"## 페르소나\n\n{persona}\n\n"
         f"## 통신\n\n"
         f"채널 모드 메시징 규칙(`agora-protocol`)은 cc-agora가 배경지식으로 자동 적용한다. "
         f"채널 알림으로 깨어나 `agora.flush`로 인박스를 드레인하고 `agora.dispatch`로 답신한다. "
@@ -78,31 +84,37 @@ def _marketplace_source(marketplace: dict) -> dict:
     return {"source": "directory", "path": marketplace["path"]}
 
 
-def _render_settings_local(*, persona_plugin: str, marketplace: dict) -> str:
+def _render_settings_local(*, persona_plugin: str | None, marketplace: dict) -> str:
+    enabled: dict[str, bool] = {}
+    if persona_plugin:
+        enabled[f"{persona_plugin}@{MARKETPLACE_ALIAS}"] = True
+    enabled[f"cc-agora@{MARKETPLACE_ALIAS}"] = True
     settings = {
         "extraKnownMarketplaces": {
             MARKETPLACE_ALIAS: {"source": _marketplace_source(marketplace)}
         },
-        "enabledPlugins": {
-            f"{persona_plugin}@{MARKETPLACE_ALIAS}": True,
-            f"cc-agora@{MARKETPLACE_ALIAS}": True,
-        },
+        "enabledPlugins": enabled,
     }
     return json.dumps(settings, ensure_ascii=False, indent=2) + "\n"
 
 
 def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: Path,
                  server_url: str, marketplace: dict, force: bool,
-                 platform: str | None = None,
+                 persona: str | None = None, platform: str | None = None,
                  stderr=sys.stderr, stdout=sys.stdout) -> int:
     """parent_dir/<instance_id>/에 채널 모드 워커 파일 생성. 0=성공, 1=실패.
 
     실행 스크립트는 platform(기본 sys.platform)에 따라 win32면 run.bat(ASCII+CRLF),
     그 외(리눅스/맥)면 run.sh(LF + 실행권한)를 만든다. 서버 기동 스크립트는 만들지
-    않는다 — agora-init은 에이전트 스폰 전용이고 서버는 `agent-agora`로 따로 띄운다."""
-    persona_plugin = _roles.plugin_for(role) or _roles.FALLBACK_PLUGIN
-    if not _roles.is_defined(role):
-        print(_roles.undefined_role_warning(role), file=stderr)
+    않는다 — agora-init은 에이전트 스폰 전용이고 서버는 `agent-agora`로 따로 띄운다.
+
+    persona="none"이면 역할 페르소나 플러그인 없이 cc-agora(통신 코어)만 활성화한다."""
+    if persona == "none":
+        persona_plugin = None
+    else:
+        persona_plugin = _roles.plugin_for(role) or _roles.FALLBACK_PLUGIN
+        if not _roles.is_defined(role):
+            print(_roles.undefined_role_warning(role), file=stderr)
 
     wd = Path(parent_dir) / instance_id
     if wd.exists() and not force:
@@ -111,7 +123,8 @@ def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: P
     wd.mkdir(parents=True, exist_ok=True)
 
     _write_text(wd / "CLAUDE.md",
-                _render_claude_md(instance_id=instance_id, role=role, description=description))
+                _render_claude_md(instance_id=instance_id, role=role, description=description,
+                                  persona_plugin=persona_plugin))
     _write_text(wd / ".mcp.json",
                 _render_mcp_json(server_url=server_url, instance_id=instance_id, role=role,
                                  description=description, cwd=wd.resolve().as_posix()))

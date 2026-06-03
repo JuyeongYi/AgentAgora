@@ -32,7 +32,8 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
         rc = _spawn.spawn_worker(
             instance_id=e["id"], role=e["role"], description=e["description"],
             parent_dir=spawn_dir, server_url=server_url,
-            marketplace=marketplace, force=True, stdout=stdout, stderr=stderr)
+            marketplace=marketplace, force=True, persona=e.get("persona"),
+            stdout=stdout, stderr=stderr)
         if rc != 0:
             return rc
 
@@ -88,10 +89,13 @@ def _interactive(stdin=sys.stdin, stdout=sys.stdout) -> dict:
         if not iid:
             break
         role = ask("  role", "general")
+        use_persona = ask("  페르소나 플러그인 사용? (y/n)", "y").lower()
+        persona = None if use_persona == "y" else "none"
         desc = ask("  description", iid)
         allow_raw = ask("  allow(쉼표구분 id/정규식; 빈칸=없음, *=전체)")
         allow = [t.strip() for t in allow_raw.split(",") if t.strip()]
-        team.append({"id": iid, "role": role, "description": desc, "allow": allow})
+        team.append({"id": iid, "role": role, "description": desc, "allow": allow,
+                     "persona": persona})
         if ask("워커 더 추가? (y/n)", "y").lower() != "y":
             break
 

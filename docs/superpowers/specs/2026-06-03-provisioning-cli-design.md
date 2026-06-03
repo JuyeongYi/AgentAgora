@@ -115,4 +115,5 @@
 - `extraKnownMarketplaces` source — 기본 **github**(repo=`JuyeongYi/AgentAgora-ClaudePlugins`), 또는 **directory**(로컬 plugin 경로, `find_marketplace()` 탐색/프롬프트) 선택 가능(manifest `marketplace:{type,repo|path}`, 레거시 `marketplace_path`는 directory로 매핑). 별칭은 `marketplace.json`의 `name`과 같은 **`agent-agora`**로 고정해 `/plugin marketplace add`(식별자=name)와 충돌하지 않게 한다. `enabledPlugins`는 `<plugin>@agent-agora`.
 - cp949 콘솔 안전 — 사용자 대면 print는 ASCII+한글만(em dash 등 cp949 밖 문자 금지). 회귀 테스트(`test_generate_output_is_cp949_safe`)로 가드.
 - 실행 스크립트 크로스플랫폼 — `spawn_worker(platform=)`(기본 `sys.platform`)이 win32면 `run.bat`(ASCII+CRLF), POSIX면 `run.sh`(LF + 0o755 실행권한)를 생성. 서버 기동 스크립트는 생성하지 않음(에이전트 스폰 전용).
+- 페르소나 선택 — 워커별 `persona:"none"`(대화형 'n')이면 역할 페르소나 플러그인을 켜지 않고 `cc-agora`(통신 코어)만 활성화하고 CLAUDE.md도 무페르소나 안내로 렌더. 미지정이면 role 매핑 플러그인(기존). `enabledPlugins`가 워커마다 달라진다.
 - plugin `cc-agora-ops/scripts/spawn.py`와의 중복은 의도적 수용(정식 버전은 src). 추후 plugin이 src를 얇게 호출하도록 정리할지는 별건.

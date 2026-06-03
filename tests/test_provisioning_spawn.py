@@ -64,6 +64,21 @@ def test_spawn_is_agent_only_no_server_launcher(tmp_path):
     assert not hasattr(spawn, "write_server_launcher")
 
 
+def test_spawn_worker_no_persona_core_only(tmp_path):
+    # persona="none" → 페르소나 플러그인 없이 cc-agora만 활성화.
+    spawn.spawn_worker(
+        instance_id="W1", role="coder", description="x",
+        parent_dir=tmp_path, server_url="http://127.0.0.1:8420/mcp",
+        marketplace=GH, force=False, persona="none", platform="win32",
+    )
+    wd = tmp_path / "W1"
+    settings = json.loads((wd / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert settings["enabledPlugins"] == {"cc-agora@agent-agora": True}
+    # CLAUDE.md에 역할 페르소나 플러그인 언급이 없어야 한다
+    claude = (wd / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "cc-agora-coder" not in claude
+
+
 def test_spawn_undefined_role_falls_back_to_general(tmp_path):
     spawn.spawn_worker(
         instance_id="W1", role="nonesuch", description="x",

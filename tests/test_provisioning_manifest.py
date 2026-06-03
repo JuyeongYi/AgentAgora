@@ -52,6 +52,25 @@ def test_allow_to_unknown_literal_id_warns_not_errors():
     assert any("GhostWorker" in w for w in m["warnings"])
 
 
+def test_persona_none_preserved():
+    data = _ok()
+    data["team"][0]["persona"] = "none"
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["team"][0]["persona"] == "none"
+    assert m["team"][1].get("persona") is None   # 미지정은 None(role 매핑)
+
+
+def test_persona_roundtrips_through_dumps():
+    data = _ok()
+    data["team"][0]["persona"] = "none"
+    m, _ = manifest.validate(data)
+    import json
+    out = json.loads(manifest.dumps(m))
+    assert out["team"][0]["persona"] == "none"
+    assert "persona" not in out["team"][1]   # None은 직렬화에서 생략
+
+
 def test_marketplace_defaults_to_github():
     m, errors = manifest.validate(_ok())
     assert errors == []
