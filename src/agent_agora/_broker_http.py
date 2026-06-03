@@ -7,8 +7,19 @@ two callers delegate (keeping their historical private symbols as thin wrappers)
 from __future__ import annotations
 
 import json
+import urllib.parse
 
 import httpx
+
+
+def _raise_for_broker_error(resp) -> None:
+    """non-2xx면 브로커 JSON body의 error(코드 메시지)를 그대로 올린다."""
+    if resp.status_code >= 400:
+        try:
+            msg = resp.json().get("error") or resp.text
+        except Exception:  # noqa: BLE001
+            msg = resp.text
+        raise RuntimeError(msg)
 
 
 def result_to_json(result) -> dict:
@@ -78,7 +89,7 @@ async def upload_file(broker_mcp_url: str, *, instance_id: str, name: str,
     headers = {"X-Agora-Instance-Id": instance_id, "X-Agora-File-Name": name}
     async with httpx.AsyncClient(timeout=None) as http:
         resp = await http.post(url, content=data, headers=headers)
-        resp.raise_for_status()
+        _raise_for_broker_error(resp)
         out = resp.json()
         return out if isinstance(out, dict) else {}
 
@@ -90,7 +101,7 @@ async def download_file(broker_mcp_url: str, *, instance_id: str,
     headers = {"X-Agora-Instance-Id": instance_id}
     async with httpx.AsyncClient(timeout=None) as http:
         resp = await http.get(url, headers=headers)
-        resp.raise_for_status()
+        _raise_for_broker_error(resp)
         name = _filename_from_disposition(resp.headers.get("content-disposition"))
         return resp.content, name
 
@@ -99,8 +110,16 @@ def _filename_from_disposition(disp: str | None) -> str:
     """Content-Disposition에서 filename 추출. 없으면 빈 문자열."""
     if not disp:
         return ""
+    plain = ""
     for part in disp.split(";"):
         part = part.strip()
-        if part.lower().startswith("filename="):
-            return part[len("filename="):].strip().strip('"')
-    return ""
+        low = part.lower()
+        if low.startswith("filename*="):
+            # RFC 5987: filename*=<charset>'<lang>'<pct-encoded>
+            value = part[len("filename*="):].strip()
+            if "''" in value:
+                value = value.split("''", 1)[1]
+            return urllib.parse.unquote(value)
+        if low.startswith("filename="):
+            plain = part[len("filename="):].strip().strip('"')
+    return plain

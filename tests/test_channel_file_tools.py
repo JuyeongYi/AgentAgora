@@ -46,3 +46,12 @@ async def test_file_get_existing_dest_errors(tmp_path, monkeypatch):
     data = json.loads(result[0].text)
     assert "file_exists" in data["error"]
     assert (inbox / "report.txt").read_bytes() == b"old"
+
+
+def test_file_exists_error_code_registered():
+    from agent_agora.errors import AgoraError
+    err = AgoraError("file_exists", path="/tmp/agora-inbox/report.txt")
+    assert err.code == "file_exists"
+    msg = str(err)
+    assert "file_exists" in msg
+    assert "/tmp/agora-inbox/report.txt" in msg

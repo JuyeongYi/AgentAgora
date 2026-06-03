@@ -26,6 +26,7 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, JSONRPCNotification, TextContent, Tool
 
 from agent_agora import _broker_http
+from agent_agora.errors import AgoraError
 from agent_agora._broker_http import (
     channel_wait_base_url,
     channel_wait_url,
@@ -252,14 +253,14 @@ def _make_file_call_tool(broker: str, instance_id: str):
                           else Path("agora-inbox") / (remote_name or file_id))
                 target = target.resolve()
                 if target.exists():
-                    return out({"error": f"file_exists: '{target.as_posix()}'에 파일이 "
-                                          f"이미 있습니다. dest_path로 다른 위치를 지정하거나 "
-                                          f"기존 파일을 옮기세요."})
+                    raise AgoraError("file_exists", path=target.as_posix())
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
                 return out({"path": target.as_posix(), "name": remote_name,
                             "size": len(data)})
             return out({"error": f"unknown tool: {name}"})
+        except AgoraError as e:
+            return out({"error": str(e)})
         except FileNotFoundError as e:
             return out({"error": f"file not found: {e}"})
         except Exception as e:  # noqa: BLE001
