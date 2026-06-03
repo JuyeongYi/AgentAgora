@@ -12,18 +12,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
+from pathlib import Path
 
 import anyio
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.lowlevel import Server
-from mcp.server.session import ServerSession
 from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
-from mcp.types import JSONRPCMessage, JSONRPCNotification
+from mcp.types import JSONRPCMessage, JSONRPCNotification, TextContent, Tool
 
+from agent_agora import _broker_http
 from agent_agora._broker_http import (
     channel_wait_base_url,
     channel_wait_url,
@@ -213,30 +215,69 @@ async def _unregister_from_broker(broker: str, instance_id: str) -> None:
 
 # --- 채널(stdio MCP 서버) 글루 ----------------------------------------------
 
-async def _emit(session: ServerSession, content: str, meta: dict[str, str]) -> None:
-    """활성 ServerSession으로 notifications/claude/channel 알림을 raw로 보낸다.
+_FILE_TOOLS = [
+    Tool(name="file.put",
+         description="Upload a local file to the broker store. Returns {file_id, name, size, sha256}. "
+                     "Dispatch the file_id in a file_share message.",
+         inputSchema={"type": "object", "properties": {"path": {"type": "string"}},
+                      "required": ["path"]}),
+    Tool(name="file.get",
+         description="Download a shared file by file_id. Saves to dest_path, or ./agora-inbox/<name> "
+                     "if omitted. Errors (file_exists) if the destination already exists.",
+         inputSchema={"type": "object",
+                      "properties": {"file_id": {"type": "string"},
+                                     "dest_path": {"type": "string"}},
+                      "required": ["file_id"]}),
+]
 
-    타입드 send_notification은 비표준 메서드를 받지 못하므로 write stream에
-    JSONRPCNotification을 직접 쓴다."""
-    raw = JSONRPCNotification(
-        jsonrpc="2.0",
-        method="notifications/claude/channel",
-        params={"content": content, "meta": meta},
-    )
-    await session._write_stream.send(SessionMessage(message=JSONRPCMessage(raw)))
+
+def _make_file_call_tool(broker: str, instance_id: str):
+    """file.put/file.get을 처리하는 call_tool 핸들러를 만든다."""
+    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+        def out(obj) -> list[TextContent]:
+            return [TextContent(type="text", text=json.dumps(obj, ensure_ascii=False))]
+        try:
+            if name == "file.put":
+                path = Path(arguments["path"])
+                data = path.read_bytes()
+                handle = await _broker_http.upload_file(
+                    broker, instance_id=instance_id, name=path.name, data=data)
+                return out(handle)
+            if name == "file.get":
+                file_id = arguments["file_id"]
+                dest = arguments.get("dest_path")
+                data, remote_name = await _broker_http.download_file(
+                    broker, instance_id=instance_id, file_id=file_id)
+                target = (Path(dest) if dest
+                          else Path("agora-inbox") / (remote_name or file_id))
+                target = target.resolve()
+                if target.exists():
+                    return out({"error": f"file_exists: '{target.as_posix()}'에 파일이 "
+                                          f"이미 있습니다. dest_path로 다른 위치를 지정하거나 "
+                                          f"기존 파일을 옮기세요."})
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+                return out({"path": target.as_posix(), "name": remote_name,
+                            "size": len(data)})
+            return out({"error": f"unknown tool: {name}"})
+        except FileNotFoundError as e:
+            return out({"error": f"file not found: {e}"})
+        except Exception as e:  # noqa: BLE001
+            return out({"error": f"{type(e).__name__}: {e}"})
+
+    return call_tool
 
 
 # --- main() — stdio 채널 서버 + 브로커 감시 동시 실행 -------------------------
 
-async def _run_watch(
-    instance_id: str,
-    session: ServerSession,
-    broker: str,
-    wait_timeout_ms: int,
+async def _run_watch_emit(
+    instance_id: str, broker: str, wait_timeout_ms: int, emit,
 ) -> None:
     """브로커에 HTTP MCP 클라이언트로 붙어 watch_loop를 돌린다.
 
-    연결이 끊기면 backoff 후 재연결한다 — 절대 크래시하지 않는다."""
+    claude/channel 알림은 인자로 받은 emit 콜백(채널 측 write_stream에 직접
+    쓰는 클로저)으로 보낸다. 연결이 끊기면 backoff 후 재연결한다 — 절대
+    크래시하지 않는다."""
     backoff = _BACKOFF_START_S
     while True:
         try:
@@ -246,20 +287,6 @@ async def _run_watch(
                     backoff = _BACKOFF_START_S  # 연결 성공 — backoff 리셋
                     wait_notify, peek_pending = _make_broker_callables(
                         broker_session, broker)
-
-                    async def emit(content: str, meta: dict[str, str]) -> None:
-                        # 채널 측 write stream이 닫힌 경우(부모 Claude Code
-                        # 종료로 stdin EOF → ServerSession 스트림 close)는
-                        # 브로커 장애가 아니라 정상 종료 신호다. anyio의
-                        # closed/broken 예외를 CancelledError로 변환해
-                        # 아래 backoff(브로커 재연결) 핸들러가 아니라
-                        # _run_watch의 CancelledError re-raise로 빠지게 한다.
-                        try:
-                            await _emit(session, content, meta)
-                        except (anyio.ClosedResourceError,
-                                anyio.BrokenResourceError) as exc:
-                            raise asyncio.CancelledError from exc
-
                     await watch_loop(
                         instance_id, wait_notify, peek_pending, emit,
                         wait_timeout_ms=wait_timeout_ms,
@@ -279,42 +306,61 @@ async def _run_watch(
 async def _serve_channel(
     instance_id: str, broker: str, wait_timeout_ms: int,
 ) -> None:
-    """stdio 채널 서버를 띄우고, 핸드셰이크 완료 후 감시 태스크를 시작한다."""
+    """stdio 채널 서버(Server.run)를 띄우고, 브로커 감시 태스크를 동시에 돌린다.
+
+    Server.run이 read/write 스트림을 받아 표준 도구 처리를 담당하고, 백그라운드
+    watch 태스크는 같은 write_stream으로 claude/channel 알림을 보낸다 — 하나의
+    MCP 서버를 유지한다(별도 서버·수동 dispatch 없음)."""
     server = Server("agora-channel", instructions=CHANNEL_INSTRUCTIONS)
+    file_call = _make_file_call_tool(broker, instance_id)
+
+    @server.list_tools()
+    async def _list_tools() -> list[Tool]:
+        return list(_FILE_TOOLS)
+
+    @server.call_tool()
+    async def _call_tool(name: str, arguments: dict) -> list[TextContent]:
+        return await file_call(name, arguments)
+
     init_opts = server.create_initialization_options(
         experimental_capabilities={"claude/channel": {}})
 
     async with stdio_server() as (read_stream, write_stream):
-        async with ServerSession(read_stream, write_stream, init_opts) as session:
-            watch_task: asyncio.Task | None = None
+        async def emit(content: str, meta: dict[str, str]) -> None:
+            # 채널 측 write stream이 닫힌 경우(부모 Claude Code 종료로 stdin
+            # EOF → 스트림 close)는 브로커 장애가 아니라 정상 종료 신호다.
+            # anyio의 closed/broken 예외를 CancelledError로 변환해 watch의
+            # backoff(브로커 재연결) 핸들러가 아니라 CancelledError re-raise로
+            # 빠지게 한다.
+            raw = JSONRPCNotification(
+                jsonrpc="2.0",
+                method="notifications/claude/channel",
+                params={"content": content, "meta": meta})
             try:
-                # 첫 incoming_messages 항목 = 핸드셰이크 완료 신호.
-                # 그 전에는 emit이 채널로 나가도 유실되므로 watch_loop를
-                # 시작하지 않는다.
-                async for _msg in session.incoming_messages:
-                    if watch_task is None:
-                        watch_task = asyncio.create_task(
-                            _run_watch(instance_id, session, broker,
-                                       wait_timeout_ms))
-                # stdin EOF — 부모 Claude Code 종료. incoming_messages 소진.
-            finally:
-                if watch_task is not None:
-                    watch_task.cancel()
-                    try:
-                        await watch_task
-                    except asyncio.CancelledError:
-                        pass  # cancel()로 인한 정상 종료
-                    except Exception as exc:
-                        # watch task의 비-CancelledError 예외는 진짜 버그다.
-                        # 종료를 크래시시키진 않되 stderr로 가시화한다.
-                        print(
-                            f"[agora-channel] watch task 종료 중 예외: {exc!r}",
-                            file=sys.stderr, flush=True,
-                        )
-                # lifespan cleanup: 종료 시 브로커에 등록 해제 요청.
-                # stdin EOF(정상 종료)·KeyboardInterrupt·SIGINT 모두 이 경로를 탄다.
-                # SIGKILL/강제 종료는 sweeper TTL이 GC한다.
-                await _unregister_from_broker(broker, instance_id)
+                await write_stream.send(SessionMessage(message=JSONRPCMessage(raw)))
+            except (anyio.ClosedResourceError, anyio.BrokenResourceError) as exc:
+                raise asyncio.CancelledError from exc
+
+        watch_task = asyncio.create_task(
+            _run_watch_emit(instance_id, broker, wait_timeout_ms, emit))
+        try:
+            await server.run(read_stream, write_stream, init_opts)
+            # stdin EOF — 부모 Claude Code 종료. Server.run 반환.
+        finally:
+            watch_task.cancel()
+            try:
+                await watch_task
+            except asyncio.CancelledError:
+                pass  # cancel()로 인한 정상 종료
+            except Exception as exc:
+                # watch task의 비-CancelledError 예외는 진짜 버그다.
+                # 종료를 크래시시키진 않되 stderr로 가시화한다.
+                print(f"[agora-channel] watch task 종료 중 예외: {exc!r}",
+                      file=sys.stderr, flush=True)
+            # lifespan cleanup: 종료 시 브로커에 등록 해제 요청.
+            # stdin EOF(정상 종료)·KeyboardInterrupt·SIGINT 모두 이 경로를 탄다.
+            # SIGKILL/강제 종료는 sweeper TTL이 GC한다.
+            await _unregister_from_broker(broker, instance_id)
 
 
 async def main(argv: list[str] | None = None) -> None:
