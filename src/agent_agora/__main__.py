@@ -276,6 +276,7 @@ async def run_server(args: argparse.Namespace) -> None:
             EventBroker,
             DashboardAuthMiddleware,
             parse_tokens,
+            parse_basic_users,
             register as register_dashboard,
             DASHBOARD_PROTECTED_PATHS,
             DASHBOARD_QUERY_PARAM_PATHS,
@@ -294,6 +295,22 @@ async def run_server(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+        try:
+            _dash_users = parse_basic_users(
+                os.environ.get("AGORA_DASHBOARD_BASIC_USERS", ""))
+        except ValueError as e:
+            print(
+                f"[agent_agora] error: AGORA_DASHBOARD_BASIC_USERS is malformed: {e}",
+                file=sys.stderr,
+            )
+            print(
+                "  Expected format: 'user1:{SHA256}<b64>,user2:pbkdf2_sha256$...'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _inbox_isolation = os.environ.get(
+            "AGORA_DASHBOARD_INBOX_ISOLATION", "").strip().lower() in (
+                "1", "true", "yes", "on")
 
         _health = HealthCollector(
             started_at=_time.time(),
@@ -313,6 +330,7 @@ async def run_server(args: argparse.Namespace) -> None:
             DashboardAuthMiddleware,
             mode=_dash_auth_mode,
             tokens=_dash_tokens,
+            users=_dash_users,
             protected_paths=DASHBOARD_PROTECTED_PATHS,
             query_param_paths=DASHBOARD_QUERY_PARAM_PATHS,
         )
@@ -329,6 +347,7 @@ async def run_server(args: argparse.Namespace) -> None:
             health_collector=_health,
             event_broker=_event_broker,
             log_buffer=_log_buffer,
+            inbox_isolation=_inbox_isolation,
             auth_mode=_dash_auth_mode,
         )
         print("  Dashboard: GET /dashboard, GET /dashboard/data, GET /dashboard/auth-mode")
@@ -336,7 +355,9 @@ async def run_server(args: argparse.Namespace) -> None:
         print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")
         print("  Dashboard: GET /dashboard/operator/inbox, POST /dashboard/operator/inbox/ack")
         print("  Dashboard: GET /dashboard/logs (recent WARNING+ events)")
-        print(f"  Dashboard: auth mode = {_dash_auth_mode}")
+        print(f"  Dashboard: auth mode = {_dash_auth_mode}"
+              + (f", basic users = {len(_dash_users)}" if _dash_auth_mode == "basic" else "")
+              + (", inbox isolation = on" if _inbox_isolation else ""))
         from agent_agora.files import register as register_files
         register_files(starlette_app, file_store=mcp._agora_file_store,  # type: ignore[attr-defined]
                        file_policy=mcp._agora_file_policy)  # type: ignore[attr-defined]

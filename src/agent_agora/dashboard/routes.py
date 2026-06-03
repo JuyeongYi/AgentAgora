@@ -20,7 +20,7 @@ from starlette.staticfiles import StaticFiles
 
 from agent_agora.dispatcher import DispatcherClosed
 from agent_agora.errors import AgoraError
-from agent_agora.registry import NotRegisteredError, operator_id
+from agent_agora.registry import NotRegisteredError, is_operator, operator_id
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,7 @@ def register(
     health_collector=None,
     event_broker=None,
     log_buffer=None,
+    inbox_isolation: bool = False,
     auth_mode: str = "trust",
 ) -> None:
     """app에 대시보드 라우트를 등록한다.
@@ -164,7 +165,10 @@ def register(
     health_collector: HealthCollector 인스턴스 (선택). 제공 시 /data에 server 헬스 포함.
     event_broker: EventBroker 인스턴스 (선택). 제공 시 /stream SSE 엔드포인트 활성화.
     log_buffer: RingBufferLogHandler 인스턴스 (선택). 제공 시 /logs 엔드포인트 활성화.
-    auth_mode: 현재 인증 모드 ("trust" | "token"). /auth-mode 엔드포인트에 노출.
+    inbox_isolation: True면 운영자가 *다른* 운영자(operator:<other>)의 inbox를
+        /dashboard/instance/{id}/inbox로 조회하는 것을 403으로 막는다. 기본 False는
+        현행 read-all 동작(일반 워커·본인 operator inbox는 격리 무관하게 허용).
+    auth_mode: 현재 인증 모드 ("trust" | "token" | "basic"). /auth-mode 엔드포인트에 노출.
     """
 
     async def data_endpoint(request: Request) -> JSONResponse:
@@ -406,8 +410,16 @@ def register(
         return JSONResponse({"messages": msgs})
 
     async def instance_inbox_endpoint(request: Request) -> JSONResponse:
-        """GET /dashboard/instance/{instance_id}/inbox — 워커 인박스 조회."""
+        """GET /dashboard/instance/{instance_id}/inbox — 워커 인박스 조회.
+
+        inbox_isolation=True면 다른 운영자(operator:<other>)의 inbox 조회를 403으로
+        막는다. 일반 워커·본인 operator inbox는 격리 무관하게 허용."""
         instance_id = request.path_params["instance_id"]
+        if inbox_isolation and is_operator(instance_id):
+            caller = operator_id(getattr(request.state, "operator_user", ""))
+            if instance_id != caller:
+                return JSONResponse(
+                    {"error": "forbidden: cross-operator inbox"}, status_code=403)
         msgs = persistence.fetch_messages_for(recipient=instance_id, include_acked=True)
         return JSONResponse({"messages": msgs})
 

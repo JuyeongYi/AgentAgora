@@ -1,6 +1,9 @@
 """dashboard_auth 미들웨어 — trust·token 두 모드 검증."""
 from __future__ import annotations
 
+import base64
+import hashlib
+
 import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -11,7 +14,8 @@ from starlette.testclient import TestClient
 from agent_agora.dashboard import DashboardAuthMiddleware, parse_tokens
 
 
-def _make_app(mode: str, tokens: dict | None = None) -> Starlette:
+def _make_app(mode: str, tokens: dict | None = None,
+              users: dict | None = None) -> Starlette:
     async def whoami(req: Request) -> JSONResponse:
         return JSONResponse({"user": req.state.operator_user})
 
@@ -23,11 +27,21 @@ def _make_app(mode: str, tokens: dict | None = None) -> Starlette:
         Route("/auth-mode", auth_mode),
     ])
     app.add_middleware(DashboardAuthMiddleware, mode=mode, tokens=tokens or {},
-                       protected_paths=["/whoami"])
+                       protected_paths=["/whoami"], users=users or {})
     # Force middleware stack build so __init__ errors surface eagerly
     # (Starlette는 첫 요청 전까지 미들웨어를 instantiate하지 않음).
     app.build_middleware_stack()
     return app
+
+
+def _sha256_hash(plain: str) -> str:
+    return "{SHA256}" + base64.b64encode(
+        hashlib.sha256(plain.encode("utf-8")).digest()).decode("ascii")
+
+
+def _basic_header(user: str, password: str) -> dict:
+    raw = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+    return {"Authorization": "Basic " + raw}
 
 
 def test_trust_mode_accepts_header():
@@ -137,6 +151,75 @@ def test_trust_mode_stream_path_allows_query():
     r = TestClient(app).get("/stream?u=alice")
     assert r.status_code == 200
     assert r.json() == {"user": "alice"}
+
+
+def test_basic_mode_accepts_valid_credentials():
+    users = {"alice": _sha256_hash("secret")}
+    client = TestClient(_make_app("basic", users=users))
+    r = client.get("/whoami", headers=_basic_header("alice", "secret"))
+    assert r.status_code == 200
+    assert r.json() == {"user": "alice"}
+
+
+def test_basic_mode_rejects_wrong_password():
+    users = {"alice": _sha256_hash("secret")}
+    client = TestClient(_make_app("basic", users=users))
+    r = client.get("/whoami", headers=_basic_header("alice", "wrong"))
+    assert r.status_code == 401
+
+
+def test_basic_mode_rejects_unknown_user():
+    users = {"alice": _sha256_hash("secret")}
+    client = TestClient(_make_app("basic", users=users))
+    r = client.get("/whoami", headers=_basic_header("mallory", "x"))
+    assert r.status_code == 401
+
+
+def test_basic_mode_no_header_401():
+    users = {"alice": _sha256_hash("secret")}
+    client = TestClient(_make_app("basic", users=users))
+    r = client.get("/whoami")
+    assert r.status_code == 401
+
+
+def test_verify_password_sha256_and_pbkdf2():
+    from agent_agora.dashboard import verify_password
+    # {SHA256}
+    assert verify_password("secret", _sha256_hash("secret")) is True
+    assert verify_password("nope", _sha256_hash("secret")) is False
+    # pbkdf2_sha256$<iters>$<salt_b64>$<hash_b64>
+    salt = b"saltsalt"
+    iters = 50_000
+    dk = hashlib.pbkdf2_hmac("sha256", b"hunter2", salt, iters)
+    stored = (f"pbkdf2_sha256${iters}$"
+              f"{base64.b64encode(salt).decode()}${base64.b64encode(dk).decode()}")
+    assert verify_password("hunter2", stored) is True
+    assert verify_password("wrong", stored) is False
+    # 인식 불가 포맷은 안전 실패(False)
+    assert verify_password("secret", "plaintext-no-prefix") is False
+
+
+def test_parse_basic_users_format_and_malformed():
+    from agent_agora.dashboard import parse_basic_users
+    parsed = parse_basic_users("alice:{SHA256}abc,bob:pbkdf2_sha256$1$s$h")
+    assert parsed == {"alice": "{SHA256}abc", "bob": "pbkdf2_sha256$1$s$h"}
+    assert parse_basic_users("") == {}
+    with pytest.raises(ValueError, match="missing ':'"):
+        parse_basic_users("alice")
+    with pytest.raises(ValueError, match="empty user or hash"):
+        parse_basic_users(":hash")
+    with pytest.raises(ValueError, match="empty user or hash"):
+        parse_basic_users("alice:")
+    with pytest.raises(ValueError, match="duplicate user"):
+        parse_basic_users("alice:h1,alice:h2")
+
+
+def test_unknown_mode_still_raises_basic_is_valid():
+    # basic은 유효 — 빈 users 허용
+    _make_app("basic")
+    # oidc는 스코프 아웃 — 여전히 unknown
+    with pytest.raises(ValueError, match="unknown auth mode"):
+        _make_app("oidc")
 
 
 def test_token_mode_stream_path_allows_token_query():

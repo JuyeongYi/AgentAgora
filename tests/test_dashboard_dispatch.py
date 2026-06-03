@@ -34,13 +34,8 @@ def _auth(user: str) -> dict:
 _PROTECTED_PATHS = DASHBOARD_PROTECTED_PATHS
 
 
-@pytest.fixture
-def real_server_app(tmp_path):
-    """Full Starlette app wired with dispatcher + dashboard_routes + trust-mode auth.
-
-    Uses Starlette lifespan to start/stop the AsyncWriteQueue worker task so that
-    dispatcher.dispatch() persistence writes complete (rather than hanging on the future).
-    """
+def _build_real_server_app(tmp_path, *, inbox_isolation: bool = False):
+    """Build the full dashboard app. inbox_isolation toggles operator inbox 격리."""
     reg = InstanceRegistry()
     bot_reg = BotRegistry()
     cm = CommMatrix()
@@ -95,6 +90,7 @@ def real_server_app(tmp_path):
         health_collector=health,
         event_broker=event_broker,
         log_buffer=log_buffer,
+        inbox_isolation=inbox_isolation,
         auth_mode="trust",
     )
 
@@ -106,6 +102,16 @@ def real_server_app(tmp_path):
     app.state.log_buffer = log_buffer
 
     return app
+
+
+@pytest.fixture
+def real_server_app(tmp_path):
+    """Full Starlette app wired with dispatcher + dashboard_routes + trust-mode auth.
+
+    Uses Starlette lifespan to start/stop the AsyncWriteQueue worker task so that
+    dispatcher.dispatch() persistence writes complete (rather than hanging on the future).
+    """
+    return _build_real_server_app(tmp_path)
 
 
 @pytest.fixture
@@ -279,6 +285,41 @@ def test_files_endpoint_lists_shared_files(dashboard_client, real_server_app):
 
 def test_files_is_protected_path():
     assert "/dashboard/files" in DASHBOARD_PROTECTED_PATHS
+
+
+def test_instance_inbox_isolation_off_allows_cross_operator(dashboard_client, real_server_app, post_reply_from_worker):
+    """격리 off(현행 기본) — 인증된 운영자가 타 운영자 inbox를 read-all."""
+    post_reply_from_worker("W1", "operator:bob", {"text": "bob's msg"})
+    r = dashboard_client.get("/dashboard/instance/operator:bob/inbox", headers=_auth("alice"))
+    assert r.status_code == 200
+    assert any(m["payload"].get("text") == "bob's msg" for m in r.json()["messages"])
+
+
+def test_instance_inbox_isolation_on_blocks_cross_operator(tmp_path):
+    """격리 on — alice가 operator:bob inbox 조회 시 403. 본인·일반 워커는 200."""
+    app = _build_real_server_app(tmp_path, inbox_isolation=True)
+    reg = app.state.instance_registry
+    reg.register("sess-W1", "W1", role="coder", description="w")
+    with TestClient(app, raise_server_exceptions=True) as client:
+        r = client.get("/dashboard/instance/operator:bob/inbox", headers=_auth("alice"))
+        assert r.status_code == 403
+        # 본인 operator inbox는 허용
+        r2 = client.get("/dashboard/instance/operator:alice/inbox", headers=_auth("alice"))
+        assert r2.status_code == 200
+        # 일반 워커 inbox는 허용
+        r3 = client.get("/dashboard/instance/W1/inbox", headers=_auth("alice"))
+        assert r3.status_code == 200
+
+
+def test_operator_inbox_always_self_scoped(dashboard_client, post_reply_from_worker):
+    """격리 무관 — /dashboard/operator/inbox는 항상 본인(operator:alice) 메시지만."""
+    post_reply_from_worker("W1", "operator:alice", {"text": "for alice"})
+    post_reply_from_worker("W1", "operator:bob", {"text": "for bob"})
+    r = dashboard_client.get("/dashboard/operator/inbox", headers=_auth("alice"))
+    assert r.status_code == 200
+    texts = [m["payload"].get("text") for m in r.json()["messages"]]
+    assert "for alice" in texts
+    assert "for bob" not in texts
 
 
 def test_logs_is_protected_path(dashboard_client):
