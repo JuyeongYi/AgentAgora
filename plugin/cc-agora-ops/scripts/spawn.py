@@ -31,8 +31,11 @@ _RUN_BAT = (
     "set CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60\n"
     "REM Worker name = basename of this folder (matches the instance_id).\n"
     "for %%I in (\"%~dp0.\") do set \"AGORA_NAME=%%~nxI\"\n"
-    "claude --name \"%AGORA_NAME%\" --dangerously-skip-permissions"
-    " --dangerously-load-development-channels server:agora-channel %*\n"
+    # %*(프롬프트/-c)는 채널 플래그 *앞*에 둔다. --dangerously-load-development-channels는
+    # 뒤따르는 인자를 모두 채널 엔트리로 먹어서(greedy), 'server:agora-channel' 뒤에 '.'가
+    # 붙으면 'tagged 아닌 엔트리'로 거부된다. 채널 플래그+값을 맨 끝에 둬 단일 엔트리만 받게 함.
+    "claude --name \"%AGORA_NAME%\" --dangerously-skip-permissions %*"
+    " --dangerously-load-development-channels server:agora-channel\n"
 )
 
 
