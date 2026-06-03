@@ -43,6 +43,7 @@ DASHBOARD_PROTECTED_PATHS = [
     "/dashboard/logs",
     "/dashboard/files",
     "/dashboard/comm-matrix",
+    "/dashboard/search",
     "/dashboard/stream",
 ]
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
@@ -469,6 +470,23 @@ def register(
         바이트는 노출하지 않는다 — 다운로드는 별도 /files/{file_id} 라우트가 담당."""
         return JSONResponse({"files": persistence.list_files()})
 
+    async def search_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/search?q=&limit= — 메시지 본문 전문 검색(FTS5/LIKE 폴백)."""
+        q = (request.query_params.get("q") or "").strip()
+        if not q:
+            return JSONResponse(
+                {"query": "", "results": [], "fts": persistence.fts_available})
+        limit_param = request.query_params.get("limit")
+        try:
+            limit = int(limit_param) if limit_param is not None else 50
+        except ValueError:
+            return JSONResponse({"error": "limit must be an integer"}, status_code=422)
+        return JSONResponse({
+            "query": q,
+            "results": persistence.search_messages(q, limit=limit),
+            "fts": persistence.fts_available,
+        })
+
     # ------------------------------------------------------------------
     # operator state-changing actions (force-close / unregister / comm-matrix)
     # ------------------------------------------------------------------
@@ -533,6 +551,7 @@ def register(
         Route("/dashboard/coverage/{command_id}", coverage_endpoint, methods=["GET"])
     )
     app.router.routes.append(Route("/dashboard/files", files_endpoint, methods=["GET"]))
+    app.router.routes.append(Route("/dashboard/search", search_endpoint, methods=["GET"]))
     app.router.routes.append(Route(
         "/dashboard/operator/conversation/{conversation_id}/close",
         close_conversation_endpoint, methods=["POST"]))

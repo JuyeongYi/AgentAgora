@@ -20,6 +20,8 @@
   <span class="title">AgentAgora — <span id="who"></span></span>
   <span id="conn-indicator">●</span>
   <span id="health-summary"></span>
+  <input id="search-input" type="search" placeholder="메시지 검색…">
+  <button id="open-search">검색</button>
   <button id="open-schemas">스키마</button>
   <button id="open-logs">로그</button>
   <button id="open-files">파일</button>
@@ -46,6 +48,7 @@
 <div id="logs-modal" class="modal hidden"></div>
 <div id="files-modal" class="modal hidden"></div>
 <div id="action-modal" class="modal hidden"></div>
+<div id="search-modal" class="modal hidden"></div>
 <script src="/dashboard/static/vendor/tabulator.min.js"></script>
 <script src="/dashboard/static/vendor/jsoneditor.min.js"></script>
 <script src="/dashboard/static/js/api.js"></script>
@@ -60,6 +63,7 @@
 <script src="/dashboard/static/js/files.js"></script>
 <script src="/dashboard/static/js/flow.js"></script>
 <script src="/dashboard/static/js/actions.js"></script>
+<script src="/dashboard/static/js/search.js"></script>
 <script src="/dashboard/static/js/dashboard.js"></script>
 </body>
 </html>

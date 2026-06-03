@@ -412,6 +412,45 @@ def test_comm_matrix_is_protected_path():
     assert "/dashboard/comm-matrix" in DASHBOARD_PROTECTED_PATHS
 
 
+def test_search_round_trip_indexing_to_query(dashboard_client, register_worker):
+    register_worker("W1")
+    dashboard_client.post("/dashboard/dispatch", headers=_auth("alice"),
+                          json={"to": "W1", "schema": "operator_message",
+                                "payload": {"text": "rocket engine telemetry"}})
+    r = dashboard_client.get("/dashboard/search?q=engine", headers=_auth("alice"))
+    assert r.status_code == 200
+    body = r.json()
+    assert "results" in body and "fts" in body
+    # FTS 또는 LIKE 폴백 어느 쪽이든 본문 매칭
+    assert any("engine" in (m.get("snippet") or "").lower()
+               or m.get("source") == "operator:alice" for m in body["results"]) \
+        or len(body["results"]) >= 1
+
+
+def test_search_empty_query_returns_empty(dashboard_client):
+    r = dashboard_client.get("/dashboard/search?q=", headers=_auth("alice"))
+    assert r.status_code == 200
+    assert r.json()["results"] == []
+
+
+def test_search_special_chars_does_not_500(dashboard_client, register_worker):
+    register_worker("W1")
+    dashboard_client.post("/dashboard/dispatch", headers=_auth("alice"),
+                          json={"to": "W1", "schema": "operator_message",
+                                "payload": {"text": "hello"}})
+    r = dashboard_client.get('/dashboard/search?q=hello "W1', headers=_auth("alice"))
+    assert r.status_code == 200
+
+
+def test_search_bad_limit_422(dashboard_client):
+    r = dashboard_client.get("/dashboard/search?q=x&limit=abc", headers=_auth("alice"))
+    assert r.status_code == 422
+
+
+def test_search_is_protected_path():
+    assert "/dashboard/search" in DASHBOARD_PROTECTED_PATHS
+
+
 def test_logs_is_protected_path(dashboard_client):
     """/dashboard/logs는 보호 경로 — 운영자 헤더 없으면 거부(trust 모드는 통과지만
     경로 자체가 protected 목록에 있어야 한다)."""

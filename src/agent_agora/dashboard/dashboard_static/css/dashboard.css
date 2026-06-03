@@ -96,3 +96,11 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .cm-toolbar { margin-bottom:8px; }
 #action-modal textarea { width:100%; box-sizing:border-box; margin:8px 0; background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:6px; font-family:monospace; }
 #action-modal .action-buttons { margin-top:10px; }
+
+/* 전문 검색 */
+#search-input { background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:3px 8px; }
+#search-body { max-height:60vh; overflow:auto; min-width:600px; }
+.search-table { width:100%; border-collapse:collapse; font-size:12px; }
+.search-table td { padding:4px 8px; border-bottom:1px solid #33334d; vertical-align:top; }
+.search-table tr:hover { background:#2d2d52; }
+.search-snippet { font-family:monospace; font-size:11px; white-space:pre-wrap; color:#cce; }

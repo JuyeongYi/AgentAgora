@@ -101,6 +101,26 @@ CREATE INDEX IF NOT EXISTS idx_files_created ON files(created_at);
 """
 
 
+# FTS5 전문 검색 (대시보드 /dashboard/search). messages.payload(JSON 문자열)를 body로
+# 인덱싱하고 메타는 UNINDEXED로 동거 — 결과 회수에 messages JOIN 불필요. AFTER INSERT
+# 트리거가 AsyncWriteQueue 트랜잭션 안에서 함께 발화하므로 hot-path는 손대지 않는다.
+# messages는 append-only(payload 불변, drained_at/acked_at만 UPDATE)라 UPDATE/DELETE
+# 트리거는 불필요. FTS5 미가용 빌드에선 CREATE가 OperationalError → LIKE 폴백.
+_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+  command_id UNINDEXED, conversation_id UNINDEXED, source UNINDEXED,
+  target UNINDEXED, created_at UNINDEXED, body, tokenize='unicode61');
+CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO messages_fts(command_id, conversation_id, source, target, created_at, body)
+  VALUES (new.command_id, new.conversation_id, new.source, new.target,
+          new.created_at, new.payload);
+END;
+"""
+
+_SEARCH_COLS = ("command_id", "conversation_id", "source", "target",
+                "created_at", "snippet")
+
+
 class Persistence:
     """Synchronous SQLite handle. Hot path never calls writes directly — use AsyncWriteQueue."""
 
@@ -110,8 +130,9 @@ class Persistence:
         self._conn = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        self._fts_available: bool = False
 
-    def migrate(self, target_version: int = 1) -> None:
+    def migrate(self, target_version: int = 2) -> None:
         cur = self._conn.cursor()
         cur.executescript(_SCHEMA_V1)
         # Idempotent column adds for older DBs that pre-date these fields.
@@ -122,8 +143,71 @@ class Persistence:
             cur.execute("ALTER TABLE messages ADD COLUMN reply_only INTEGER NOT NULL DEFAULT 0")
         if "acked_at" not in existing_cols:
             cur.execute("ALTER TABLE messages ADD COLUMN acked_at REAL")
+        self._setup_fts(cur)
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cur.execute("INSERT OR IGNORE INTO schema_version VALUES (?, ?)", (target_version, now))
+
+    def _setup_fts(self, cur: sqlite3.Cursor) -> None:
+        """messages_fts(FTS5) + 트리거를 만들고 기존 행을 1회 backfill한다.
+        FTS5 미가용 빌드면 _fts_available=False로 두고 조용히 폴백."""
+        try:
+            cur.executescript(_FTS_SCHEMA)
+        except sqlite3.OperationalError as e:
+            logger.warning("FTS5 unavailable — search falls back to LIKE scan: %s", e)
+            self._fts_available = False
+            return
+        self._fts_available = True
+        # 인덱스가 비어있을 때만 기존 messages를 backfill (재실행 idempotent).
+        if cur.execute("SELECT 1 FROM messages_fts LIMIT 1").fetchone() is None:
+            cur.execute(
+                "INSERT INTO messages_fts"
+                "(command_id, conversation_id, source, target, created_at, body) "
+                "SELECT command_id, conversation_id, source, target, created_at, payload "
+                "FROM messages")
+
+    @property
+    def fts_available(self) -> bool:
+        return self._fts_available
+
+    @staticmethod
+    def _fts_query(q: str) -> str:
+        """사용자 입력을 FTS5 MATCH 안전 쿼리로. 각 토큰을 phrase-quote(내부 " 제거)해
+        구문 에러·인젝션을 막고 토큰 간 암묵 AND."""
+        tokens = [t.replace('"', "") for t in q.split()]
+        return " ".join(f'"{t}"' for t in tokens if t)
+
+    def search_messages(self, query: str, *, limit: int = 50) -> list[dict]:
+        """메시지 본문(payload) 전문 검색. FTS5 가용 시 MATCH+snippet, 아니면 LIKE 폴백.
+        반환: [{command_id, conversation_id, source, target, created_at, snippet}]."""
+        q = query.strip()
+        if not q:
+            return []
+        limit = min(max(1, limit), 200)
+        if self._fts_available:
+            match = self._fts_query(q)
+            if not match:
+                return []
+            rows = self._conn.execute(
+                "SELECT command_id, conversation_id, source, target, created_at, "
+                "snippet(messages_fts, 5, '<<', '>>', '…', 12) "
+                "FROM messages_fts WHERE messages_fts MATCH ? ORDER BY rank LIMIT ?",
+                (match, limit)).fetchall()
+            return [dict(zip(_SEARCH_COLS, r)) for r in rows]
+        return self._search_like(q, limit)
+
+    def _search_like(self, q: str, limit: int) -> list[dict]:
+        """FTS5 미가용 폴백 — payload LIKE 풀스캔 (토큰 AND, 최신순)."""
+        tokens = [t for t in q.split() if t]
+        if not tokens:
+            return []
+        where = " AND ".join("payload LIKE ?" for _ in tokens)
+        params = [f"%{t}%" for t in tokens] + [limit]
+        rows = self._conn.execute(
+            "SELECT command_id, conversation_id, source, target, created_at, "
+            "substr(payload, 1, 200) "
+            f"FROM messages WHERE {where} ORDER BY created_at DESC LIMIT ?",
+            params).fetchall()
+        return [dict(zip(_SEARCH_COLS, r)) for r in rows]
 
     def close(self) -> None:
         self._conn.close()
