@@ -87,6 +87,13 @@ class MetricsCollector:
                 "dispatch_rate_per_min": self._rate(arr, prev_arr, elapsed),
             })
 
+        # roster에서 사라진 워커(unregister·dead-session sweep) 정리 — ghost 워커와
+        # _workers/_arrivals 무한 증가 방지. peek가 권위 소스(현재 등록된 인스턴스).
+        live = set(peek)
+        for d in (self._workers, self._arrivals, self._last_arrivals):
+            for k in [k for k in d if k not in live]:
+                del d[k]
+
         self._last_t = now
         self._last_dispatch = self._dispatch_count
         self._last_err = err_total
