@@ -7,6 +7,13 @@ window.agoraDrilldown = (function() {
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  // 메시지를 created_at 오름차순(시간순)으로 정렬. ISO 8601은 사전식 정렬이 시간순과 일치.
+  // 백엔드도 ASC로 주지만 클라이언트 가드로 명시적 시간순을 보장한다.
+  function byTime(msgs) {
+    return (msgs || []).slice().sort(
+      (a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  }
+
   function msgCard(m) {
     const cmd = m.message_id || m.command_id || '';
     const covSlot = cmd
@@ -45,7 +52,7 @@ window.agoraDrilldown = (function() {
     show('대화 ' + convId, '<p>불러오는 중…</p>');
     try {
       const d = await window.agoraApi.get('/dashboard/conversation/' + encodeURIComponent(convId));
-      const html = (d.messages || []).map(msgCard).join('') || '<p>(빈 thread)</p>';
+      const html = byTime(d.messages).map(msgCard).join('') || '<p>(빈 thread)</p>';
       show('대화 ' + convId, html);
       hydrateCoverage();
     } catch (e) { show('대화 ' + convId, '<p>로드 실패: ' + escape(e.message) + '</p>'); }
@@ -55,7 +62,7 @@ window.agoraDrilldown = (function() {
     show(instId + ' 인박스', '<p>불러오는 중…</p>');
     try {
       const d = await window.agoraApi.get('/dashboard/instance/' + encodeURIComponent(instId) + '/inbox');
-      const html = (d.messages || []).map(msgCard).join('') || '<p>(빈 인박스)</p>';
+      const html = byTime(d.messages).map(msgCard).join('') || '<p>(빈 인박스)</p>';
       show(instId + ' 인박스', html);
       hydrateCoverage();
     } catch (e) { show(instId + ' 인박스', '<p>로드 실패: ' + escape(e.message) + '</p>'); }

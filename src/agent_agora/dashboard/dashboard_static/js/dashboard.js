@@ -139,12 +139,12 @@
     toggle.className = 'action-btn';
     toggle.textContent = cm.active ? '비활성화' : '활성화';
     toggle.onclick = () => window.agoraActions.toggleMatrix(!cm.active);
-    const csv = document.createElement('button');
-    csv.className = 'action-btn';
-    csv.textContent = 'CSV 교체';
-    csv.onclick = () => window.agoraActions.matrixCsv();
+    const edit = document.createElement('button');
+    edit.className = 'action-btn';
+    edit.textContent = '편집';
+    edit.onclick = () => window.agoraActions.matrixEdit();
     bar.appendChild(toggle);
-    bar.appendChild(csv);
+    bar.appendChild(edit);
     return bar;
   }
 

@@ -85,20 +85,93 @@ window.agoraActions = (function() {
     _open(card);
   }
 
-  function matrixCsv() {
-    const card = _card('통신 매트릭스 CSV 교체');
-    const p = document.createElement('p');
-    p.textContent = '헤더(정규식) + N×N 정수 셀. 적용 시 매트릭스가 활성화됩니다.';
-    card.appendChild(p);
-    const ta = document.createElement('textarea');
-    ta.id = 'matrix-csv';
-    ta.rows = 8;
-    ta.placeholder = 'Coder.*,Reviewer.*\n0,1\n1,0';
-    card.appendChild(ta);
-    _buttons(card, '교체', () => _run(
-      window.agoraApi.post('/dashboard/comm-matrix', {csv: ta.value})), false);
+  // 통신 매트릭스 표 편집 — N×N 그리드(행=to 패턴, 열=from 패턴, 셀=weight 정수).
+  // 적용 시 CSV로 변환해 POST(=활성화). 패턴 추가/삭제로 N을 조절.
+  async function matrixEdit() {
+    const data = await window.agoraApi.get('/dashboard/comm-matrix').catch(() => ({matrix: {}}));
+    const matrix = data.matrix || {};
+    let patterns = Object.keys(matrix);
+    if (!patterns.length) patterns = ['(?i)orchestrator.*', '(?i)coder.*'];
+    let weights = patterns.map(to => patterns.map(from => Number((matrix[to] || {})[from]) || 0));
+
+    const card = _card('통신 매트릭스 편집');
+    const help = document.createElement('p');
+    help.textContent = '행=받는 쪽(to), 열=보내는 쪽(from), 셀=weight(0=차단, ≥1=허용). 헤더는 정규식. 적용 시 활성화.';
+    help.className = 'matrix-help';
+    card.appendChild(help);
+    const host = document.createElement('div');
+    host.className = 'matrix-edit-host';
+    card.appendChild(host);
+
+    function rebuild() {
+      host.innerHTML = '';
+      const tbl = document.createElement('table');
+      tbl.className = 'matrix-edit';
+      // 헤더 행: 코너 + from 패턴 입력 + 삭제
+      const head = document.createElement('tr');
+      head.appendChild(document.createElement('th'));  // corner
+      patterns.forEach((pat, j) => {
+        const th = document.createElement('th');
+        const inp = document.createElement('input');
+        inp.value = pat; inp.className = 'matrix-pat';
+        inp.oninput = () => { patterns[j] = inp.value; syncRowLabels(); };
+        th.appendChild(inp);
+        head.appendChild(th);
+      });
+      head.appendChild(document.createElement('th'));  // del col header
+      tbl.appendChild(head);
+      // 데이터 행
+      patterns.forEach((pat, i) => {
+        const tr = document.createElement('tr');
+        const rowLabel = document.createElement('th');
+        rowLabel.className = 'matrix-rowlabel';
+        rowLabel.textContent = pat;  // from 헤더 입력과 동기(syncRowLabels)
+        tr.appendChild(rowLabel);
+        patterns.forEach((_from, j) => {
+          const td = document.createElement('td');
+          const inp = document.createElement('input');
+          inp.type = 'number'; inp.min = '0'; inp.value = String(weights[i][j]);
+          inp.className = 'matrix-w';
+          inp.oninput = () => { weights[i][j] = Math.max(0, parseInt(inp.value, 10) || 0); };
+          td.appendChild(inp);
+          tr.appendChild(td);
+        });
+        const delTd = document.createElement('td');
+        const del = document.createElement('button');
+        del.textContent = '✕'; del.title = '행/열 삭제'; del.className = 'matrix-del';
+        del.onclick = () => { patterns.splice(i, 1); weights.splice(i, 1); weights.forEach(r => r.splice(i, 1)); rebuild(); };
+        delTd.appendChild(del);
+        tr.appendChild(delTd);
+        tbl.appendChild(tr);
+      });
+      host.appendChild(tbl);
+      const add = document.createElement('button');
+      add.textContent = '+ 패턴 추가'; add.className = 'action-btn';
+      add.onclick = () => {
+        patterns.push('(?i)new.*');
+        weights.forEach(r => r.push(0));
+        weights.push(patterns.map(() => 0));
+        rebuild();
+      };
+      host.appendChild(add);
+    }
+
+    function syncRowLabels() {
+      const labels = host.querySelectorAll('.matrix-rowlabel');
+      labels.forEach((el, i) => { el.textContent = patterns[i]; });
+    }
+
+    function buildCsv() {
+      const rows = [patterns.join(',')];
+      weights.forEach(r => rows.push(r.join(',')));
+      return rows.join('\n');
+    }
+
+    rebuild();
+    _buttons(card, '적용', () => _run(
+      window.agoraApi.post('/dashboard/comm-matrix', {csv: buildCsv()})), false);
     _open(card);
   }
 
-  return {unregister, closeConversation, toggleMatrix, matrixCsv, close};
+  return {unregister, closeConversation, toggleMatrix, matrixEdit, close};
 })();
