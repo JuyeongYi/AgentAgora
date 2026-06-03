@@ -1,5 +1,9 @@
 # Backlog — 미뤄둔 작업
 
+## 후보 / 아이디어
+
+- **run-all Windows zellij 전환**: agora-init `run-all.ps1`은 현재 `wt.exe` 탭(없으면 `Start-Process` 새 창)으로 워커를 띄운다. 향후 **Windows도 zellij 기반으로 통일**해 워커 기동 멀티플렉서를 OS 무관하게 일원화하는 안 검토. (리눅스 `run-all.sh`는 이미 zellij 전용)
+
 ## 완료
 
 - ~~**wait-tool-gating**~~ — ✅ 완료(2026-06-03 확인). 3요소 모두 master에 구현·테스트됨:
