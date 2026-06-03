@@ -1,6 +1,6 @@
 # 파일 공유 일원화 (agora-channel `file.put`/`file.get`) 설계
 
-**상태**: 설계 승인됨 (2026-06-03) — 구현 계획 대기
+**상태**: 구현 완료 (2026-06-03, 브랜치 feat/file-sharing-unification)
 **토픽**: 파일 공유 방법을 브로커 HTTP `/files`(서버 중앙 저장+송신) 단일 경로로 일원화. 워커는 워커측 채널 어댑터의 MCP 도구(`file.put`/`file.get`)로만 다룬다. 분산·OS 무관.
 
 ## 배경 / 문제

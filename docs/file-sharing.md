@@ -10,14 +10,17 @@ AgentAgora 워커(Claude Code 인스턴스)가 파일을 서로 주고받는 방
 수단이 없다. CLAUDE.md 규약상 원본 바이너리는 메시지 payload에 넣을 수 없으므로
 (작은 파생물만 허용), 파일 바이트는 별도 전송 경로가 필요하다.
 
-파일 공유는 **서버 측 스토어 모델**로 동작한다.
+파일 공유는 **채널 도구 `file.put`/`file.get` + 브로커 HTTP `/files` 단일 경로**로
+동작한다. 워커는 워커측 채널 어댑터의 MCP 도구로만 파일을 다루고, 바이트는 항상
+브로커(서버) 중앙 스토어를 거친다.
 
-1. 공유자가 `agora.share_file`로 파일을 스토어에 등록하고 **핸들**을 받는다.
-2. 핸들을 `agora.dispatch`의 `file_share` payload에 실어 수신자에게 보낸다.
-3. 수신자가 `agora.fetch_file`로 스토어에서 파일을 가져간다.
+1. 공유자가 `file.put(path)`로 로컬 파일을 브로커에 업로드하고 **핸들**을 받는다.
+2. 핸들의 `file_id`를 `agora.dispatch`의 `file_share` payload에 실어 수신자에게 보낸다.
+3. 수신자가 `file.get(file_id)`로 브로커에서 파일을 내려받는다.
 
-같은 파일시스템이면 파일시스템 복사로, 서버에 원격 접속하는 워커라면 HTTP
-업/다운로드로 바이트가 오간다.
+내용(바이트)을 브로커 중앙 스토어로 주고받으므로 **분산·OS·경로 무관**이다 —
+서버와 워커가 같은 파일시스템일 필요가 없다. 단일 머신 전용이던 로컬-복사 MCP
+도구(`agora.share_file`/`agora.fetch_file`)는 폐기됐다.
 
 ---
 
@@ -41,37 +44,42 @@ AgentAgora 워커(Claude Code 인스턴스)가 파일을 서로 주고받는 방
 파일 하나의 최대 크기는 기본 **100 MB**(`104_857_600` 바이트)다. 초과 시
 `file_too_large` 오류가 반환된다.
 
-`FileStore.store_path`는 로컬 파일을 스토어에 **복사**한다 — 원본은 그대로 남는다.
-`FileStore.store_bytes`는 HTTP 업로드용으로, 바이트를 직접 받아 저장한다.
+`FileStore.store_bytes`는 HTTP 업로드용으로, 바이트를 직접 받아 저장한다. 채널
+도구·HTTP 경로 모두 이 진입점을 거친다 — 서버가 로컬 파일을 복사하는 경로는 없다.
 
 ---
 
-## MCP 도구
+## 채널 도구 (워커측)
 
-### `agora.share_file(path)`
+파일 공유는 워커측 채널 어댑터(`channel_adapter.py`)가 노출하는 두 MCP 도구로 한다.
+도구는 워커 로컬에서 실행되므로 워커의 로컬 파일을 직접 읽고/쓰고, 바이트는
+브로커 HTTP `/files`로 오간다.
 
-호출 워커가 로컬 파일을 스토어에 등록한다.
+### `file.put(path)`
 
-1. 호출자 `instance_id`를 확인해 파일 권한(`FilePolicy.can_upload`)을 검사한다.
-   권한이 없으면 `file_upload_denied` 오류가 반환된다.
-2. 파일 크기를 검사한다. 초과 시 `file_too_large`.
-3. 파일을 `.agentagora/files/<file_id>`로 복사하고 `files` 테이블에 메타를 기록한다.
-4. 핸들 `{file_id, name, size, sha256}` JSON을 반환한다.
+워커 로컬 파일을 브로커로 업로드한다.
 
-### `agora.fetch_file(file_id, dest_path)`
+1. `path`의 바이트를 읽어 브로커 `POST /files`로 보낸다 (워커 `instance_id` 식별).
+2. 브로커가 `FilePolicy.can_upload`를 검사한다 — 실패 시 업로드 거부 오류.
+3. 크기 초과 시 `file_too_large`.
+4. 성공 시 핸들 `{file_id, name, size, sha256}`을 반환한다.
 
-공유된 파일을 `dest_path`로 가져온다.
+받은 `file_id`를 `agora.dispatch`로 아래 `file_share` 메시지에 실어 수신자에게 보낸다.
 
-1. 호출자 `instance_id`를 확인해 파일 권한(`FilePolicy.can_download`)을 검사한다.
-   권한이 없으면 `file_download_denied` 오류가 반환된다.
-2. `file_id`가 스토어에 없으면 `unknown_file`.
-3. 스토어의 파일을 `dest_path`로 복사한다.
-4. `{status: "ok", name, size}` JSON을 반환한다.
+### `file.get(file_id, dest_path?)`
+
+브로커에 공유된 파일을 워커 로컬로 내려받는다.
+
+1. 브로커 `GET /files/<file_id>`로 바이트를 받는다 (워커 `instance_id` 식별).
+2. `dest_path`를 주면 그 경로에, 생략하면 `./agora-inbox/<원래이름>`에 저장한다.
+3. 대상 경로가 **이미 존재하면** `file_exists` 오류 — 덮어쓰지 않는다.
+4. `file_id`가 브로커에 없으면 다운로드 오류(HTTP 404).
+5. 성공 시 저장된 경로와 메타를 반환한다.
 
 ### `file_share` 빌트인 스키마
 
 `file_share`는 `kind=conversation` 빌트인 메시지 스키마다. 공유자가
-`agora.share_file`로 핸들을 얻은 뒤 `agora.dispatch`를 호출할 때 이 msgtype을
+`file.put`으로 핸들을 얻은 뒤 `agora.dispatch`를 호출할 때 이 msgtype을
 사용한다. `dispatch`는 기존과 동일하게 comm-matrix가 게이팅한다 — 파일 핸들
 전달도 통신 ACL을 따른다.
 
@@ -88,14 +96,15 @@ AgentAgora 워커(Claude Code 인스턴스)가 파일을 서로 주고받는 방
 }
 ```
 
-수신자는 `agora.flush`로 이 메시지를 받아 `agora.fetch_file(file_id, dest)`를
-호출한다.
+수신자는 `agora.flush`로 이 메시지를 받아 `file.get(file_id)`(또는
+`file.get(file_id, dest_path)`)를 호출한다.
 
 ---
 
-## HTTP 엔드포인트 (원격 워커)
+## HTTP 엔드포인트
 
-서버 파일시스템에 직접 접근할 수 없는 원격 워커용 경로다.
+채널 도구 `file.put`/`file.get`이 내부적으로 호출하는 경로다. `curl` 등으로
+**직접** 호출해도 된다 — 채널 어댑터 없이 바이트를 주고받는 저수준 경로.
 
 ### `POST /files`
 
@@ -192,6 +201,7 @@ AgentAgora 워커(Claude Code 인스턴스)가 파일을 서로 주고받는 방
 
 - [`docs/channel-mode.md`](channel-mode.md) — 채널 모드 워커 배선 가이드
 - [`docs/usage-guide.md`](usage-guide.md) — 전체 워커·봇·매트릭스 사용 가이드
+- [`src/agent_agora/channel_adapter.py`](../src/agent_agora/channel_adapter.py) — `file.put`/`file.get` 채널 도구
 - [`src/agent_agora/files/store.py`](../src/agent_agora/files/store.py) — `FileStore` 구현
 - [`src/agent_agora/files/policy.py`](../src/agent_agora/files/policy.py) — `FilePolicy` 구현
-- 설계 스펙(`2026-05-17-agora-file-sharing-design`) — git 히스토리
+- 설계 스펙(`2026-05-17-agora-file-sharing-design`, `2026-06-03-file-sharing-unification-design`) — git 히스토리
