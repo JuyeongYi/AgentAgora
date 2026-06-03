@@ -1,5 +1,8 @@
 """CommMatrix unit tests."""
+import pytest
+
 from agent_agora.comm_matrix import CommMatrix
+from agent_agora.errors import AgoraError
 
 
 # CSV: header[i] = both the to-destination for row i AND the from-source for column i
@@ -84,3 +87,39 @@ def test_cycles_detects_self_loop():
 def test_cycles_empty_when_inactive():
     cm = CommMatrix()
     assert cm.cycles() == []
+
+
+# --- set_active / clear (운영자 토글) ---
+
+
+def test_set_active_toggles_off_preserves_matrix():
+    cm = CommMatrix()
+    cm.load_csv(_SIMPLE)
+    assert cm.active is True
+    before = cm.snapshot()
+    cm.set_active(False)
+    assert cm.active is False
+    # 비활성 = all-allow
+    assert cm.is_allowed(from_="Worker2", to="Worker1") is True
+    # 다시 켜면 매트릭스 복원
+    cm.set_active(True)
+    assert cm.active is True
+    assert cm.snapshot() == before
+    assert cm.is_allowed(from_="Worker2", to="Worker1") is False  # weight 0
+
+
+def test_set_active_true_on_empty_matrix_raises():
+    cm = CommMatrix()
+    with pytest.raises(AgoraError) as ei:
+        cm.set_active(True)
+    assert ei.value.code == "comm_matrix_empty"
+    assert cm.active is False
+
+
+def test_clear_resets_and_deactivates():
+    cm = CommMatrix()
+    cm.load_csv(_SIMPLE)
+    cm.clear()
+    assert cm.active is False
+    assert cm.snapshot() == {}
+    assert cm.is_allowed(from_="Worker1", to="Worker2") is True

@@ -76,6 +76,16 @@ class DispatchPersistence:
         ))
         await self._write_queue.submit_transaction(stmts)
 
+    async def persist_conversation_status(self, conv_id: str, state: dict) -> None:
+        """대화 상태(status/closed_at/closed_by)만 영속한다 — 운영자 force-close용
+        (메시지 dispatch 없이 상태만 바뀌므로 last_message_at/count는 건드리지 않음)."""
+        await self._write_queue.submit_transaction([(
+            "UPDATE conversations SET status=?, closed_at=?, closed_by=? "
+            "WHERE conversation_id=?",
+            (state["status"], state.get("closed_at"),
+             json.dumps(state["closed_by"]), conv_id),
+        )])
+
     def mark_orphan_closed_inflight(self, now: str) -> None:
         """닫힌 conversation의 undrained 메시지를 drop_reason='server_restart'로 마킹한다."""
         self._persistence.conn.execute(

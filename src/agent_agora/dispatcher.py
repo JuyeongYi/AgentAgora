@@ -1073,6 +1073,46 @@ class Dispatcher:
             self._conv.maybe_close(conv_id, state)
         return {"status": state["status"], "conversation_id": conv_id}
 
+    async def operator_close_conversation(
+        self, conv_id: str, *, by: str, reason: str = "") -> dict:
+        """운영자 강제 close — close_thread와 달리 참가자 검사·타 워커 closing dispatch
+        부수효과 없이 상태만 closed로 만들고 영속한다. 멈춘 대화 정리용. 미존재면
+        {'error':'unknown_conversation'}, 이미 closed면 {'status':'already_closed'}."""
+        _ = reason  # audit 메시지용 — 현재는 closed_by에 by만 기록
+        state = self._conv.get(conv_id)
+        if state is None:
+            return {"error": "unknown_conversation"}
+        if state["status"] == "closed":
+            return {"status": "already_closed", "conversation_id": conv_id}
+        async with self._lock:
+            state["status"] = "closed"
+            state["closed_at"] = _now_iso()
+            if by not in state["closed_by"]:
+                state["closed_by"].append(by)
+        await self._dispatch_persistence.persist_conversation_status(conv_id, state)
+        return {"status": "closed", "conversation_id": conv_id, "closed_by": by}
+
+    def operator_unregister(self, instance_id: str) -> dict:
+        """운영자 강제 unregister — instance_id로 (워커 또는 봇) 등록을 해제한다.
+        agora.unregister(session 기반)의 instance_id 진입점. 스키마 ref 해제 +
+        unregister hook 발화(SSE instance_unregistered). 미등록이면 NotRegisteredError.
+        큐에 남은 메시지 수를 pending_inbox로 함께 반환(다음 sweep/restart가 정리)."""
+        pending = len(self._queues.get(instance_id, []))
+        session_id: str | None = None
+        for reg in (self._registry, self._bot_registry):
+            try:
+                session_id = reg.resolve_instance_id(instance_id).session_id
+                break
+            except NotRegisteredError:
+                continue
+        if session_id is None:
+            raise NotRegisteredError(f"instance '{instance_id}' is not registered")
+        self._schema_registry.release_holder(instance_id)
+        self._registry.unregister_session(session_id)
+        self._bot_registry.unregister_session(session_id)
+        self.notify_unregistered(instance_id)
+        return {"unregistered": instance_id, "pending_inbox": pending}
+
     def restore_from_persistence(self) -> None:
         """Inst4 우려3 — 재시작 후 in-memory state 복구."""
         envs = self._persistence.restore_inflight()

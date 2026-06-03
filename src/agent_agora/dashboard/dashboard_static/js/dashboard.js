@@ -52,6 +52,12 @@
           {title: 'last seen', field: 'last_seen_at'},
           {title: 'accepting', field: 'accepting',
            formatter: c => c.getValue() ? '예' : '아니오'},
+          {title: '액션', field: 'instance_id', headerSort: false, width: 70,
+           formatter: () => '<span class="row-action">해제</span>',
+           cellClick: (e, cell) => {
+             e.stopPropagation();
+             window.agoraActions.unregister(cell.getData().instance_id);
+           }},
         ],
         rowClick: (e, row) => window.agoraDrilldown.openInstanceInbox(row.getData().instance_id),
       });
@@ -75,6 +81,14 @@
           {title: 'status', field: 'status', headerFilter: true},
           {title: '메시지', field: 'message_count'},
           {title: 'last message', field: 'last_message_at'},
+          {title: '액션', field: 'conversation_id', headerSort: false, width: 70,
+           formatter: c => c.getData().status === 'closed'
+             ? '' : '<span class="row-action">닫기</span>',
+           cellClick: (e, cell) => {
+             e.stopPropagation();
+             if (cell.getData().status === 'closed') return;
+             window.agoraActions.closeConversation(cell.getData().conversation_id);
+           }},
         ],
         rowClick: (e, row) => window.agoraDrilldown.openConversation(row.getData().conversation_id),
       });
@@ -97,10 +111,32 @@
     window._botTab.replaceData(rows);
   }
 
+  function commMatrixToolbar(cm) {
+    // 토글 + CSV 교체 버튼 (운영자 액션). DOM 생성 — XSS-safe.
+    const bar = document.createElement('div');
+    bar.className = 'cm-toolbar';
+    const toggle = document.createElement('button');
+    toggle.className = 'action-btn';
+    toggle.textContent = cm.active ? '비활성화' : '활성화';
+    toggle.onclick = () => window.agoraActions.toggleMatrix(!cm.active);
+    const csv = document.createElement('button');
+    csv.className = 'action-btn';
+    csv.textContent = 'CSV 교체';
+    csv.onclick = () => window.agoraActions.matrixCsv();
+    bar.appendChild(toggle);
+    bar.appendChild(csv);
+    return bar;
+  }
+
   function renderCommMatrix(cm) {
     // 기존 dashboard.html(prev) 의 renderGraph 함수 — 원형 layout SVG.
     const wrap = document.getElementById('comm-matrix');
-    if (!cm.active) { wrap.innerHTML = '<p>비활성 — all-allow (모든 워커가 서로 dispatch 가능)</p>'; return; }
+    const toolbar = commMatrixToolbar(cm);
+    if (!cm.active) {
+      wrap.innerHTML = '<p>비활성 — all-allow (모든 워커가 서로 dispatch 가능)</p>';
+      wrap.prepend(toolbar);
+      return;
+    }
     const nodes = Object.keys(cm.matrix);
     if (nodes.length === 0) { wrap.innerHTML = '<p>(빈 매트릭스)</p>'; return; }
     const W = 520, H = 420, cx = W/2, cy = H/2, R = Math.min(cx, cy) - 60;
@@ -140,6 +176,7 @@
       `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
       `<path d="M0 0 L10 5 L0 10 z" fill="#7a7ad0"/></marker></defs>` +
       edges + circles + `</svg>` + cyclesNote;
+    wrap.prepend(toolbar);
   }
 
   function escape(s) {

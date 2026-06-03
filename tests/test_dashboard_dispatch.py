@@ -322,6 +322,96 @@ def test_operator_inbox_always_self_scoped(dashboard_client, post_reply_from_wor
     assert "for bob" not in texts
 
 
+def test_force_close_open_conversation(dashboard_client, register_worker):
+    register_worker("W1")
+    d = dashboard_client.post("/dashboard/dispatch", headers=_auth("alice"),
+                              json={"to": "W1", "schema": "operator_message",
+                                    "payload": {}}).json()
+    conv = d["conversation_id"]
+    r = dashboard_client.post(
+        f"/dashboard/operator/conversation/{conv}/close",
+        headers=_auth("alice"), json={"reason": "stale"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "closed"
+    # persistence/state 반영: open_conversations 감소
+    data = dashboard_client.get("/dashboard/data", headers=_auth("alice")).json()
+    assert all(c["conversation_id"] != conv or c["status"] == "closed"
+               for c in data["conversations"])
+
+
+def test_force_close_unknown_conversation_404(dashboard_client):
+    r = dashboard_client.post("/dashboard/operator/conversation/nope/close",
+                              headers=_auth("alice"), json={})
+    assert r.status_code == 404
+
+
+def test_force_close_already_closed_idempotent(dashboard_client, register_worker):
+    register_worker("W1")
+    d = dashboard_client.post("/dashboard/dispatch", headers=_auth("alice"),
+                              json={"to": "W1", "schema": "operator_message",
+                                    "payload": {}}).json()
+    conv = d["conversation_id"]
+    dashboard_client.post(f"/dashboard/operator/conversation/{conv}/close",
+                          headers=_auth("alice"), json={})
+    r2 = dashboard_client.post(f"/dashboard/operator/conversation/{conv}/close",
+                               headers=_auth("alice"), json={})
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "already_closed"
+
+
+def test_unregister_removes_instance(dashboard_client, register_worker, real_server_app):
+    register_worker("W1")
+    r = dashboard_client.post("/dashboard/instance/W1/unregister", headers=_auth("alice"))
+    assert r.status_code == 200
+    assert r.json()["unregistered"] == "W1"
+    data = dashboard_client.get("/dashboard/data", headers=_auth("alice")).json()
+    assert all(i["instance_id"] != "W1" for i in data["instances"])
+    from agent_agora.registry import NotRegisteredError
+    with pytest.raises(NotRegisteredError):
+        real_server_app.state.instance_registry.resolve_instance_id("W1")
+
+
+def test_unregister_nonexistent_404(dashboard_client):
+    r = dashboard_client.post("/dashboard/instance/ghost/unregister", headers=_auth("alice"))
+    assert r.status_code == 404
+
+
+def test_comm_matrix_toggle_off_then_on(dashboard_client):
+    hub = "Hub,Worker\n0,1\n0,0"  # Hub->Worker=1
+    r1 = dashboard_client.post("/dashboard/comm-matrix", headers=_auth("alice"),
+                               json={"csv": hub})
+    assert r1.status_code == 200 and r1.json()["active"] is True
+    r2 = dashboard_client.post("/dashboard/comm-matrix", headers=_auth("alice"),
+                               json={"active": False})
+    assert r2.status_code == 200 and r2.json()["active"] is False
+    r3 = dashboard_client.post("/dashboard/comm-matrix", headers=_auth("alice"),
+                               json={"active": True})
+    assert r3.status_code == 200 and r3.json()["active"] is True
+
+
+def test_comm_matrix_replace_csv_bad_shape_422(dashboard_client):
+    r = dashboard_client.post("/dashboard/comm-matrix", headers=_auth("alice"),
+                              json={"csv": "A,B,C\n0,1,1"})
+    assert r.status_code == 422
+
+
+def test_comm_matrix_activate_empty_422(dashboard_client):
+    r = dashboard_client.post("/dashboard/comm-matrix", headers=_auth("alice"),
+                              json={"active": True})
+    assert r.status_code == 422
+
+
+def test_comm_matrix_get_returns_state(dashboard_client):
+    r = dashboard_client.get("/dashboard/comm-matrix", headers=_auth("alice"))
+    assert r.status_code == 200
+    body = r.json()
+    assert "active" in body and "matrix" in body and "cycles" in body
+
+
+def test_comm_matrix_is_protected_path():
+    assert "/dashboard/comm-matrix" in DASHBOARD_PROTECTED_PATHS
+
+
 def test_logs_is_protected_path(dashboard_client):
     """/dashboard/logs는 보호 경로 — 운영자 헤더 없으면 거부(trust 모드는 통과지만
     경로 자체가 protected 목록에 있어야 한다)."""

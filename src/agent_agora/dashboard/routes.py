@@ -42,6 +42,7 @@ DASHBOARD_PROTECTED_PATHS = [
     "/dashboard/coverage",
     "/dashboard/logs",
     "/dashboard/files",
+    "/dashboard/comm-matrix",
     "/dashboard/stream",
 ]
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
@@ -468,8 +469,75 @@ def register(
         바이트는 노출하지 않는다 — 다운로드는 별도 /files/{file_id} 라우트가 담당."""
         return JSONResponse({"files": persistence.list_files()})
 
+    # ------------------------------------------------------------------
+    # operator state-changing actions (force-close / unregister / comm-matrix)
+    # ------------------------------------------------------------------
+
+    async def close_conversation_endpoint(request: Request) -> JSONResponse:
+        """POST /dashboard/operator/conversation/{conversation_id}/close — 강제 close."""
+        conv_id = request.path_params["conversation_id"]
+        body, _err = await _parse_json_body(request)
+        if _err:
+            return _err
+        reason = (body or {}).get("reason", "") if isinstance(body, dict) else ""
+        user = request.state.operator_user
+        _lazy_register_operator(user)
+        try:
+            result = await dispatcher.operator_close_conversation(
+                conv_id, by=operator_id(user), reason=reason)
+        except Exception as exc:  # noqa: BLE001
+            return _error_to_response(exc)
+        if result.get("error") == "unknown_conversation":
+            return JSONResponse({"error": "unknown_conversation"}, status_code=404)
+        return JSONResponse(result)
+
+    async def unregister_endpoint(request: Request) -> JSONResponse:
+        """POST /dashboard/instance/{instance_id}/unregister — 워커/봇 강제 해제."""
+        instance_id = request.path_params["instance_id"]
+        try:
+            return JSONResponse(dispatcher.operator_unregister(instance_id))
+        except Exception as exc:  # noqa: BLE001
+            return _error_to_response(exc)
+
+    async def comm_matrix_endpoint(request: Request) -> JSONResponse:
+        """GET /dashboard/comm-matrix — 상태 조회. POST — 토글/CSV 교체.
+
+        POST body {active?: bool} → set_active, {csv?: str} → load_csv. 둘 다 없으면 422.
+        AgoraError(빈 매트릭스 활성화·CSV shape/cell/pattern 오류)는 422로 매핑."""
+        if request.method == "GET":
+            return JSONResponse({
+                "active": comm_matrix.active,
+                "matrix": comm_matrix.snapshot(),
+                "cycles": comm_matrix.cycles(),
+            })
+        body, _err = await _parse_json_body(request)
+        if _err:
+            return _err
+        if not isinstance(body, dict) or ("active" not in body and "csv" not in body):
+            return JSONResponse({"error": "active or csv required"}, status_code=422)
+        try:
+            if "csv" in body:
+                comm_matrix.load_csv(body["csv"])
+            if "active" in body:
+                comm_matrix.set_active(bool(body["active"]))
+        except Exception as exc:  # noqa: BLE001
+            return _error_to_response(exc)
+        if event_broker is not None:
+            event_broker.publish({"type": "comm_matrix_changed",
+                                  "active": comm_matrix.active})
+        return JSONResponse({"status": "ok", "active": comm_matrix.active,
+                             "matrix": comm_matrix.snapshot()})
+
     app.router.routes.append(Route("/dashboard/schemas", schemas_endpoint, methods=["GET"]))
     app.router.routes.append(
         Route("/dashboard/coverage/{command_id}", coverage_endpoint, methods=["GET"])
     )
     app.router.routes.append(Route("/dashboard/files", files_endpoint, methods=["GET"]))
+    app.router.routes.append(Route(
+        "/dashboard/operator/conversation/{conversation_id}/close",
+        close_conversation_endpoint, methods=["POST"]))
+    app.router.routes.append(Route(
+        "/dashboard/instance/{instance_id}/unregister",
+        unregister_endpoint, methods=["POST"]))
+    app.router.routes.append(Route(
+        "/dashboard/comm-matrix", comm_matrix_endpoint, methods=["GET", "POST"]))

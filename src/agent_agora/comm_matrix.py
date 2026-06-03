@@ -71,6 +71,22 @@ class CommMatrix:
         self._compiled = compiled
         self.active = True
 
+    def set_active(self, active: bool) -> None:
+        """활성 토글. active=False는 매트릭스 내용을 보존(다시 켜면 복원). active=True인데
+        매트릭스가 비어있으면 거부(comm_matrix_empty) — 빈 매트릭스 활성화는 operator
+        bypass를 제외한 모든 worker↔worker dispatch를 차단하는 사고이기 때문."""
+        if active and not self._weights:
+            raise AgoraError(
+                "comm_matrix_empty",
+                detail="빈 매트릭스를 활성화할 수 없음 — 먼저 CSV를 로드하라")
+        self.active = active
+
+    def clear(self) -> None:
+        """매트릭스를 비우고 비활성화(all-allow)한다."""
+        self._weights = {}
+        self._compiled = {}
+        self.active = False
+
     def weight_of(self, from_: str, to: str) -> int:
         """from_→to 엣지의 정수 weight. 비활성이면 0.
         활성이면 to에 fullmatch되는 행-패턴 × from_에 fullmatch되는 열-패턴의

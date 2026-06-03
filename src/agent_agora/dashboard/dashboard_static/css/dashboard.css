@@ -86,3 +86,13 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
   animation: flowdash 1s linear infinite; }
 @keyframes flowdash { to { stroke-dashoffset:-18; } }
 .flow-badge { fill:#9aa; font-size:9px; text-anchor:middle; }
+
+/* 운영자 액션 버튼 */
+.row-action { color:#8cf; cursor:pointer; text-decoration:underline; font-size:11px; }
+.action-btn { background:#3d3d6b; color:#e8e8e8; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; margin-right:6px; }
+.action-btn:hover { background:#4d4d8b; }
+.danger-btn { background:#a33; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; margin-right:6px; }
+.danger-btn:hover { background:#c44; }
+.cm-toolbar { margin-bottom:8px; }
+#action-modal textarea { width:100%; box-sizing:border-box; margin:8px 0; background:#1a1a2e; color:#e8e8e8; border:1px solid #44446a; border-radius:4px; padding:6px; font-family:monospace; }
+#action-modal .action-buttons { margin-top:10px; }
