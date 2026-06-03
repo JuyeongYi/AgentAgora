@@ -27,6 +27,15 @@ def test_dashboard_css_present():
     assert (STATIC_DIR / "css" / "dashboard.css").is_file()
 
 
+def test_dashboard_js_guards_tabulator_build_race():
+    """Tabulator replaceData를 tableBuilt 전에 부르면 'verticalFillMode' null 에러로
+    테이블이 빈 채 남는다 — 빌드 가드(tableBuilt + 생성 시 data 주입)가 있어야 한다."""
+    js = (STATIC_DIR / "js" / "dashboard.js").read_text(encoding="utf-8")
+    assert "tableBuilt" in js
+    # 생성 직후 즉시 replaceData하는 옛 레이스 패턴이 없어야 한다.
+    assert "window._convTab.replaceData(rows)" not in js
+
+
 def test_static_route_served(real_server_app):
     """/dashboard/static/* 가 StaticFiles로 mount되어 응답 (404 not 500/missing route)."""
     from starlette.testclient import TestClient

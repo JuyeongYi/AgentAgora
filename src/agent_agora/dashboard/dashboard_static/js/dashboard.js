@@ -45,30 +45,48 @@
       `<div class="card"><b>${s.total_inbox_depth}</b>총 인박스</div>`;
   }
 
-  function renderInstances(rows) {
-    // Tabulator 인스턴스 (재사용 패턴 — 이미 만들어졌으면 setData)
-    if (!window._instTab) {
-      window._instTab = new Tabulator('#instances-table', {
-        layout: 'fitColumns', height: 250,
-        columns: [
-          {title: 'ID', field: 'instance_id', headerFilter: true},
-          {title: 'role', field: 'role', headerFilter: true},
-          {title: '인박스', field: 'inbox_depth', formatter: hotIfPos},
-          {title: 'in-flight', field: 'in_flight'},
-          {title: 'last seen', field: 'last_seen_at'},
-          {title: 'accepting', field: 'accepting',
-           formatter: c => c.getValue() ? '예' : '아니오'},
-          {title: '액션', field: 'instance_id', headerSort: false, width: 70,
-           formatter: () => '<span class="row-action">해제</span>',
-           cellClick: (e, cell) => {
-             e.stopPropagation();
-             window.agoraActions.unregister(cell.getData().instance_id);
-           }},
-        ],
-        rowClick: (e, row) => window.agoraDrilldown.openInstanceInbox(row.getData().instance_id),
+  // Tabulator는 비동기로 빌드된다. 빌드 완료(tableBuilt) 전에 replaceData를 부르면
+  // 'verticalFillMode' null 에러로 데이터가 안 들어가 테이블이 빈 채로 남는다. 최초
+  // 생성 시 data로 주입하고, 이후 갱신은 ready일 때만 replaceData(그 전엔 pending에
+  // 저장→빌드 직후 반영).
+  function _renderTable(key, selector, options, rows) {
+    if (!window[key]) {
+      window[key] = new Tabulator(selector, Object.assign({data: rows}, options));
+      window[key + '_ready'] = false;
+      window[key].on('tableBuilt', () => {
+        window[key + '_ready'] = true;
+        if (window[key + '_pending'] != null) {
+          const p = window[key + '_pending'];
+          window[key + '_pending'] = null;
+          window[key].replaceData(p);
+        }
       });
+      return;
     }
-    window._instTab.replaceData(rows);
+    if (window[key + '_ready']) window[key].replaceData(rows);
+    else window[key + '_pending'] = rows;
+  }
+
+  function renderInstances(rows) {
+    _renderTable('_instTab', '#instances-table', {
+      layout: 'fitColumns', height: 250,
+      columns: [
+        {title: 'ID', field: 'instance_id', headerFilter: true},
+        {title: 'role', field: 'role', headerFilter: true},
+        {title: '인박스', field: 'inbox_depth', formatter: hotIfPos},
+        {title: 'in-flight', field: 'in_flight'},
+        {title: 'last seen', field: 'last_seen_at'},
+        {title: 'accepting', field: 'accepting',
+         formatter: c => c.getValue() ? '예' : '아니오'},
+        {title: '액션', field: 'instance_id', headerSort: false, width: 70,
+         formatter: () => '<span class="row-action">해제</span>',
+         cellClick: (e, cell) => {
+           e.stopPropagation();
+           window.agoraActions.unregister(cell.getData().instance_id);
+         }},
+      ],
+      rowClick: (e, row) => window.agoraDrilldown.openInstanceInbox(row.getData().instance_id),
+    }, rows);
   }
 
   function hotIfPos(cell) {
@@ -78,43 +96,37 @@
   }
 
   function renderConversations(rows) {
-    if (!window._convTab) {
-      window._convTab = new Tabulator('#conversations-table', {
-        layout: 'fitColumns', height: 250,
-        columns: [
-          {title: 'conversation', field: 'conversation_id', headerFilter: true},
-          {title: 'kind', field: 'kind'},
-          {title: 'status', field: 'status', headerFilter: true},
-          {title: '메시지', field: 'message_count'},
-          {title: 'last message', field: 'last_message_at'},
-          {title: '액션', field: 'conversation_id', headerSort: false, width: 70,
-           formatter: c => c.getData().status === 'closed'
-             ? '' : '<span class="row-action">닫기</span>',
-           cellClick: (e, cell) => {
-             e.stopPropagation();
-             if (cell.getData().status === 'closed') return;
-             window.agoraActions.closeConversation(cell.getData().conversation_id);
-           }},
-        ],
-        rowClick: (e, row) => window.agoraDrilldown.openConversation(row.getData().conversation_id),
-      });
-    }
-    window._convTab.replaceData(rows);
+    _renderTable('_convTab', '#conversations-table', {
+      layout: 'fitColumns', height: 250,
+      columns: [
+        {title: 'conversation', field: 'conversation_id', headerFilter: true},
+        {title: 'kind', field: 'kind'},
+        {title: 'status', field: 'status', headerFilter: true},
+        {title: '메시지', field: 'message_count'},
+        {title: 'last message', field: 'last_message_at'},
+        {title: '액션', field: 'conversation_id', headerSort: false, width: 70,
+         formatter: c => c.getData().status === 'closed'
+           ? '' : '<span class="row-action">닫기</span>',
+         cellClick: (e, cell) => {
+           e.stopPropagation();
+           if (cell.getData().status === 'closed') return;
+           window.agoraActions.closeConversation(cell.getData().conversation_id);
+         }},
+      ],
+      rowClick: (e, row) => window.agoraDrilldown.openConversation(row.getData().conversation_id),
+    }, rows);
   }
 
   function renderBots(rows) {
-    if (!window._botTab) {
-      window._botTab = new Tabulator('#bots-table', {
-        layout: 'fitColumns', height: 150,
-        columns: [
-          {title: 'ID', field: 'instance_id'},
-          {title: 'mode', field: 'bot_mode'},
-          {title: '구독 스키마', field: 'subscribe_schemas',
-           formatter: c => (c.getValue() || []).join(', ')},
-        ],
-      });
-    }
-    window._botTab.replaceData(rows);
+    _renderTable('_botTab', '#bots-table', {
+      layout: 'fitColumns', height: 150,
+      columns: [
+        {title: 'ID', field: 'instance_id'},
+        {title: 'mode', field: 'bot_mode'},
+        {title: '구독 스키마', field: 'subscribe_schemas',
+         formatter: c => (c.getValue() || []).join(', ')},
+      ],
+    }, rows);
   }
 
   function commMatrixToolbar(cm) {
