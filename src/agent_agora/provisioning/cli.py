@@ -18,11 +18,6 @@ from . import spawn as _spawn
 from . import tui as _tui
 
 
-def _role_to_id(role: str) -> str:
-    """role을 워커 id(PascalCase)로 변환. 'sp-planner' -> 'SpPlanner'."""
-    return "".join(p.capitalize() for p in role.replace("_", "-").split("-") if p)
-
-
 def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
     """정규화 manifest로 모든 산출물을 만든다. 0=성공."""
     for w in norm.get("warnings", []):
@@ -51,8 +46,15 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
     csv = _matrix.build_csv(norm["team"])
     _spawn._write_text(spawn_dir / ".agentagora" / "comm-matrix.csv", csv)
 
-    # 4) 서버 가동 중 & 토큰 있으면 매트릭스 즉시 적용(서버 기동 스크립트는 만들지 않음 —
-    #    agora-init은 에이전트 스폰 전용, 서버는 agent-agora로 따로 띄운다)
+    # 4) 서버 기동 스크립트(옵션). agora-init이 서버를 직접 띄우진 않고 스크립트만 생성.
+    if norm.get("server_launcher", True):
+        _spawn.write_server_launcher(spawn_dir)
+
+    # 4b) 전체 실행 스크립트(옵션). 서버→포트대기→워커 순차 기동.
+    if norm.get("run_all", True):
+        _spawn.write_run_all(spawn_dir)
+
+    # 5) 서버 가동 중 & 토큰 있으면 매트릭스 즉시 적용
     token = os.environ.get("AGORA_ADMIN_TOKEN")
     if token:
         try:
@@ -87,29 +89,42 @@ def _interactive(stdin=sys.stdin, stdout=sys.stdout) -> dict:
     else:
         repo = ask("  GitHub repo (owner/repo)", _manifest.DEFAULT_MARKETPLACE_REPO)
         marketplace = {"type": "github", "repo": repo}
-    # role 다중 선택(체크박스; 비-tty면 번호 입력 폴백) → 각 role당 워커 1명
-    role_list = list(_roles.ROLES)
-    picked = _tui.checkbox_select(role_list, stdin=stdin, stdout=stdout,
-                                  prompt="스폰할 role 선택")
-    use_persona = ask("페르소나 플러그인 사용? (y/n)", "y").lower()
-    persona = None if use_persona == "y" else "none"
-    comm = ask("워커 간 통신 (1=모두 서로, 2=없음)", "1")
-    allow = ["*"] if comm != "2" else []
-
-    seen: dict[str, int] = {}
+    # 페르소나 사용 여부가 분기점.
+    use_persona = ask("페르소나 플러그인 사용? (y/n)", "y").lower() != "n"
     team = []
-    for role in picked:
-        iid = _role_to_id(role)
-        if iid in seen:
-            seen[iid] += 1
-            iid = f"{iid}{seen[iid]}"
-        else:
-            seen[iid] = 1
-        team.append({"id": iid, "role": role, "description": role,
-                     "allow": list(allow), "persona": persona})
+    if not use_persona:
+        # 페르소나 미사용 → 인스턴스 이름만 받아 워커 1개(cc-agora만).
+        name = ask("인스턴스 이름", "Worker1")
+        team.append({"id": name, "role": "general", "description": name,
+                     "allow": [], "persona": "none"})
+    else:
+        # role 체크박스 다중 선택 → 각 선택 role마다 이름 입력(빈칸=역할명).
+        role_list = list(_roles.ROLES)
+        picked = _tui.checkbox_select(role_list, stdin=stdin, stdout=stdout,
+                                      prompt="스폰할 role 선택")
+        seen: dict[str, int] = {}
+        named = []
+        for role in picked:
+            name = ask(f"  '{role}' 인스턴스 이름 (빈칸=역할명)").strip()
+            iid = name or role
+            if iid in seen:
+                seen[iid] += 1
+                iid = f"{iid}{seen[iid]}"
+            else:
+                seen[iid] = 1
+            named.append((iid, role))
+        comm = ask("워커 간 통신 (1=모두 서로, 2=없음)", "1")
+        allow = ["*"] if comm != "2" else []
+        for iid, role in named:
+            team.append({"id": iid, "role": role, "description": role,
+                         "allow": list(allow), "persona": None})
+
+    mk_server = ask("서버 실행 스크립트 생성? (y/n)", "y").lower() != "n"
+    mk_all = ask("전체 실행 스크립트 생성? (y/n)", "y").lower() != "n"
 
     return {"version": 1, "spawn_dir": spawn_dir, "server_url": server_url,
-            "marketplace": marketplace, "team": team}
+            "marketplace": marketplace, "server_launcher": mk_server,
+            "run_all": mk_all, "team": team}
 
 
 def main(argv: list[str] | None = None) -> int:

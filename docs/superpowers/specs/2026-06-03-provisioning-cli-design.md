@@ -116,5 +116,6 @@
 - cp949 콘솔 안전 — 사용자 대면 print는 ASCII+한글만(em dash 등 cp949 밖 문자 금지). 회귀 테스트(`test_generate_output_is_cp949_safe`)로 가드.
 - 실행 스크립트 크로스플랫폼 — `spawn_worker(platform=)`(기본 `sys.platform`)이 win32면 `run.bat`(ASCII+CRLF), POSIX면 `run.sh`(LF + 0o755 실행권한)를 생성. 서버 기동 스크립트는 생성하지 않음(에이전트 스폰 전용).
 - 페르소나 선택 — 워커별 `persona:"none"`(대화형 'n')이면 역할 페르소나 플러그인을 켜지 않고 `cc-agora`(통신 코어)만 활성화하고 CLAUDE.md도 무페르소나 안내로 렌더. 미지정이면 role 매핑 플러그인(기존). `enabledPlugins`가 워커마다 달라진다.
-- 대화형 role 다중 선택 — `tui.checkbox_select`(tty면 ↑↓·스페이스 화살표 체크박스, 비-tty/raw·VT 실패면 번호 입력 자동 폴백). 화살표 경로는 실제 터미널 전용이라 자동 테스트 불가 — 순수 토글 로직 `_toggle_step`과 번호 폴백만 가드한다. 선택 role마다 워커 1명(id=PascalCase(role), description=role, persona·통신 allow는 공통 1회 입력). 워커별 세밀 제어는 비대화형 manifest.
+- 대화형 흐름 — 페르소나 사용 여부(y/n)가 분기점. `n`이면 인스턴스 이름만 받아 워커 1개(persona=none, role=general, cc-agora만). `y`면 `tui.checkbox_select`로 role 다중 선택(tty면 ↑↓·스페이스 화살표 체크박스, 비-tty/raw·VT 실패면 번호 입력 자동 폴백; 화살표는 실제 터미널 전용이라 자동 테스트 불가 — `_toggle_step`+번호 폴백만 가드) 후 각 role에 이름 입력(빈칸=역할명을 id, 입력=그 이름; role은 선택 역할)·통신 allow 공통. 마지막에 server_launcher·run_all 생성 여부를 묻는다. 워커별 세밀 제어는 비대화형 manifest.
+- 스크립트 생성 옵션 — `server_launcher`/`run_all`(manifest 불린, 기본 true). server_launcher=`run-server.bat`/`run-server.sh`, run_all=`run-all.ps1`(wt.exe 탭→Start-Process)/`run-all.sh`(tmux window→zellij→nohup &, 실행 인자 `tmux|zellij|bg`로 강제). run-all 동작: 서버 기동→포트 8420 대기→`.mcp.json` 있는 하위 워커를 순차 기동(run.ps1>run.bat / run.sh). agora-init은 서버를 직접 기동하지 않고 스크립트만 생성.
 - plugin `cc-agora-ops/scripts/spawn.py`와의 중복은 의도적 수용(정식 버전은 src). 추후 plugin이 src를 얇게 호출하도록 정리할지는 별건.

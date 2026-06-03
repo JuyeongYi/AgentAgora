@@ -51,17 +51,54 @@ def test_spawn_worker_linux_creates_run_sh(tmp_path):
     assert "\r\n" not in text  # LF (CRLF 아님)
 
 
-def test_spawn_is_agent_only_no_server_launcher(tmp_path):
-    # agora-init은 에이전트 스폰만 — 서버 기동 스크립트는 만들지 않는다.
+def test_spawn_worker_does_not_create_server_launcher(tmp_path):
+    # spawn_worker는 워커 파일만 — 서버 런처는 write_server_launcher가 별도로 만든다.
     spawn.spawn_worker(
         instance_id="W1", role="coder", description="x",
         parent_dir=tmp_path, server_url="http://127.0.0.1:8420/mcp",
         marketplace=GH, force=False, platform="win32",
     )
-    assert not (tmp_path / "run-server.bat").exists()
     assert not (tmp_path / "W1" / "run-server.bat").exists()
+    assert not (tmp_path / "run-server.bat").exists()
+
+
+def test_write_server_launcher_win(tmp_path):
+    spawn.write_server_launcher(tmp_path, platform="win32")
+    bat = (tmp_path / "run-server.bat").read_bytes()
+    assert b"\r\n" in bat              # CRLF
+    assert b"agent-agora" in bat
     assert not (tmp_path / "run-server.sh").exists()
-    assert not hasattr(spawn, "write_server_launcher")
+
+
+def test_write_server_launcher_posix(tmp_path):
+    spawn.write_server_launcher(tmp_path, platform="linux")
+    sh = tmp_path / "run-server.sh"
+    assert sh.is_file()
+    text = sh.read_text(encoding="utf-8")
+    assert text.startswith("#!/usr/bin/env bash")
+    assert "agent-agora" in text
+    assert "\r\n" not in text          # LF
+    assert not (tmp_path / "run-server.bat").exists()
+
+
+def test_write_run_all_win(tmp_path):
+    spawn.write_run_all(tmp_path, platform="win32")
+    ps = (tmp_path / "run-all.ps1").read_text(encoding="utf-8")
+    assert ".mcp.json" in ps           # 워커 디렉터리 판정
+    assert "wt.exe" in ps or "Start-Process" in ps
+    assert not (tmp_path / "run-all.sh").exists()
+
+
+def test_write_run_all_posix(tmp_path):
+    spawn.write_run_all(tmp_path, platform="linux")
+    sh = tmp_path / "run-all.sh"
+    assert sh.is_file()
+    text = sh.read_text(encoding="utf-8")
+    assert text.startswith("#!/usr/bin/env bash")
+    assert "tmux" in text              # 기본 멀티플렉서
+    assert ".mcp.json" in text
+    assert "\r\n" not in text          # LF
+    assert not (tmp_path / "run-all.ps1").exists()
 
 
 def test_spawn_worker_no_persona_core_only(tmp_path):

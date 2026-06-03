@@ -52,6 +52,37 @@ def test_allow_to_unknown_literal_id_warns_not_errors():
     assert any("GhostWorker" in w for w in m["warnings"])
 
 
+def test_server_launcher_defaults_true():
+    m, errors = manifest.validate(_ok())
+    assert errors == []
+    assert m["server_launcher"] is True
+
+
+def test_server_launcher_false_preserved_and_roundtrips():
+    import json
+    data = _ok()
+    data["server_launcher"] = False
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["server_launcher"] is False
+    out = json.loads(manifest.dumps(m))
+    assert out["server_launcher"] is False
+
+
+def test_run_all_defaults_true():
+    m, errors = manifest.validate(_ok())
+    assert errors == []
+    assert m["run_all"] is True
+
+
+def test_run_all_false_preserved():
+    data = _ok()
+    data["run_all"] = False
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["run_all"] is False
+
+
 def test_persona_none_preserved():
     data = _ok()
     data["team"][0]["persona"] = "none"

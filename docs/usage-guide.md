@@ -96,30 +96,40 @@ agora-init --manifest team.json     # 비대화형 — 기존 manifest로 재실
 ```
 
 대화형은 스폰 위치·서버 URL·마켓플레이스 소스(기본 GitHub
-`JuyeongYi/AgentAgora-ClaudePlugins`, 또는 로컬 plugin 경로)를 묻고, 이어서 **role을
-체크박스로 다중 선택**(↑↓ 이동·스페이스 체크·엔터 확정; tty가 아닌 환경은 번호 입력
-폴백)한 뒤 페르소나 사용 여부(y/n)와 워커 간 통신(1=모두 서로, 2=없음)을 공통으로
-묻는다. 선택한 role마다 워커 1명이 생성된다 — id는 role의 PascalCase(예 `coder`→`Coder`,
-`sp-planner`→`SpPlanner`), description은 role명. 페르소나를 `n`으로 하면 역할 페르소나
-플러그인 없이 `cc-agora` 통신 코어만 활성화한다. 워커별 세밀 제어(개별 id·description·
-allow·persona)가 필요하면 비대화형 `--manifest team.json`을 쓴다. 생성물(스폰 위치 아래):
+`JuyeongYi/AgentAgora-ClaudePlugins`, 또는 로컬 plugin 경로)를 묻고, **페르소나 플러그인
+사용 여부(y/n)** 를 먼저 묻는다.
 
-- 각 워커 디렉토리 — `CLAUDE.md`·`.mcp.json`·`run.bat`(Windows) 또는 `run.sh`(리눅스/맥,
-  실행 OS 자동 감지)·`.claude/settings.local.json`
-  (마켓플레이스 `agent-agora`를 신뢰 등록 + 페르소나 플러그인 활성화)
+- `n` → **인스턴스 이름만** 받아 워커 1개를 만든다(`persona=none`, `cc-agora` 통신 코어만).
+- `y` → role을 **체크박스로 다중 선택**(↑↓ 이동·스페이스 체크·엔터 확정; tty가 아니면
+  번호 입력 폴백)하고, 선택한 각 role에 **이름을 입력**한다(빈칸이면 역할명을 폴더=인스턴스
+  이름으로, 입력하면 그 이름으로; role은 선택한 역할을 따른다). 이어서 워커 간 통신
+  (1=모두 서로, 2=없음)을 묻는다.
+
+마지막으로 **서버 실행 스크립트**·**전체 실행 스크립트** 생성 여부(y/n)를 묻는다. 워커별
+세밀 제어(개별 id·description·allow·persona)가 필요하면 비대화형 `--manifest team.json`을
+쓴다. 생성물(스폰 위치 아래):
+
+- 각 워커 디렉토리 — `CLAUDE.md`·`.mcp.json`·`run.bat`(Windows)/`run.sh`(POSIX, 실행 OS
+  자동 감지)·`.claude/settings.local.json`(마켓플레이스 `agent-agora` 신뢰 등록 + 페르소나
+  플러그인 활성화; 페르소나 미사용 시 `cc-agora`만)
 - `team.json` — 입력 보존(재실행용)
 - `.agentagora/comm-matrix.csv` — `allow` 목록에서 생성한 통신 매트릭스(행=수신자/열=발신자)
+- (옵션) `run-server.bat`(Windows)/`run-server.sh`(POSIX) — 서버 기동 스크립트
+- (옵션) `run-all.ps1`(Windows)/`run-all.sh`(POSIX) — 서버 기동→포트 대기→`.mcp.json`이
+  있는 하위 워커를 순차 기동. Windows는 `wt.exe` 탭, 리눅스는 `tmux` window(실행 시
+  `tmux|zellij|bg` 인자로 강제 가능, 기본 자동 감지)
 
 마켓플레이스 별칭은 `marketplace.json`의 `name`과 같은 `agent-agora`로 고정된다 —
 `/plugin marketplace add JuyeongYi/AgentAgora-ClaudePlugins`로 수동 등록한 경우와
 식별자가 일치해 충돌하지 않는다.
 
-`agora-init`은 **에이전트 스폰 전용**이라 서버 기동 스크립트는 만들지 않는다 — 서버는
-`agent-agora --dir <스폰 위치> --port 8420 --no-tls`로 따로 띄운다.
+`agora-init`은 서버 프로세스를 직접 기동하진 않는다 — 서버 기동 스크립트(`run-server`)·전체
+실행 스크립트(`run-all`)를 *생성*만 하고, 실행은 사용자가 그 스크립트로 한다.
 
-다음 단계: 서버를 띄운 뒤 각 워커에서 `run.bat`(리눅스/맥은 `run.sh`)을 실행하면
-`.mcp.json` 헤더로 자동 등록된다. 서버가 이미 떠 있고 `AGORA_ADMIN_TOKEN`이 설정돼
-있으면 `agora-init`이 매트릭스를 즉시 적용(POST)하고, 아니면 파일만 두어 서버가 시작 시 로드한다.
+다음 단계: `run-all`(서버+워커 일괄) 또는 `run-server`로 서버를 띄우고 각 워커
+`run.bat`/`run.sh`을 실행하면 `.mcp.json` 헤더로 자동 등록된다. 서버가 이미 떠 있고
+`AGORA_ADMIN_TOKEN`이 설정돼 있으면 `agora-init`이 매트릭스를 즉시 적용(POST)하고, 아니면
+파일만 두어 서버가 시작 시 로드한다.
 
 ### 스크립트로
 

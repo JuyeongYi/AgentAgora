@@ -144,3 +144,38 @@ def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: P
     print(f"[agora-init] '{instance_id}/' 생성 (role={role}, persona={persona_plugin}).",
           file=stdout)
     return 0
+
+
+def write_server_launcher(parent_dir: Path, platform: str | None = None) -> None:
+    """parent_dir에 서버 기동 스크립트 생성(플랫폼별). agora-init은 서버를 직접 띄우지
+    않고 이 스크립트만 만든다 — 사용자가 실행해 `agent-agora` 서버를 기동한다.
+    win32면 run-server.bat(ASCII+CRLF), POSIX면 run-server.sh(LF + 0o755)."""
+    plat = platform or sys.platform
+    if plat == "win32":
+        _write_bat(Path(parent_dir) / "run-server.bat",
+                   (_TPL_DIR / "run-server.bat").read_text(encoding="ascii"))
+    else:
+        sh = Path(parent_dir) / "run-server.sh"
+        _write_text(sh, (_TPL_DIR / "run-server.sh").read_text(encoding="utf-8"))
+        try:
+            sh.chmod(0o755)
+        except OSError:
+            pass
+
+
+def write_run_all(parent_dir: Path, platform: str | None = None) -> None:
+    """parent_dir에 전체 실행 스크립트 생성(플랫폼별). 서버 기동 → 포트 대기 →
+    `.mcp.json`이 있는 하위 디렉터리를 워커로 보고 순차 기동한다. Windows는
+    run-all.ps1(wt.exe 탭/새 창), POSIX는 run-all.sh(tmux window / zellij / nohup &;
+    실행 시 인자 tmux|zellij|bg로 강제 가능)."""
+    plat = platform or sys.platform
+    if plat == "win32":
+        _write_bat(Path(parent_dir) / "run-all.ps1",
+                   (_TPL_DIR / "run-all.ps1").read_text(encoding="ascii"))
+    else:
+        sh = Path(parent_dir) / "run-all.sh"
+        _write_text(sh, (_TPL_DIR / "run-all.sh").read_text(encoding="utf-8"))
+        try:
+            sh.chmod(0o755)
+        except OSError:
+            pass

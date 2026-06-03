@@ -135,6 +135,8 @@ def validate(data: object) -> tuple[dict, list[str]]:
         "spawn_dir": data.get("spawn_dir"),
         "server_url": data.get("server_url") or DEFAULT_SERVER_URL,
         "marketplace": marketplace,
+        "server_launcher": bool(data.get("server_launcher", True)),
+        "run_all": bool(data.get("run_all", True)),
         "team": cleaned,
         "warnings": warnings,
     }
@@ -148,6 +150,8 @@ def dumps(norm: dict) -> str:
         "spawn_dir": norm.get("spawn_dir"),
         "server_url": norm.get("server_url"),
         "marketplace": norm.get("marketplace"),
+        "server_launcher": norm.get("server_launcher", True),
+        "run_all": norm.get("run_all", True),
         "team": [
             {"id": e["id"], "role": e["role"], "description": e["description"],
              "allow": e["allow"],
