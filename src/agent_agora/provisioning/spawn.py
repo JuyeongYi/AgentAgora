@@ -14,6 +14,11 @@ from . import roles as _roles
 
 _TPL_DIR = Path(__file__).with_name("templates")
 
+# 마켓플레이스 식별자(별칭). marketplace.json의 "name"과 일치시켜 `/plugin marketplace
+# add`로 수동 등록한 경우(식별자=name)와 충돌하지 않게 한다. enabledPlugins의
+# `<plugin>@<별칭>` 접미사가 이 키를 가리킨다.
+MARKETPLACE_ALIAS = "agent-agora"
+
 
 def _write_text(path: Path, content: str) -> None:
     """UTF-8(BOM 없음) + LF."""
@@ -65,21 +70,29 @@ def _render_claude_md(*, instance_id: str, role: str, description: str) -> str:
     )
 
 
-def _render_settings_local(*, persona_plugin: str, marketplace_path: str) -> str:
+def _marketplace_source(marketplace: dict) -> dict:
+    """marketplace({type:github,repo} 또는 {type:directory,path})를 Claude Code의
+    extraKnownMarketplaces source 객체로 변환한다."""
+    if marketplace["type"] == "github":
+        return {"source": "github", "repo": marketplace["repo"]}
+    return {"source": "directory", "path": marketplace["path"]}
+
+
+def _render_settings_local(*, persona_plugin: str, marketplace: dict) -> str:
     settings = {
         "extraKnownMarketplaces": {
-            "agentagora": {"source": {"source": "directory", "path": marketplace_path}}
+            MARKETPLACE_ALIAS: {"source": _marketplace_source(marketplace)}
         },
         "enabledPlugins": {
-            f"{persona_plugin}@agentagora": True,
-            "cc-agora@agentagora": True,
+            f"{persona_plugin}@{MARKETPLACE_ALIAS}": True,
+            f"cc-agora@{MARKETPLACE_ALIAS}": True,
         },
     }
     return json.dumps(settings, ensure_ascii=False, indent=2) + "\n"
 
 
 def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: Path,
-                 server_url: str, marketplace_path: str, force: bool,
+                 server_url: str, marketplace: dict, force: bool,
                  stderr=sys.stderr, stdout=sys.stdout) -> int:
     """parent_dir/<instance_id>/에 채널 모드 워커 4파일 생성. 0=성공, 1=실패."""
     persona_plugin = _roles.plugin_for(role) or _roles.FALLBACK_PLUGIN
@@ -100,7 +113,7 @@ def spawn_worker(*, instance_id: str, role: str, description: str, parent_dir: P
     _write_bat(wd / "run.bat", (_TPL_DIR / "run.bat").read_text(encoding="ascii"))
     _write_text(wd / ".claude" / "settings.local.json",
                 _render_settings_local(persona_plugin=persona_plugin,
-                                        marketplace_path=marketplace_path))
+                                        marketplace=marketplace))
     print(f"[agora-init] '{instance_id}/' 생성 (role={role}, persona={persona_plugin}).",
           file=stdout)
     return 0

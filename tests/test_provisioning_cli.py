@@ -10,7 +10,7 @@ def _manifest_dict(tmp_path):
         "version": 1,
         "spawn_dir": tmp_path.as_posix(),
         "server_url": "http://127.0.0.1:8420/mcp",
-        "marketplace_path": "C:/repo/plugin",
+        "marketplace": {"type": "github", "repo": "JuyeongYi/AgentAgora-ClaudePlugins"},
         "team": [
             {"id": "Coder1", "role": "coder", "description": "코딩", "allow": ["Reviewer1"]},
             {"id": "Reviewer1", "role": "reviewer", "description": "리뷰", "allow": ["*"]},
@@ -30,13 +30,19 @@ def test_noninteractive_generates_all_artifacts(tmp_path):
     assert (tmp_path / "team.json").is_file()
     # 서버 기동 스크립트
     assert (tmp_path / "run-server.bat").is_file()
+    # settings: github source + agent-agora 별칭
+    settings = json.loads(
+        (tmp_path / "Coder1" / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert settings["extraKnownMarketplaces"]["agent-agora"]["source"] == {
+        "source": "github", "repo": "JuyeongYi/AgentAgora-ClaudePlugins"}
+    assert settings["enabledPlugins"]["cc-agora-coder@agent-agora"] is True
     # 매트릭스 CSV — 방향 정합
     csv = (tmp_path / ".agentagora" / "comm-matrix.csv").read_text(encoding="utf-8")
     cm = CommMatrix()
     cm.load_csv(csv)
-    assert cm.is_allowed("Coder1", "Reviewer1") is True   # Coder1.allow=[Reviewer1]
+    assert cm.is_allowed("Coder1", "Reviewer1") is True
     assert cm.is_allowed("Reviewer1", "Coder1") is True   # Reviewer1.allow=[".*"]
-    assert cm.is_allowed("Coder1", "Coder1") is False     # self 미명시
+    assert cm.is_allowed("Coder1", "Coder1") is False
 
 
 def test_generate_output_is_cp949_safe(tmp_path):
@@ -45,7 +51,7 @@ def test_generate_output_is_cp949_safe(tmp_path):
         "version": 1,
         "spawn_dir": tmp_path.as_posix(),
         "server_url": "http://127.0.0.1:8420/mcp",
-        "marketplace_path": "C:/repo/plugin",
+        "marketplace": {"type": "github", "repo": "JuyeongYi/AgentAgora-ClaudePlugins"},
         "team": [{"id": "Coder1", "role": "coder", "description": "x", "allow": ["Reviewer1"]}],
         "warnings": [],
     }
@@ -63,16 +69,32 @@ def test_noninteractive_bad_manifest_returns_1(tmp_path):
     assert rc == 1
 
 
-def test_interactive_builds_manifest_from_stdin(tmp_path):
+def test_interactive_github_source_from_stdin(tmp_path):
     answers = "\n".join([
-        tmp_path.as_posix(),                          # 스폰 위치
-        "http://127.0.0.1:8420/mcp",                  # 서버 URL
-        "C:/repo/plugin",                             # 마켓플레이스
-        "Coder1", "coder", "코딩", "Reviewer1", "y",   # 워커1 + 더 추가? y
-        "Reviewer1", "reviewer", "리뷰", "*", "n",      # 워커2 + 더 추가? n
+        tmp_path.as_posix(),                            # 스폰 위치
+        "http://127.0.0.1:8420/mcp",                    # 서버 URL
+        "github",                                       # 마켓플레이스 소스
+        "JuyeongYi/AgentAgora-ClaudePlugins",           # repo
+        "Coder1", "coder", "코딩", "Reviewer1", "y",     # 워커1 + 더 추가? y
+        "Reviewer1", "reviewer", "리뷰", "*", "n",        # 워커2 + 더 추가? n
     ]) + "\n"
     norm = cli._interactive(stdin=io.StringIO(answers), stdout=io.StringIO())
     m, errors = _manifest.validate(norm)
     assert errors == []
+    assert m["marketplace"] == {"type": "github", "repo": "JuyeongYi/AgentAgora-ClaudePlugins"}
     assert [e["id"] for e in m["team"]] == ["Coder1", "Reviewer1"]
     assert m["team"][1]["allow"] == [".*"]
+
+
+def test_interactive_directory_source_from_stdin(tmp_path):
+    answers = "\n".join([
+        tmp_path.as_posix(),
+        "http://127.0.0.1:8420/mcp",
+        "directory",                                    # 마켓플레이스 소스
+        "C:/repo/plugin",                               # 로컬 경로
+        "W1", "coder", "x", "", "n",                    # 워커1(allow 없음) + 종료
+    ]) + "\n"
+    norm = cli._interactive(stdin=io.StringIO(answers), stdout=io.StringIO())
+    m, errors = _manifest.validate(norm)
+    assert errors == []
+    assert m["marketplace"] == {"type": "directory", "path": "C:/repo/plugin"}

@@ -15,11 +15,38 @@ from . import roles as _roles
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 DEFAULT_SERVER_URL = "http://127.0.0.1:8420/mcp"
+DEFAULT_MARKETPLACE_REPO = "JuyeongYi/AgentAgora-ClaudePlugins"
 
 
 def _looks_like_id(token: str) -> bool:
     """allow 토큰이 '워커 id 리터럴'처럼 보이는가(정규식 메타문자 없음)."""
     return bool(_ID_RE.match(token))
+
+
+def _normalize_marketplace(data: dict, errors: list[str]) -> dict | None:
+    """marketplace 입력을 {type:github,repo} 또는 {type:directory,path}로 정규화.
+
+    - 명시 `marketplace` 객체 우선.
+    - 없으면 레거시 `marketplace_path`(string) → directory.
+    - 둘 다 없으면 기본 github repo(웹 마켓플레이스).
+    형식 오류는 errors에 누적하고 None 반환."""
+    mkt = data.get("marketplace")
+    if mkt is None:
+        legacy = data.get("marketplace_path")
+        if isinstance(legacy, str) and legacy:
+            return {"type": "directory", "path": legacy}
+        return {"type": "github", "repo": DEFAULT_MARKETPLACE_REPO}
+    if not isinstance(mkt, dict):
+        errors.append("[agora-init] marketplace는 {type, repo|path} 객체여야 합니다.")
+        return None
+    t = mkt.get("type")
+    if t == "github" and isinstance(mkt.get("repo"), str) and mkt["repo"]:
+        return {"type": "github", "repo": mkt["repo"]}
+    if t == "directory" and isinstance(mkt.get("path"), str) and mkt["path"]:
+        return {"type": "directory", "path": mkt["path"]}
+    errors.append(
+        "[agora-init] marketplace 형식 오류: type=github이면 repo, type=directory이면 path 필요.")
+    return None
 
 
 def validate(data: object) -> tuple[dict, list[str]]:
@@ -89,6 +116,10 @@ def validate(data: object) -> tuple[dict, list[str]]:
     if errors:
         return {}, errors
 
+    marketplace = _normalize_marketplace(data, errors)
+    if errors:
+        return {}, errors
+
     # allow의 미지 리터럴 id 경고(정규식 토큰은 통과).
     ids = {e["id"] for e in cleaned}
     for e in cleaned:
@@ -102,7 +133,7 @@ def validate(data: object) -> tuple[dict, list[str]]:
         "version": 1,
         "spawn_dir": data.get("spawn_dir"),
         "server_url": data.get("server_url") or DEFAULT_SERVER_URL,
-        "marketplace_path": data.get("marketplace_path"),
+        "marketplace": marketplace,
         "team": cleaned,
         "warnings": warnings,
     }
@@ -115,7 +146,7 @@ def dumps(norm: dict) -> str:
         "version": 1,
         "spawn_dir": norm.get("spawn_dir"),
         "server_url": norm.get("server_url"),
-        "marketplace_path": norm.get("marketplace_path"),
+        "marketplace": norm.get("marketplace"),
         "team": [
             {"id": e["id"], "role": e["role"], "description": e["description"],
              "allow": e["allow"]}

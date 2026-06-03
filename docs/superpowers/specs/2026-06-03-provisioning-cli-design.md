@@ -112,6 +112,6 @@
 ## 구현 시 확정된 사항
 
 - `comm-matrix.csv` 행/열 방향 — `comm_matrix.py`의 `_weights[to_pat][from_pat]` 규약에 맞춰 **행=수신자(to), 열=발신자(from)**, 코너셀 없는 정사각 NxN으로 확정. `matrix.py`의 round-trip 테스트가 `CommMatrix.load_csv`로 방향 정합을 가드한다.
-- `extraKnownMarketplaces` 경로 — `spawn.find_marketplace()`가 패키지에서 위로 올라가며 `plugin/.claude-plugin/marketplace.json`을 탐색(작업트리면 자동), 못 찾으면 manifest의 `marketplace_path` 또는 대화형 프롬프트로 입력받는다(설치본 대응).
+- `extraKnownMarketplaces` source — 기본 **github**(repo=`JuyeongYi/AgentAgora-ClaudePlugins`), 또는 **directory**(로컬 plugin 경로, `find_marketplace()` 탐색/프롬프트) 선택 가능(manifest `marketplace:{type,repo|path}`, 레거시 `marketplace_path`는 directory로 매핑). 별칭은 `marketplace.json`의 `name`과 같은 **`agent-agora`**로 고정해 `/plugin marketplace add`(식별자=name)와 충돌하지 않게 한다. `enabledPlugins`는 `<plugin>@agent-agora`.
 - cp949 콘솔 안전 — 사용자 대면 print는 ASCII+한글만(em dash 등 cp949 밖 문자 금지). 회귀 테스트(`test_generate_output_is_cp949_safe`)로 가드.
 - plugin `cc-agora-ops/scripts/spawn.py`와의 중복은 의도적 수용(정식 버전은 src). 추후 plugin이 src를 얇게 호출하도록 정리할지는 별건.

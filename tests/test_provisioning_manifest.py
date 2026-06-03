@@ -52,6 +52,43 @@ def test_allow_to_unknown_literal_id_warns_not_errors():
     assert any("GhostWorker" in w for w in m["warnings"])
 
 
+def test_marketplace_defaults_to_github():
+    m, errors = manifest.validate(_ok())
+    assert errors == []
+    assert m["marketplace"] == {"type": "github", "repo": manifest.DEFAULT_MARKETPLACE_REPO}
+
+
+def test_marketplace_github_explicit():
+    data = _ok()
+    data["marketplace"] = {"type": "github", "repo": "owner/Repo"}
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["marketplace"] == {"type": "github", "repo": "owner/Repo"}
+
+
+def test_marketplace_directory_explicit():
+    data = _ok()
+    data["marketplace"] = {"type": "directory", "path": "C:/repo/plugin"}
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["marketplace"] == {"type": "directory", "path": "C:/repo/plugin"}
+
+
+def test_legacy_marketplace_path_maps_to_directory():
+    data = _ok()
+    data["marketplace_path"] = "C:/old/plugin"
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["marketplace"] == {"type": "directory", "path": "C:/old/plugin"}
+
+
+def test_marketplace_bad_shape_errors():
+    data = _ok()
+    data["marketplace"] = {"type": "github"}   # repo 누락
+    _, errors = manifest.validate(data)
+    assert any("marketplace" in e for e in errors)
+
+
 def test_allow_regex_pattern_passes_without_warning():
     data = _ok()
     data["team"][0]["allow"] = ["sp-.*"]

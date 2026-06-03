@@ -25,23 +25,19 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
     spawn_dir = Path(norm["spawn_dir"]).resolve()
     spawn_dir.mkdir(parents=True, exist_ok=True)
     server_url = norm["server_url"]
-    marketplace = norm.get("marketplace_path") or _spawn.find_marketplace()
-    if not marketplace:
-        print("[agora-init] 마켓플레이스(plugin) 경로를 결정할 수 없습니다. "
-              "manifest의 marketplace_path를 지정하세요.", file=stderr)
-        return 1
+    marketplace = norm["marketplace"]  # validate가 {type:github,repo}|{type:directory,path} 보장
 
     # 1) 워커들
     for e in norm["team"]:
         rc = _spawn.spawn_worker(
             instance_id=e["id"], role=e["role"], description=e["description"],
             parent_dir=spawn_dir, server_url=server_url,
-            marketplace_path=marketplace, force=True, stdout=stdout, stderr=stderr)
+            marketplace=marketplace, force=True, stdout=stdout, stderr=stderr)
         if rc != 0:
             return rc
 
     # 2) team.json 보존(해석된 절대 경로로)
-    norm = {**norm, "spawn_dir": spawn_dir.as_posix(), "marketplace_path": marketplace}
+    norm = {**norm, "spawn_dir": spawn_dir.as_posix()}
     _spawn._write_text(spawn_dir / "team.json", _manifest.dumps(norm))
 
     # 3) comm-matrix.csv
@@ -78,8 +74,14 @@ def _interactive(stdin=sys.stdin, stdout=sys.stdout) -> dict:
 
     spawn_dir = ask("스폰 위치(부모 디렉터리)", Path.cwd().as_posix())
     server_url = ask("서버 URL", _manifest.DEFAULT_SERVER_URL)
-    default_mkt = _spawn.find_marketplace() or ""
-    marketplace = ask("마켓플레이스(plugin) 경로", default_mkt)
+    src = ask("마켓플레이스 소스 (github/directory)", "github").lower()
+    if src == "directory":
+        default_path = _spawn.find_marketplace() or ""
+        path = ask("  로컬 plugin 경로", default_path)
+        marketplace = {"type": "directory", "path": path}
+    else:
+        repo = ask("  GitHub repo (owner/repo)", _manifest.DEFAULT_MARKETPLACE_REPO)
+        marketplace = {"type": "github", "repo": repo}
     print(f"  사용 가능 role: {', '.join(sorted(_roles.ROLES))}", file=stdout)
 
     team = []
@@ -96,7 +98,7 @@ def _interactive(stdin=sys.stdin, stdout=sys.stdout) -> dict:
             break
 
     return {"version": 1, "spawn_dir": spawn_dir, "server_url": server_url,
-            "marketplace_path": marketplace or None, "team": team}
+            "marketplace": marketplace, "team": team}
 
 
 def main(argv: list[str] | None = None) -> int:
