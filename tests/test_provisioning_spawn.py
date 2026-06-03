@@ -110,6 +110,8 @@ def test_write_run_all_posix_zellij_only(tmp_path):
     assert "tmux" not in text             # zellij 세션 안 tmux 중첩 방지
     assert ".mcp.json" in text
     assert "--bind-host 0.0.0.0" in text
+    assert "ZELLIJ" in text               # 세션 안/밖 분기
+    assert "--layout" in text             # 세션 밖이면 layout으로 새 세션 시작 후 재실행
     assert "\r\n" not in text             # LF
     assert not (tmp_path / "run-all.ps1").exists()
 
