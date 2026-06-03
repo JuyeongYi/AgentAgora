@@ -39,6 +39,23 @@ def test_noninteractive_generates_all_artifacts(tmp_path):
     assert cm.is_allowed("Coder1", "Coder1") is False     # self 미명시
 
 
+def test_generate_output_is_cp949_safe(tmp_path):
+    """Windows cp949 콘솔에서 진행/완료 print가 인코딩 가능해야 한다(em dash 등 금지)."""
+    norm = {
+        "version": 1,
+        "spawn_dir": tmp_path.as_posix(),
+        "server_url": "http://127.0.0.1:8420/mcp",
+        "marketplace_path": "C:/repo/plugin",
+        "team": [{"id": "Coder1", "role": "coder", "description": "x", "allow": ["Reviewer1"]}],
+        "warnings": [],
+    }
+    buf = io.BytesIO()
+    out = io.TextIOWrapper(buf, encoding="cp949", newline="")
+    rc = cli._generate(norm, stdout=out, stderr=out)
+    out.flush()
+    assert rc == 0
+
+
 def test_noninteractive_bad_manifest_returns_1(tmp_path):
     mpath = tmp_path / "bad.json"
     mpath.write_text('{"version": 2, "team": []}', encoding="utf-8")

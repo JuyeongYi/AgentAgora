@@ -60,7 +60,7 @@ def _generate(norm: dict, *, stdout=sys.stdout, stderr=sys.stderr) -> int:
         except Exception as exc:  # noqa: BLE001 — 서버 미가동은 치명적이지 않음
             print(f"[agora-init] 매트릭스 즉시 적용 실패(파일은 생성됨): {exc}", file=stderr)
 
-    print(f"[agora-init] 완료 — {len(norm['team'])}개 워커, 위치: {spawn_dir.as_posix()}",
+    print(f"[agora-init] 완료: {len(norm['team'])}개 워커, 위치: {spawn_dir.as_posix()}",
           file=stdout)
     return 0
 
