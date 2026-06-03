@@ -1,0 +1,61 @@
+from agent_agora.provisioning import manifest
+
+
+def _ok():
+    return {
+        "version": 1,
+        "spawn_dir": "C:/work/team",
+        "server_url": "http://127.0.0.1:8420/mcp",
+        "team": [
+            {"id": "Coder1", "role": "coder", "description": "코딩", "allow": ["Reviewer1"]},
+            {"id": "Reviewer1", "role": "reviewer", "description": "리뷰", "allow": ["*"]},
+        ],
+    }
+
+
+def test_valid_manifest_passes_and_normalizes_star():
+    m, errors = manifest.validate(_ok())
+    assert errors == []
+    # "*"는 ".*"로 정규화된다.
+    assert m["team"][1]["allow"] == [".*"]
+    assert m["team"][0]["allow"] == ["Reviewer1"]
+
+
+def test_wrong_version_errors():
+    data = _ok(); data["version"] = 2
+    _, errors = manifest.validate(data)
+    assert any("version" in e for e in errors)
+
+
+def test_duplicate_id_errors():
+    data = _ok(); data["team"][1]["id"] = "Coder1"
+    _, errors = manifest.validate(data)
+    assert any("중복" in e for e in errors)
+
+
+def test_bad_id_format_errors():
+    data = _ok(); data["team"][0]["id"] = "bad id!"
+    _, errors = manifest.validate(data)
+    assert any("형식" in e for e in errors)
+
+
+def test_missing_required_key_errors():
+    data = _ok(); del data["team"][0]["role"]
+    _, errors = manifest.validate(data)
+    assert any("필수 키" in e for e in errors)
+
+
+def test_allow_to_unknown_literal_id_warns_not_errors():
+    data = _ok(); data["team"][0]["allow"] = ["GhostWorker"]
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert any("GhostWorker" in w for w in m["warnings"])
+
+
+def test_allow_regex_pattern_passes_without_warning():
+    data = _ok()
+    data["team"][0]["allow"] = ["sp-.*"]
+    data["team"][1]["allow"] = []
+    m, errors = manifest.validate(data)
+    assert errors == []
+    assert m["warnings"] == []
