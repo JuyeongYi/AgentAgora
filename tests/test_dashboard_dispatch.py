@@ -61,6 +61,10 @@ def _build_real_server_app(tmp_path, *, inbox_isolation: bool = False):
     event_broker = EventBroker(max_queue=100)
     event_broker.attach_to_dispatcher(dispatcher)
     log_buffer = RingBufferLogHandler(capacity=100, level=logging.WARNING)
+    from agent_agora.dashboard import MetricsCollector
+    metrics = MetricsCollector(dispatcher=dispatcher, instance_registry=reg,
+                               log_buffer=log_buffer)
+    metrics.attach_to_dispatcher()
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
@@ -90,6 +94,7 @@ def _build_real_server_app(tmp_path, *, inbox_isolation: bool = False):
         health_collector=health,
         event_broker=event_broker,
         log_buffer=log_buffer,
+        metrics_collector=metrics,
         inbox_isolation=inbox_isolation,
         auth_mode="trust",
     )
@@ -100,6 +105,7 @@ def _build_real_server_app(tmp_path, *, inbox_isolation: bool = False):
     app.state.write_queue = write_queue
     app.state.persistence = persistence
     app.state.log_buffer = log_buffer
+    app.state.metrics = metrics
 
     return app
 
@@ -449,6 +455,22 @@ def test_search_bad_limit_422(dashboard_client):
 
 def test_search_is_protected_path():
     assert "/dashboard/search" in DASHBOARD_PROTECTED_PATHS
+
+
+def test_metrics_endpoint_returns_timeseries_shape(dashboard_client, real_server_app):
+    # 최소 1회 샘플해 시계열이 비어있지 않게 한다.
+    real_server_app.state.metrics.sample()
+    r = dashboard_client.get("/dashboard/metrics", headers=_auth("alice"))
+    assert r.status_code == 200
+    body = r.json()
+    assert "global" in body and "workers" in body
+    g = body["global"]
+    for key in ("ts", "dispatch_rate_per_min", "error_rate_per_min", "total_inbox_depth"):
+        assert key in g and isinstance(g[key], list)
+
+
+def test_metrics_is_protected_path():
+    assert "/dashboard/metrics" in DASHBOARD_PROTECTED_PATHS
 
 
 def test_logs_is_protected_path(dashboard_client):

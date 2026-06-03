@@ -44,6 +44,7 @@ DASHBOARD_PROTECTED_PATHS = [
     "/dashboard/files",
     "/dashboard/comm-matrix",
     "/dashboard/search",
+    "/dashboard/metrics",
     "/dashboard/stream",
 ]
 # 인증 토큰을 query param으로도 받는 보호 라우트 (SSE: EventSource는 Authorization
@@ -157,6 +158,7 @@ def register(
     health_collector=None,
     event_broker=None,
     log_buffer=None,
+    metrics_collector=None,
     inbox_isolation: bool = False,
     auth_mode: str = "trust",
 ) -> None:
@@ -212,6 +214,18 @@ def register(
                 {"logs": log_buffer.records(min_level=min_level, limit=limit)})
 
         app.router.routes.append(Route("/dashboard/logs", logs_endpoint, methods=["GET"]))
+
+    # ------------------------------------------------------------------
+    # metrics endpoint (metrics_collector 제공 시 활성화) — 시계열 sparkline 데이터.
+    # ------------------------------------------------------------------
+    if metrics_collector is not None:
+
+        async def metrics_endpoint(request: Request) -> JSONResponse:
+            """GET /dashboard/metrics — in-memory 시계열(global + per-worker)."""
+            return JSONResponse(metrics_collector.snapshot())
+
+        app.router.routes.append(
+            Route("/dashboard/metrics", metrics_endpoint, methods=["GET"]))
 
     # ------------------------------------------------------------------
     # SSE stream endpoint (event_broker 제공 시 활성화)

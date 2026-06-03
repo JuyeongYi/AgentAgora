@@ -24,6 +24,7 @@ def test_protected_paths_canonical_contents():
         "/dashboard/files",
         "/dashboard/comm-matrix",
         "/dashboard/search",
+        "/dashboard/metrics",
         "/dashboard/stream",
     ]
 

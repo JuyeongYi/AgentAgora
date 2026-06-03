@@ -12,6 +12,7 @@ from agent_agora.dashboard.auth import (
 )
 from agent_agora.dashboard.events import EventBroker
 from agent_agora.dashboard.health import HealthCollector
+from agent_agora.dashboard.metrics import MetricsCollector
 from agent_agora.dashboard.routes import (
     DASHBOARD_PROTECTED_PATHS,
     DASHBOARD_QUERY_PARAM_PATHS,
@@ -26,6 +27,7 @@ __all__ = [
     "verify_password",
     "EventBroker",
     "HealthCollector",
+    "MetricsCollector",
     "register",
     "build_dashboard_data",
     "DASHBOARD_PROTECTED_PATHS",

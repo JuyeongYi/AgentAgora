@@ -19,6 +19,12 @@
     window.agoraStream.on('operator_inbox_message', (evt) => window.agoraInbox.push(evt));
     window.agoraInbox.refresh();
     window.agoraStream.connect();
+
+    // 시계열 sparkline — /dashboard/metrics 주기 폴링(10초). /data 스냅샷과 분리.
+    if (window.agoraSparkline) {
+      window.agoraSparkline.refresh();
+      setInterval(() => window.agoraSparkline.refresh(), 10000);
+    }
   });
 
   function renderSnapshot(d) {

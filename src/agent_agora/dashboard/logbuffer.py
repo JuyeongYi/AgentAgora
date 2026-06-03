@@ -22,6 +22,10 @@ class RingBufferLogHandler(logging.Handler):
     def __init__(self, *, capacity: int = 500, level: int = logging.WARNING) -> None:
         super().__init__(level=level)
         self._records: deque[dict] = deque(maxlen=capacity)
+        # ring buffer evict와 무관한 monotonic 누적 카운터(MetricsCollector가 델타로
+        # 분당 에러율을 계산).
+        self._total_emitted = 0
+        self._total_errors = 0
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -38,8 +42,15 @@ class RingBufferLogHandler(logging.Handler):
                 "logger": record.name,
                 "message": message,
             })
+            self._total_emitted += 1
+            if record.levelno >= logging.ERROR:
+                self._total_errors += 1
         except Exception:  # noqa: BLE001 — 핸들러는 로깅을 깨면 안 됨
             self.handleError(record)
+
+    def counts(self) -> dict:
+        """누적 카운터 {'emitted', 'errors'} — evict와 무관(monotonic)."""
+        return {"emitted": self._total_emitted, "errors": self._total_errors}
 
     def records(self, *, limit: int | None = None,
                 min_level: int | str | None = None) -> list[dict]:

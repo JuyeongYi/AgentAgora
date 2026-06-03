@@ -104,3 +104,18 @@ body { font: 13px/1.5 system-ui, sans-serif; background:#1a1a2e; color:#e8e8e8; 
 .search-table td { padding:4px 8px; border-bottom:1px solid #33334d; vertical-align:top; }
 .search-table tr:hover { background:#2d2d52; }
 .search-snippet { font-family:monospace; font-size:11px; white-space:pre-wrap; color:#cce; }
+
+/* 시계열 sparkline */
+#metrics-panel h3 { color:#9aa; font-size:13px; margin:6px 0 4px; }
+#metrics-panel h4 { color:#9aa; font-size:11px; margin:8px 0 2px; }
+.spark-row { display:flex; align-items:center; gap:6px; margin:2px 0; font-size:11px; }
+.spark-label { flex:0 0 110px; color:#bbf; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.spark { background:#1a1a2e; border-radius:3px; }
+.spark-line { stroke:#7ed321; fill:none; stroke-width:1.5; }
+.spark-cur { flex:0 0 48px; text-align:right; color:#9aa; font-family:monospace; }
+
+/* 드릴다운 coverage 인라인 배지 */
+.coverage-inline { font-size:10px; }
+.cov-pending { color:#f5a623; }
+.cov-responded { color:#7ed321; }
+.cov-expired { color:#ff6b6b; }

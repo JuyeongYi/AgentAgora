@@ -274,6 +274,7 @@ async def run_server(args: argparse.Namespace) -> None:
         from agent_agora.dashboard import (
             HealthCollector,
             EventBroker,
+            MetricsCollector,
             DashboardAuthMiddleware,
             parse_tokens,
             parse_basic_users,
@@ -326,6 +327,13 @@ async def run_server(args: argparse.Namespace) -> None:
         _log_buffer = RingBufferLogHandler(capacity=500, level=logging.WARNING)
         logging.getLogger("agent_agora").addHandler(_log_buffer)
 
+        # 시계열 메트릭 수집기 — dispatch hook 누적 + 주기 샘플링(10초).
+        _metrics = MetricsCollector(
+            dispatcher=dispatcher, instance_registry=instance_registry,
+            log_buffer=_log_buffer)
+        _metrics.attach_to_dispatcher()
+        metrics_task = asyncio.create_task(_metrics_sample_loop_10s(_metrics))
+
         starlette_app.add_middleware(
             DashboardAuthMiddleware,
             mode=_dash_auth_mode,
@@ -347,6 +355,7 @@ async def run_server(args: argparse.Namespace) -> None:
             health_collector=_health,
             event_broker=_event_broker,
             log_buffer=_log_buffer,
+            metrics_collector=_metrics,
             inbox_isolation=_inbox_isolation,
             auth_mode=_dash_auth_mode,
         )
@@ -355,6 +364,7 @@ async def run_server(args: argparse.Namespace) -> None:
         print("  Dashboard: POST /dashboard/dispatch, POST /dashboard/broadcast")
         print("  Dashboard: GET /dashboard/operator/inbox, POST /dashboard/operator/inbox/ack")
         print("  Dashboard: GET /dashboard/logs (recent WARNING+ events)")
+        print("  Dashboard: GET /dashboard/search (FTS5), GET /dashboard/metrics (time-series)")
         print(f"  Dashboard: auth mode = {_dash_auth_mode}"
               + (f", basic users = {len(_dash_users)}" if _dash_auth_mode == "basic" else "")
               + (", inbox isolation = on" if _inbox_isolation else ""))
@@ -383,13 +393,24 @@ async def run_server(args: argparse.Namespace) -> None:
         finally:
             sweep_task.cancel()
             gc_task.cancel()
-            for t in (sweep_task, gc_task):
+            metrics_task.cancel()
+            for t in (sweep_task, gc_task, metrics_task):
                 try:
                     await t
                 except asyncio.CancelledError:
                     pass
             await dispatcher.close()
             persistence.close()
+
+
+async def _metrics_sample_loop_10s(metrics) -> None:
+    """10초 주기로 시계열 메트릭을 샘플링한다(in-memory ring buffer)."""
+    while True:
+        await asyncio.sleep(10)
+        try:
+            metrics.sample()
+        except Exception as e:
+            print(f"[agora] metrics sample error: {e}", file=sys.stderr)
 
 
 async def _sweep_loop_60s(dispatcher) -> None:
